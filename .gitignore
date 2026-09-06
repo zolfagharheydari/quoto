@@ -1,0 +1,4 @@
+.env
+__pycache__/
+preview_out/
+assets/fonts/*.ttf
