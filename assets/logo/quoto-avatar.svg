@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Quoto">
+  <title>Quoto</title>
+  <rect width="512" height="512" fill="#000000"/>
+  <path d="M 302.674 399.648 A 151.040 151.040 0 1 1 402.553 292.540" fill="none" stroke="#F5F5F5" stroke-width="41.984" stroke-linecap="round"/>
+  <path d="M98 899Q211 954 275.0 1027.0Q339 1100 349 1204H293Q231 1204 192.0 1218.0Q153 1232 129 1257Q106 1280 96.5 1309.5Q87 1339 87 1370Q87 1434 138.5 1482.0Q190 1530 260 1530Q370 1530 429.0 1457.0Q488 1384 488 1255Q488 1135 386.5 1013.0Q285 891 142 828Z" fill="#F5F5F5" transform="translate(324.240 547.402) scale(0.154548 -0.154548)"/>
+</svg>
