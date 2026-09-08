@@ -25,6 +25,8 @@ class ConversionError(RuntimeError):
 def _run(args: list[str]) -> None:
     exe = _ffmpeg()
     if not exe:
+        # The user is told something vague on purpose; this line is for the operator.
+        log.error("ffmpeg not found - install it, or pip install imageio-ffmpeg")
         raise ConversionError("no_ffmpeg")
     proc = subprocess.run([exe, "-y", "-loglevel", "error", *args],
                           capture_output=True, timeout=180)

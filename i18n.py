@@ -125,20 +125,14 @@ Your privacy settings are hiding it from me. In Telegram: Settings → Privacy a
     "need_reply_group": {
         "fa": """روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.
 
-اگر ریپلای کردی و باز همین پیام را می‌بینی، یعنی تلگرام ریپلای را به من نمی‌دهد.
-راه‌حل (یکی از این دو):
-۱) ربات را در گروه ادمین کن، یا
-۲) در @BotFather دستور /setprivacy را بزن، ربات را انتخاب کن، Disable را بزن،
-   بعد ربات را از گروه حذف کن و دوباره اضافه کن.
+اگر ریپلای کردی و باز همین پیام را می‌بینی، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم.
+کافی است مرا در این گروه ادمین کنی.
 
 تا آن موقع می‌توانی بنویسی: /q هر متنی که بخواهی""",
         "en": """Reply to the message you want me to turn into a card, then send the command again.
 
 If you did reply and still see this, Telegram is not passing the reply to me.
-Fix it one of two ways:
-1) Make me an admin in this group, or
-2) In @BotFather send /setprivacy, pick this bot, choose Disable,
-   then remove me from the group and add me again.
+Making me an admin in this group fixes it.
 
 Meanwhile you can type: /q any text you like""",
     },
@@ -159,8 +153,8 @@ Meanwhile you can type: /q any text you like""",
         "en": "I couldn't make that. Give it another try.",
     },
     "no_ffmpeg": {
-        "fa": "ffmpeg در دسترس نیست؛ برای تبدیل ویدیو لازمه نصب بشه.",
-        "en": "ffmpeg isn't available; it's required for video conversion.",
+        "fa": "الان نمی‌تونم ویدیو رو تبدیل کنم. کمی بعد دوباره امتحان کن.",
+        "en": "I can't convert video right now. Try again in a bit.",
     },
     "convert_failed": {
         "fa": "تبدیل با خطا مواجه شد.",

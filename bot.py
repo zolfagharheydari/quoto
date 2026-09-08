@@ -48,6 +48,8 @@ TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WATERMARK = os.getenv("WATERMARK", "").strip()
 STATE_FILE = os.getenv("STATE_FILE", "botdata.pkl").strip()
 PROXY = os.getenv("PROXY", "").strip()
+_owner = os.getenv("OWNER_ID", "").strip()
+OWNER_ID: int | None = int(_owner) if _owner.lstrip("-").isdigit() else None
 _storage = os.getenv("STORAGE_CHAT_ID", "").strip()
 # Inline results must reference stored files; this chat is where they get uploaded.
 STORAGE_CHAT: str | int | None = (
@@ -100,7 +102,18 @@ async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Report what actually arrived, so a silent failure can be diagnosed."""
+    """Report what actually arrived, so a silent failure can be diagnosed.
+
+    Operator-only: it exposes chat ids and resolution internals, which are of no
+    use to a user and not theirs to see. Anyone else gets no reply at all.
+    """
+    user = update.effective_user
+    if OWNER_ID is None or (user and user.id != OWNER_ID):
+        log.info(
+            "/debug from %s ignored; set OWNER_ID=%s in .env to enable it for yourself",
+            user.id if user else "?", user.id if user else "<your id>",
+        )
+        return
     message = update.effective_message
     target = message.reply_to_message
     lines = [
