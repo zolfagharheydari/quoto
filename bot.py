@@ -316,7 +316,7 @@ def main() -> None:
     app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
-    app.add_handler(CommandHandler(["q", "quote"], cmd_quote))
+    app.add_handler(CommandHandler(["q", "quote", "qoute", "quto", "qute", "quot"], cmd_quote))
     app.add_handler(CommandHandler(["qs", "quotesticker"], cmd_quote_sticker))
     app.add_handler(CommandHandler(["qg", "quotegif"], cmd_quote_gif))
     app.add_handler(CommandHandler(["sticker", "s"], cmd_sticker))
