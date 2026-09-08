@@ -285,14 +285,26 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def post_init(app: Application) -> None:
-    # English is the default menu; Telegram serves the Persian one to Persian clients.
-    await app.bot.set_my_commands(
-        [BotCommand(name, desc) for name, desc in i18n.COMMANDS["en"]]
-    )
-    await app.bot.set_my_commands(
-        [BotCommand(name, desc) for name, desc in i18n.COMMANDS["fa"]],
-        language_code="fa",
-    )
+    """Publish the menus and the pre-Start blurbs, English by default plus Persian.
+
+    Telegram serves each client the variant matching its language, so this
+    replaces setting them by hand in BotFather.
+    """
+    username = app.bot.username
+
+    async def publish(lang: str, **kwargs) -> None:
+        await app.bot.set_my_commands(
+            [BotCommand(name, desc) for name, desc in i18n.COMMANDS[lang]], **kwargs
+        )
+        await app.bot.set_my_description(
+            i18n.DESCRIPTIONS[lang].replace("@BOT", f"@{username}"), **kwargs
+        )
+        await app.bot.set_my_short_description(
+            i18n.SHORT_DESCRIPTIONS[lang].replace("@BOT", f"@{username}"), **kwargs
+        )
+
+    await publish("en")                        # the default every other locale sees
+    await publish("fa", language_code="fa")
 
 
 def main() -> None:

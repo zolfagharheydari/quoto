@@ -159,6 +159,39 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+# Shown on the empty chat before Start (max 512 chars), and on the bot's profile
+# (max 120). "@BOT" is replaced with the real username when these are uploaded.
+DESCRIPTIONS: dict[str, str] = {
+    "fa": """سلام! 👋
+من از پیام‌ها عکسِ نقل‌قول می‌سازم.
+
+روی هر پیامی ریپلای کن و /q بفرست — متن پیام را با اسم و عکس پروفایلِ گوینده تبدیل به یک کارت سیاه‌وسفید می‌کنم.
+
+/qs — همان کارت به شکل استیکر
+/qg — همان کارت، متحرک
+
+در گروه‌ها هم کار می‌کنم. در چت‌هایی که عضو نیستم کافی است بنویسی @BOT و بعدش متن.
+
+برای شروع Start را بزن 👇""",
+    "en": """Hi! 👋
+I turn messages into quote cards.
+
+Reply to any message with /q and I'll set its text against the sender's name and profile photo, on a black-and-white card.
+
+/qs — the same card as a sticker
+/qg — the same card, animated
+
+I work in groups too. In chats I'm not a member of, just type @BOT followed by your text.
+
+Press Start to begin 👇""",
+}
+
+SHORT_DESCRIPTIONS: dict[str, str] = {
+    "fa": "از پیام‌ها عکسِ نقل‌قول می‌سازم، با اسم و عکس پروفایلِ گوینده. روی پیام ریپلای کن و /q بفرست.",
+    "en": "I turn messages into quote cards with the sender's name and photo. Reply to a message and send /q.",
+}
+
+
 def normalize(code: str | None) -> str:
     """Map a Telegram language_code onto one of the languages we actually speak."""
     if not code:
