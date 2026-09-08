@@ -14,7 +14,8 @@ import render
 log = logging.getLogger(__name__)
 
 _AVATAR_TTL = 60 * 60          # profile pictures rarely change within an hour
-_avatar_cache: dict[str, tuple[float, bytes | None]] = {}
+_AVATAR_MISS_TTL = 5 * 60      # but "no picture" is worth re-checking sooner
+_avatar_cache: dict[str, tuple[float, bytes | None, str]] = {}
 
 
 class Author:
@@ -63,7 +64,8 @@ def _from_chat(chat) -> Author:
 
 async def fetch_avatar(bot: Bot, author: Author) -> Image.Image:
     """Profile photo as a PIL image, or a generated fallback tile."""
-    data = await _avatar_bytes(bot, author)
+    data, source = await _avatar_bytes(bot, author)
+    log.info("avatar for %s: %s", author.seed, source)
     if data:
         try:
             return Image.open(io.BytesIO(data))
@@ -73,29 +75,68 @@ async def fetch_avatar(bot: Bot, author: Author) -> Image.Image:
     return render.fallback_avatar(author.seed, letter.upper())
 
 
-async def _avatar_bytes(bot: Bot, author: Author) -> bytes | None:
-    if author.avatar_key is None:
+async def avatar_source(bot: Bot, author: Author) -> str:
+    """Where this author's picture would come from. For diagnostics."""
+    _, source = await _avatar_bytes(bot, author)
+    return source
+
+
+async def _download(bot: Bot, file_id: str) -> bytes:
+    file = await bot.get_file(file_id)
+    return bytes(await file.download_as_bytearray())
+
+
+async def _newest_profile_photo(bot: Bot, user_id: int) -> bytes | None:
+    """The user's current profile photo, when their privacy settings expose it."""
+    photos = await bot.get_user_profile_photos(user_id, limit=1)
+    if not photos.total_count or not photos.photos:
         return None
+    # Sizes come smallest-first; the last one is the highest resolution.
+    return await _download(bot, photos.photos[0][-1].file_id)
+
+
+async def _public_photo(bot: Bot, chat_id: int) -> bytes | None:
+    """The photo Telegram shows to everyone else.
+
+    When someone limits who may see their profile photo they can set a separate
+    public one; getUserProfilePhotos returns nothing for us, but the chat still
+    carries that fallback. This is also the path for channels and groups.
+    """
+    chat = await bot.get_chat(chat_id)
+    if chat.photo is None:
+        return None
+    return await _download(bot, chat.photo.big_file_id)
+
+
+async def _avatar_bytes(bot: Bot, author: Author) -> tuple[bytes | None, str]:
+    """Best available picture, and a label saying where it came from."""
+    if author.avatar_key is None:
+        return None, "none (no account to look up)"
     key = f"{author.kind}:{author.avatar_key}"
     hit = _avatar_cache.get(key)
-    if hit and time.time() - hit[0] < _AVATAR_TTL:
-        return hit[1]
+    if hit:
+        age, data, source = time.time() - hit[0], hit[1], hit[2]
+        # Re-check a miss sooner: the user may have just opened their photo up.
+        if age < (_AVATAR_TTL if data else _AVATAR_MISS_TTL):
+            return data, f"{source} (cached)"
+
+    attempts = (
+        [("profile photo", _newest_profile_photo), ("public photo", _public_photo)]
+        if author.kind == "user"
+        else [("chat photo", _public_photo)]
+    )
 
     data: bytes | None = None
-    try:
-        if author.kind == "user":
-            photos = await bot.get_user_profile_photos(author.avatar_key, limit=1)
-            if photos.total_count:
-                # Sizes come smallest-first; the last one is the highest resolution.
-                file = await bot.get_file(photos.photos[0][-1].file_id)
-                data = bytes(await file.download_as_bytearray())
-        else:
-            chat = await bot.get_chat(author.avatar_key)
-            if chat.photo is not None:
-                file = await bot.get_file(chat.photo.big_file_id)
-                data = bytes(await file.download_as_bytearray())
-    except TelegramError as exc:
-        log.info("avatar unavailable for %s: %s", key, exc)
+    source = "none (nothing visible to the bot)"
+    for label, getter in attempts:
+        try:
+            data = await getter(bot, author.avatar_key)
+        except TelegramError as exc:
+            log.info("%s unavailable for %s: %s", label, key, exc)
+            continue
+        if data:
+            source = label
+            break
 
-    _avatar_cache[key] = (time.time(), data)
-    return data
+    _avatar_cache[key] = (time.time(), data, source)
+    return data, source

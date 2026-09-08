@@ -111,6 +111,11 @@ async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         lines.append("  (اگر ریپلای کرده‌ای و اینجا NO است، ربات ریپلای را نمی‌بیند:")
         lines.append("   ربات را از گروه حذف و دوباره اضافه کن.)")
+    who = authors.resolve(target or message)
+    lines += [
+        f"quoting: {who.name} (@{who.handle or '-'})",
+        f"avatar: {await authors.avatar_source(context.bot, who)}",
+    ]
     await message.reply_text(chr(10).join(lines))
 
 
