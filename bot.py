@@ -91,6 +91,29 @@ async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.edit_message_text(message)
 
 
+async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Report what actually arrived, so a silent failure can be diagnosed."""
+    message = update.effective_message
+    target = message.reply_to_message
+    lines = [
+        f"chat: {message.chat.type} ({message.chat_id})",
+        f"from: {message.from_user.full_name if message.from_user else None}",
+        f"reply_to_message: {'YES' if target else 'NO'}",
+    ]
+    if target:
+        who = target.from_user.full_name if target.from_user else None
+        lines += [
+            f"  author: {who}",
+            f"  sender_chat: {target.sender_chat.title if target.sender_chat else None}",
+            f"  text found: {'YES' if extract.quote_text(target) else 'NO'}",
+            f"  media found: {'YES' if extract.find_media(target) else 'NO'}",
+        ]
+    else:
+        lines.append("  (اگر ریپلای کرده‌ای و اینجا NO است، ربات ریپلای را نمی‌بیند:")
+        lines.append("   ربات را از گروه حذف و دوباره اضافه کن.)")
+    await message.reply_text(chr(10).join(lines))
+
+
 async def _build_scene(update: Update, target: Message, text: str):
     author = authors.resolve(target)
     avatar = await authors.fetch_avatar(update.get_bot(), author)
@@ -100,10 +123,23 @@ async def _build_scene(update: Update, target: Message, text: str):
 
 
 async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Common guard: must be a reply, and that reply must carry text."""
+    """Find the message to quote: the replied-to one, or the command's own text.
+
+    Returns (source message, text). The source is what we attribute the quote to
+    and what we reply under, so "/q some words" quotes the sender themselves.
+    """
     message = update.effective_message
     target = message.reply_to_message
+    log.info(
+        "quote request in %s (%s): reply=%s args=%s",
+        message.chat_id, message.chat.type,
+        target.message_id if target else None,
+        len(getattr(context, "args", None) or []),
+    )
     if target is None:
+        typed = " ".join(getattr(context, "args", None) or []).strip()
+        if typed:
+            return message, typed[:extract.MAX_QUOTE_CHARS]
         await message.reply_text(_t("need_reply", update, context))
         return None
     text = extract.quote_text(target)
@@ -275,6 +311,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler(["start", "help"], cmd_start))
     app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
+    app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler(["q", "quote"], cmd_quote))
     app.add_handler(CommandHandler(["qs", "quotesticker"], cmd_quote_sticker))

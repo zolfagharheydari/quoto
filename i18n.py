@@ -18,6 +18,9 @@ STRINGS: dict[str, dict[str, str]] = {
 /qs — همون نقل‌قول به شکل استیکر
 /qg — همون نقل‌قول به شکل گیف (متن تایپ می‌شود)
 
+<b>بدون ریپلای هم می‌شود:</b>
+<code>/q هر متنی که بخواهی</code> — به نام خودت ساخته می‌شود
+
 <b>تبدیل خودِ پیام، همان‌طور که هست:</b>
 /sticker — عکس یا ویدیو را استیکر می‌کنم
 /gif — ویدیو یا استیکر متحرک را گیف می‌کنم
@@ -36,6 +39,9 @@ STRINGS: dict[str, dict[str, str]] = {
 /q or /quote — a quote card
 /qs — the same quote as a sticker
 /qg — the same quote animated (the text types itself)
+
+<b>Works without a reply too:</b>
+<code>/q any text you like</code> — attributed to you
 
 <b>Convert the message itself, as-is:</b>
 /sticker — turns a photo or video into a sticker
