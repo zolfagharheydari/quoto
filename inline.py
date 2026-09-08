@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 
 from telegram import (
@@ -35,6 +36,15 @@ DEBOUNCE_SECONDS = 0.45
 MAX_INLINE_CHARS = 700
 # "text | name" lets someone attribute the quote to a person other than themselves.
 ATTRIBUTION_SEP = "|"
+
+# Inline mode has no commands, but people reach for them anyway. A leading /quote
+# is dropped, and a query that is nothing but a command gets a hint instead of a
+# card reading "/quote".
+_VERBS = "q|quote|qs|qg|quotesticker|quotegif|sticker|gif|s|g"
+LEADING_COMMAND_RE = re.compile(f"^/({_VERBS})(@[A-Za-z0-9_]+)?[ ]+", re.IGNORECASE)
+COMMAND_ONLY_RE = re.compile(
+    f"^/?({_VERBS}|کوت|نقل[ ]*قول)(@[A-Za-z0-9_]+)?$", re.IGNORECASE
+)
 
 
 def _split_attribution(raw: str) -> tuple[str, str | None]:
@@ -70,11 +80,14 @@ def make_handler(watermark: str, storage_chat: str | int | None):
         lang = i18n.resolve(update, context.user_data)
         raw = query.query.strip()
 
-        if not raw:
+        raw = LEADING_COMMAND_RE.sub("", raw).strip()
+        if not raw or COMMAND_ONLY_RE.match(raw):
+            # Empty query, or someone typing "@bot /quote" expecting the reply flow.
+            hint = "inline_command" if raw else "inline_empty"
             await query.answer(
                 [], cache_time=5, is_personal=True,
                 button=InlineQueryResultsButton(
-                    text=i18n.t("inline_empty", lang), start_parameter="inline"
+                    text=i18n.t(hint, lang), start_parameter="inline"
                 ),
             )
             return

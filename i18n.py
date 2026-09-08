@@ -105,6 +105,10 @@ To credit someone else: <code>@BOT some text | name</code>""",
         "fa": "عکس نقل‌قول",
         "en": "Quote card",
     },
+    "inline_command": {
+        "fa": "اینجا دستور لازم نیست — فقط خودِ متن را بنویس",
+        "en": "No command needed here — just type the text itself",
+    },
 }
 
 COMMANDS: dict[str, list[tuple[str, str]]] = {
