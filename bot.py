@@ -140,7 +140,9 @@ async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
         typed = " ".join(getattr(context, "args", None) or []).strip()
         if typed:
             return message, typed[:extract.MAX_QUOTE_CHARS]
-        await message.reply_text(_t("need_reply", update, context))
+        # In a group the usual cause is privacy mode eating the reply, so say so.
+        key = "need_reply_group" if message.chat.type in ("group", "supergroup") else "need_reply"
+        await message.reply_text(_t(key, update, context))
         return None
     text = extract.quote_text(target)
     if text is None:
@@ -211,7 +213,8 @@ async def _grab_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     target = message.reply_to_message
     if target is None:
-        await message.reply_text(_t("need_reply", update, context))
+        key = "need_reply_group" if message.chat.type in ("group", "supergroup") else "need_reply"
+        await message.reply_text(_t(key, update, context))
         return None
     found = extract.find_media(target)
     if found is None:

@@ -60,6 +60,26 @@ To credit someone else: <code>@BOT some text | name</code>""",
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
         "en": "Reply to the message you want me to turn into a card, then send the command again.",
     },
+    "need_reply_group": {
+        "fa": """روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.
+
+اگر ریپلای کردی و باز همین پیام را می‌بینی، یعنی تلگرام ریپلای را به من نمی‌دهد.
+راه‌حل (یکی از این دو):
+۱) ربات را در گروه ادمین کن، یا
+۲) در @BotFather دستور /setprivacy را بزن، ربات را انتخاب کن، Disable را بزن،
+   بعد ربات را از گروه حذف کن و دوباره اضافه کن.
+
+تا آن موقع می‌توانی بنویسی: /q هر متنی که بخواهی""",
+        "en": """Reply to the message you want me to turn into a card, then send the command again.
+
+If you did reply and still see this, Telegram is not passing the reply to me.
+Fix it one of two ways:
+1) Make me an admin in this group, or
+2) In @BotFather send /setprivacy, pick this bot, choose Disable,
+   then remove me from the group and add me again.
+
+Meanwhile you can type: /q any text you like""",
+    },
     "need_text": {
         "fa": "اون پیام متنی نداره که بشه نقلش کرد. برای تبدیل خودِ پیام از /sticker یا /gif استفاده کن.",
         "en": "That message has no text to quote. Use /sticker or /gif to convert the message itself.",
