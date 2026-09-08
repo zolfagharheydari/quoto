@@ -1,0 +1,31 @@
+[Unit]
+Description=Quoto Telegram bot
+# Wait for real connectivity, not just for an interface to exist.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=quoto
+Group=quoto
+WorkingDirectory=/opt/quoto
+# The bot reads .env itself from the working directory, so no EnvironmentFile:
+# systemd's parser would choke on quoting that python-dotenv handles fine.
+ExecStart=/opt/quoto/.venv/bin/python bot.py
+
+# Telegram drops long-poll connections routinely; always come back.
+Restart=always
+RestartSec=5
+
+# Hardening: the bot only needs to read its own directory and write botdata.pkl.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/quoto
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

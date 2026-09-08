@@ -63,6 +63,7 @@ python preview.py preview_out
 | `i18n.py` | متن‌های فارسی/انگلیسی و تشخیص زبان کاربر |
 | `inline.py` | حالت inline: کوت ساختن در چت‌هایی که ربات عضوشان نیست |
 | `tools/make_logo.py` | ساخت لوگو به شکل SVG و PNG |
+| `deploy/` | سرویس systemd و راهنمای اجرای دائمی روی سرور |
 
 ## نکته‌های ریز
 
