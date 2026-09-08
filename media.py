@@ -19,18 +19,18 @@ STICKER_MAX_BYTES = 500 * 1024
 
 
 class ConversionError(RuntimeError):
-    """Raised with a user-facing (Persian) message."""
+    """Raised with an i18n key; the handler translates it for the user."""
 
 
 def _run(args: list[str]) -> None:
     exe = _ffmpeg()
     if not exe:
-        raise ConversionError("ffmpeg در دسترس نیست؛ برای تبدیل ویدیو لازمه نصب بشه.")
+        raise ConversionError("no_ffmpeg")
     proc = subprocess.run([exe, "-y", "-loglevel", "error", *args],
                           capture_output=True, timeout=180)
     if proc.returncode != 0:
         log.warning("ffmpeg: %s", proc.stderr.decode("utf-8", "ignore")[:800])
-        raise ConversionError("تبدیل با خطا مواجه شد.")
+        raise ConversionError("convert_failed")
 
 
 def image_to_sticker(data: bytes) -> io.BytesIO:

@@ -1,4 +1,4 @@
-python-telegram-bot[rate-limiter]==21.9
+python-telegram-bot[rate-limiter,socks]==21.9
 Pillow==11.0.0
 arabic-reshaper==3.0.0
 python-bidi==0.6.3

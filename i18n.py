@@ -1,0 +1,131 @@
+"""Bilingual (Persian/English) message catalog and per-user language resolution."""
+from __future__ import annotations
+
+from telegram import Update
+
+DEFAULT = "en"
+SUPPORTED = ("fa", "en")
+
+# Telegram sends BCP-47-ish codes; these all mean "show this person Persian".
+_FA_PREFIXES = ("fa", "fa-ir", "per", "prs")
+
+STRINGS: dict[str, dict[str, str]] = {
+    "help": {
+        "fa": """سلام! من از پیام‌ها عکسِ نقل‌قول می‌سازم.
+
+<b>روی یک پیام ریپلای کن و بفرست:</b>
+/q یا /quote — عکس نقل‌قول
+/qs — همون نقل‌قول به شکل استیکر
+/qg — همون نقل‌قول به شکل گیف (متن تایپ می‌شود)
+
+<b>تبدیل خودِ پیام، همان‌طور که هست:</b>
+/sticker — عکس یا ویدیو را استیکر می‌کنم
+/gif — ویدیو یا استیکر متحرک را گیف می‌کنم
+
+می‌تونی به‌جای دستور، در جواب پیام فقط بنویسی «کوت» یا «quote».
+در گروه‌ها هم کار می‌کنم؛ فقط یادت باشه اول روی پیام ریپلای کنی.
+
+/lang — تغییر زبان""",
+        "en": """Hi! I turn messages into quote cards.
+
+<b>Reply to a message and send:</b>
+/q or /quote — a quote card
+/qs — the same quote as a sticker
+/qg — the same quote animated (the text types itself)
+
+<b>Convert the message itself, as-is:</b>
+/sticker — turns a photo or video into a sticker
+/gif — turns a video or animated sticker into a GIF
+
+Instead of a command you can just reply with the word "quote".
+I work in groups too — just remember to reply to a message first.
+
+/lang — change language""",
+    },
+    "need_reply": {
+        "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
+        "en": "Reply to the message you want me to turn into a card, then send the command again.",
+    },
+    "need_text": {
+        "fa": "اون پیام متنی نداره که بشه نقلش کرد. برای تبدیل خودِ پیام از /sticker یا /gif استفاده کن.",
+        "en": "That message has no text to quote. Use /sticker or /gif to convert the message itself.",
+    },
+    "need_media": {
+        "fa": "روی یک عکس، استیکر، گیف یا ویدیو ریپلای کن.",
+        "en": "Reply to a photo, sticker, GIF or video.",
+    },
+    "too_big": {
+        "fa": "این فایل بزرگ‌تر از ۲۰ مگابایته و ربات نمی‌تونه دانلودش کنه.",
+        "en": "That file is over 20 MB, which is more than a bot is allowed to download.",
+    },
+    "failed": {
+        "fa": "نشد بسازمش. یه بار دیگه امتحان کن.",
+        "en": "I couldn't make that. Give it another try.",
+    },
+    "no_ffmpeg": {
+        "fa": "ffmpeg در دسترس نیست؛ برای تبدیل ویدیو لازمه نصب بشه.",
+        "en": "ffmpeg isn't available; it's required for video conversion.",
+    },
+    "convert_failed": {
+        "fa": "تبدیل با خطا مواجه شد.",
+        "en": "The conversion failed.",
+    },
+    "lang_prompt": {
+        "fa": "زبان ربات را انتخاب کن:",
+        "en": "Choose the bot's language:",
+    },
+    "lang_set": {
+        "fa": "زبان روی فارسی تنظیم شد. ✅",
+        "en": "Language set to English. ✅",
+    },
+    "lang_auto": {
+        "fa": "زبان خودکار شد؛ از روی تنظیمات تلگرام تو انتخاب می‌شود.",
+        "en": "Language set to automatic; I'll follow your Telegram settings.",
+    },
+    "btn_fa": {"fa": "فارسی", "en": "فارسی"},
+    "btn_en": {"fa": "English", "en": "English"},
+    "btn_auto": {"fa": "خودکار 🌐", "en": "Automatic 🌐"},
+}
+
+COMMANDS: dict[str, list[tuple[str, str]]] = {
+    "fa": [
+        ("quote", "ساخت عکس نقل‌قول از پیام ریپلای‌شده"),
+        ("qs", "نقل‌قول به شکل استیکر"),
+        ("qg", "نقل‌قول به شکل گیف"),
+        ("sticker", "تبدیل عکس/ویدیوی ریپلای‌شده به استیکر"),
+        ("gif", "تبدیل ویدیو/استیکر ریپلای‌شده به گیف"),
+        ("lang", "تغییر زبان"),
+        ("help", "راهنما"),
+    ],
+    "en": [
+        ("quote", "Make a quote card from the replied-to message"),
+        ("qs", "The quote as a sticker"),
+        ("qg", "The quote as an animation"),
+        ("sticker", "Turn the replied-to photo/video into a sticker"),
+        ("gif", "Turn the replied-to video/sticker into a GIF"),
+        ("lang", "Change language"),
+        ("help", "Help"),
+    ],
+}
+
+
+def normalize(code: str | None) -> str:
+    """Map a Telegram language_code onto one of the languages we actually speak."""
+    if not code:
+        return DEFAULT
+    code = code.lower()
+    return "fa" if code.startswith(_FA_PREFIXES) else "en"
+
+
+def resolve(update: Update, user_data: dict | None) -> str:
+    """A manual /lang choice wins; otherwise follow the user's Telegram language."""
+    chosen = (user_data or {}).get("lang")
+    if chosen in SUPPORTED:
+        return chosen
+    user = update.effective_user
+    return normalize(user.language_code if user else None)
+
+
+def t(key: str, lang: str) -> str:
+    entry = STRINGS[key]
+    return entry.get(lang) or entry[DEFAULT]
