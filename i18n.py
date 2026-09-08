@@ -58,9 +58,7 @@ Full guide: /help""",
 اینجا کارتی ساخته نمی‌شود؛ خودِ فایل عوض می‌شود.
 
 ➎ <b>در گروه</b>
-مرا به گروه اضافه کن. اگر ریپلای‌ها را ندیدم و گفتم «روی پیامی ریپلای کن»، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم. یکی از این دو را انجام بده:
-• مرا در گروه <b>ادمین</b> کن، یا
-• در @BotFather دستور <code>/setprivacy</code> را بزن، Disable کن، بعد مرا از گروه حذف و دوباره اضافه کن.
+مرا به گروه اضافه کن. اگر ریپلای‌ها را ندیدم و گفتم «روی پیامی ریپلای کن»، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم؛ در این حالت کافی است مرا در گروه <b>ادمین</b> کنی.
 
 ➏ <b>در چتی که عضوش نیستم</b>
 لازم نیست اضافه‌ام کنی. در همان چت بنویس:
@@ -76,9 +74,7 @@ Full guide: /help""",
 <code>/lang</code> — فارسی، انگلیسی یا خودکار
 
 <b>اگر عکس پروفایل روی کارت نیامد</b>
-یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.
-
-<code>/debug</code> — اگر چیزی کار نکرد، روی همان پیام ریپلای کن و این را بفرست تا بگویم دقیقاً چه چیزی به دستم رسیده.""",
+یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
         "en": """📖 <b>Quoto help</b>
 
 I turn Telegram messages into quote cards: a black-and-white card carrying the message text, the sender's name and their profile photo.
@@ -104,9 +100,7 @@ The card is credited to you, with your profile photo.
 No card here; the file itself is converted.
 
 ➎ <b>In a group</b>
-Add me to the group. If I answer "reply to a message" even though you did, Telegram is not letting me see it. Do one of these:
-• Make me an <b>admin</b> in the group, or
-• Send <code>/setprivacy</code> to @BotFather, choose Disable, then remove me from the group and add me again.
+Add me to the group. If I answer "reply to a message" even though you did, Telegram is not letting me see it — making me an <b>admin</b> in the group fixes that.
 
 ➏ <b>In a chat I'm not in</b>
 No need to add me. Type this in that chat:
@@ -122,9 +116,7 @@ To credit someone else:
 <code>/lang</code> — Persian, English, or automatic
 
 <b>If the profile photo is missing from the card</b>
-Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.
-
-<code>/debug</code> — if something misbehaves, reply to the message and send this; I'll report exactly what reached me.""",
+Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
     },
     "need_reply": {
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
