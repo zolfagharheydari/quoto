@@ -10,51 +10,121 @@ SUPPORTED = ("fa", "en")
 _FA_PREFIXES = ("fa", "fa-ir", "per", "prs")
 
 STRINGS: dict[str, dict[str, str]] = {
+    "welcome": {
+        "fa": """سلام! 👋
+من از پیام‌ها عکسِ نقل‌قول می‌سازم — یک کارت سیاه‌وسفید با متن پیام، اسم گوینده و عکس پروفایلش.
+
+<b>سریع‌ترین راه امتحان کردن:</b>
+همین حالا بنویس <code>/q سلام دنیا</code>
+
+<b>کار اصلی‌ام:</b>
+روی هر پیامی ریپلای کن و <code>/q</code> بفرست.
+
+راهنمای کامل: /help""",
+        "en": """Hi! 👋
+I turn messages into quote cards — black and white, carrying the text, the sender's name and their profile photo.
+
+<b>Quickest way to try me:</b>
+Send <code>/q hello world</code> right now
+
+<b>What I'm really for:</b>
+Reply to any message and send <code>/q</code>.
+
+Full guide: /help""",
+    },
     "help": {
-        "fa": """سلام! من از پیام‌ها عکسِ نقل‌قول می‌سازم.
+        "fa": """📖 <b>راهنمای Quoto</b>
 
-<b>روی یک پیام ریپلای کن و بفرست:</b>
-/q یا /quote — عکس نقل‌قول
-/qs — همون نقل‌قول به شکل استیکر
-/qg — همون نقل‌قول به شکل گیف (متن تایپ می‌شود)
+من از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم: یک کارت سیاه‌وسفید که متن پیام، اسم گوینده و عکس پروفایلش رویش نوشته شده.
 
-<b>بدون ریپلای هم می‌شود:</b>
-<code>/q هر متنی که بخواهی</code> — به نام خودت ساخته می‌شود
+➊ <b>ساده‌ترین کار</b>
+۱. روی پیامی که می‌خواهی <b>ریپلای</b> کن
+۲. بنویس <code>/q</code> و بفرست
+تمام. کارت را همان‌جا می‌فرستم.
 
-<b>تبدیل خودِ پیام، همان‌طور که هست:</b>
-/sticker — عکس یا ویدیو را استیکر می‌کنم
-/gif — ویدیو یا استیکر متحرک را گیف می‌کنم
+➋ <b>سه شکل خروجی</b>
+<code>/q</code> — عکس
+<code>/qs</code> — استیکر
+<code>/qg</code> — گیف؛ متن جلوی چشم تایپ می‌شود
+هر سه یک کارت‌اند، فقط قالبشان فرق دارد.
 
-می‌تونی به‌جای دستور، در جواب پیام فقط بنویسی «کوت» یا «quote».
-در گروه‌ها هم کار می‌کنم؛ فقط یادت باشه اول روی پیام ریپلای کنی.
+➌ <b>بدون ریپلای هم می‌شود</b>
+<code>/q هر متنی که بخواهی</code>
+کارت با اسم و عکس پروفایل خودت ساخته می‌شود.
 
-/lang — تغییر زبان
+➍ <b>تبدیل خودِ فایل</b>
+<code>/sticker</code> — عکس یا ویدیوی ریپلای‌شده را استیکر می‌کند
+<code>/gif</code> — ویدیو یا استیکر متحرک را گیف می‌کند
+اینجا کارتی ساخته نمی‌شود؛ خودِ فایل عوض می‌شود.
 
-<b>در گروهی که عضو نیستم:</b>
-کافی است در همان چت بنویسی <code>@BOT متن</code> و از لیستی که باز می‌شود انتخاب کنی.
-برای اینکه اسم دیگری زیر کوت بخورد: <code>@BOT متن | اسم</code>""",
-        "en": """Hi! I turn messages into quote cards.
+➎ <b>در گروه</b>
+مرا به گروه اضافه کن. اگر ریپلای‌ها را ندیدم و گفتم «روی پیامی ریپلای کن»، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم. یکی از این دو را انجام بده:
+• مرا در گروه <b>ادمین</b> کن، یا
+• در @BotFather دستور <code>/setprivacy</code> را بزن، Disable کن، بعد مرا از گروه حذف و دوباره اضافه کن.
 
-<b>Reply to a message and send:</b>
-/q or /quote — a quote card
-/qs — the same quote as a sticker
-/qg — the same quote animated (the text types itself)
+➏ <b>در چتی که عضوش نیستم</b>
+لازم نیست اضافه‌ام کنی. در همان چت بنویس:
+<code>@BOT متن مورد نظر</code>
+منویی باز می‌شود و انتخاب می‌کنی. چون تلگرام در این حالت به من نمی‌گوید روی چه پیامی ریپلای کرده‌ای، متن را باید خودت بنویسی یا پیست کنی.
+برای اینکه اسم شخص دیگری زیر کوت بخورد:
+<code>@BOT متن | اسم</code>
 
-<b>Works without a reply too:</b>
-<code>/q any text you like</code> — attributed to you
+➐ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
+پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/q</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
 
-<b>Convert the message itself, as-is:</b>
-/sticker — turns a photo or video into a sticker
-/gif — turns a video or animated sticker into a GIF
+➑ <b>زبان</b>
+<code>/lang</code> — فارسی، انگلیسی یا خودکار
 
-Instead of a command you can just reply with the word "quote".
-I work in groups too — just remember to reply to a message first.
+<b>اگر عکس پروفایل روی کارت نیامد</b>
+یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.
 
-/lang — change language
+<code>/debug</code> — اگر چیزی کار نکرد، روی همان پیام ریپلای کن و این را بفرست تا بگویم دقیقاً چه چیزی به دستم رسیده.""",
+        "en": """📖 <b>Quoto help</b>
 
-<b>In a chat I'm not a member of:</b>
-Just type <code>@BOT some text</code> there and pick from the list that opens.
-To credit someone else: <code>@BOT some text | name</code>""",
+I turn Telegram messages into quote cards: a black-and-white card carrying the message text, the sender's name and their profile photo.
+
+➊ <b>The basic move</b>
+1. <b>Reply</b> to the message you want
+2. Send <code>/q</code>
+That's it — the card comes back in the same chat.
+
+➋ <b>Three output formats</b>
+<code>/q</code> — an image
+<code>/qs</code> — a sticker
+<code>/qg</code> — an animation; the text types itself
+Same card, different wrapper.
+
+➌ <b>No reply needed</b>
+<code>/q any text you like</code>
+The card is credited to you, with your profile photo.
+
+➍ <b>Converting the file itself</b>
+<code>/sticker</code> — turns the replied-to photo or video into a sticker
+<code>/gif</code> — turns a video or animated sticker into a GIF
+No card here; the file itself is converted.
+
+➎ <b>In a group</b>
+Add me to the group. If I answer "reply to a message" even though you did, Telegram is not letting me see it. Do one of these:
+• Make me an <b>admin</b> in the group, or
+• Send <code>/setprivacy</code> to @BotFather, choose Disable, then remove me from the group and add me again.
+
+➏ <b>In a chat I'm not in</b>
+No need to add me. Type this in that chat:
+<code>@BOT your text</code>
+A menu opens and you pick one. Telegram never tells me what you replied to in this mode, so the text has to be typed or pasted.
+To credit someone else:
+<code>@BOT your text | name</code>
+
+➐ <b>Quoting someone with their own name and photo</b>
+<b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/q</code>. I read the original sender's name and photo from the forward.
+
+➑ <b>Language</b>
+<code>/lang</code> — Persian, English, or automatic
+
+<b>If the profile photo is missing from the card</b>
+Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.
+
+<code>/debug</code> — if something misbehaves, reply to the message and send this; I'll report exactly what reached me.""",
     },
     "need_reply": {
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",

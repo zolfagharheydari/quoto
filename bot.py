@@ -59,9 +59,17 @@ def _t(key: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     return i18n.t(key, i18n.resolve(update, context.user_data))
 
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = _t("help", update, context).replace("@BOT", f"@{context.bot.username}")
+async def _send(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str) -> None:
+    text = _t(key, update, context).replace("@BOT", f"@{context.bot.username}")
     await update.effective_message.reply_html(text)
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(update, context, "welcome")
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(update, context, "help")
 
 
 async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -329,7 +337,8 @@ def main() -> None:
         builder = builder.proxy(PROXY).get_updates_proxy(PROXY)
     app = builder.build()
 
-    app.add_handler(CommandHandler(["start", "help"], cmd_start))
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler(["help", "guide"], cmd_help))
     app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
