@@ -25,7 +25,11 @@ STRINGS: dict[str, dict[str, str]] = {
 می‌تونی به‌جای دستور، در جواب پیام فقط بنویسی «کوت» یا «quote».
 در گروه‌ها هم کار می‌کنم؛ فقط یادت باشه اول روی پیام ریپلای کنی.
 
-/lang — تغییر زبان""",
+/lang — تغییر زبان
+
+<b>در گروهی که عضو نیستم:</b>
+کافی است در همان چت بنویسی <code>@BOT متن</code> و از لیستی که باز می‌شود انتخاب کنی.
+برای اینکه اسم دیگری زیر کوت بخورد: <code>@BOT متن | اسم</code>""",
         "en": """Hi! I turn messages into quote cards.
 
 <b>Reply to a message and send:</b>
@@ -40,7 +44,11 @@ STRINGS: dict[str, dict[str, str]] = {
 Instead of a command you can just reply with the word "quote".
 I work in groups too — just remember to reply to a message first.
 
-/lang — change language""",
+/lang — change language
+
+<b>In a chat I'm not a member of:</b>
+Just type <code>@BOT some text</code> there and pick from the list that opens.
+To credit someone else: <code>@BOT some text | name</code>""",
     },
     "need_reply": {
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
@@ -85,6 +93,18 @@ I work in groups too — just remember to reply to a message first.
     "btn_fa": {"fa": "فارسی", "en": "فارسی"},
     "btn_en": {"fa": "English", "en": "English"},
     "btn_auto": {"fa": "خودکار 🌐", "en": "Automatic 🌐"},
+    "inline_empty": {
+        "fa": "متن را بنویس تا برایت کوت بسازم",
+        "en": "Type some text and I'll turn it into a quote",
+    },
+    "inline_need_start": {
+        "fa": "اول ربات را استارت کن، بعد دوباره امتحان کن",
+        "en": "Start the bot first, then try again",
+    },
+    "inline_photo": {
+        "fa": "عکس نقل‌قول",
+        "en": "Quote card",
+    },
 }
 
 COMMANDS: dict[str, list[tuple[str, str]]] = {

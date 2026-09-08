@@ -21,6 +21,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    InlineQueryHandler,
     MessageHandler,
     PicklePersistence,
     filters,
@@ -31,6 +32,7 @@ import authors
 import extract
 import fonts
 import i18n
+import inline
 import media as media_tools
 import render
 
@@ -46,6 +48,11 @@ TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WATERMARK = os.getenv("WATERMARK", "").strip()
 STATE_FILE = os.getenv("STATE_FILE", "botdata.pkl").strip()
 PROXY = os.getenv("PROXY", "").strip()
+_storage = os.getenv("STORAGE_CHAT_ID", "").strip()
+# Inline results must reference stored files; this chat is where they get uploaded.
+STORAGE_CHAT: str | int | None = (
+    int(_storage) if _storage.lstrip("-").isdigit() else (_storage or None)
+)
 
 
 def _t(key: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -53,7 +60,8 @@ def _t(key: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_html(_t("help", update, context))
+    text = _t("help", update, context).replace("@BOT", f"@{context.bot.username}")
+    await update.effective_message.reply_html(text)
 
 
 async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -277,6 +285,7 @@ def main() -> None:
     app.add_handler(MessageHandler(
         filters.REPLY & filters.Regex(r"(?i)^\s*(کوت|نقل\s*قول|quote|q)\s*$"), cmd_quote
     ))
+    app.add_handler(InlineQueryHandler(inline.make_handler(WATERMARK, STORAGE_CHAT)))
     app.add_error_handler(on_error)
 
     log.info("bot is up")
