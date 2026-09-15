@@ -207,8 +207,10 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
 
     # Ornaments hug the first and last lines, just outside the text itself.
     mark_h = max(18, int(quote_font.size * 0.62))
-    open_mark = _quote_mark(mark_h, turned=True)
-    close_mark = _quote_mark(mark_h, turned=False)
+    # The shapes mirror with the script, not just their positions: right-to-left
+    # text opens with the plain comma pair and closes with the turned one.
+    open_mark = _quote_mark(mark_h, turned=not rtl)
+    close_mark = _quote_mark(mark_h, turned=rtl)
     gap = max(6, mark_h // 4)
     cx = TEXT_X + TEXT_W // 2
     first_w = textkit.width_of(lines[0], quote_font)
