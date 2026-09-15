@@ -397,8 +397,10 @@ async def post_init(app: Application) -> None:
             i18n.SHORT_DESCRIPTIONS[lang].replace("@BOT", f"@{username}"), **kwargs
         )
 
-    await publish("en")                        # the default every other locale sees
-    await publish("fa", language_code="fa")
+    # Persian is the default here for the same reason it is in i18n: English goes
+    # only to clients that ask for it, everyone else gets Persian.
+    await publish("fa")
+    await publish("en", language_code="en")
 
 
 def main() -> None:
