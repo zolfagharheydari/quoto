@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from telegram import Update
 
-DEFAULT = "en"
+DEFAULT = "fa"
 SUPPORTED = ("fa", "en")
 
-# Telegram sends BCP-47-ish codes; these all mean "show this person Persian".
-_FA_PREFIXES = ("fa", "fa-ir", "per", "prs")
+# The bot's audience is Persian-speaking, so Persian is the default and English
+# is served only to clients that explicitly ask for it.
+_EN_PREFIX = "en"
 
 STRINGS: dict[str, dict[str, str]] = {
     "welcome": {
@@ -72,6 +73,9 @@ Full guide: /help""",
 <code>/qg</code> — an animation
 <code>/ss</code> — a screenshot
 
+Or reply in Persian instead of using a command:
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+
 The stickers collect into a pack named after this group — <code>/pack</code> for the link.
 
 ⚠️ If I stay silent, make me an <b>admin</b>. Until then Telegram will not let me see your messages, so replies never reach me.
@@ -93,6 +97,10 @@ Full guide: /help""",
 <code>/qs</code> — همان کارت، استیکر (در گروه به استیکرپک گروه هم اضافه می‌شود)
 <code>/qg</code> — همان کارت، گیف؛ متن جلوی چشم تایپ می‌شود
 <code>/ss</code> — اسکرین‌شات؛ پیام را همان‌طور که در تلگرام دیده می‌شود می‌سازد: حباب، عکس پروفایل، اسم و ساعت (در گروه به استیکرپک هم اضافه می‌شود)
+
+یا به‌جای دستور، در جواب پیام فارسی بنویس:
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+(در گروه فقط وقتی کار می‌کند که ادمین باشم)
 
 ➌ <b>بدون ریپلای هم می‌شود</b>
 <code>/q هر متنی که بخواهی</code>
@@ -130,6 +138,10 @@ That's it — the card comes back in the same chat.
 <code>/qs</code> — the same card, as a sticker (in a group it joins the group's pack)
 <code>/qg</code> — the same card, animated; the text types itself
 <code>/ss</code> — a screenshot: the message as it looks in Telegram, with bubble, avatar, name and time (in a group it joins the pack too)
+
+Or say it in Persian, as a reply, instead of using a command:
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+(in a group these only reach me once I am an admin)
 
 ➌ <b>No reply needed</b>
 <code>/q any text you like</code>
@@ -304,8 +316,7 @@ def normalize(code: str | None) -> str:
     """Map a Telegram language_code onto one of the languages we actually speak."""
     if not code:
         return DEFAULT
-    code = code.lower()
-    return "fa" if code.startswith(_FA_PREFIXES) else "en"
+    return "en" if code.lower().startswith(_EN_PREFIX) else "fa"
 
 
 def resolve(update: Update, user_data: dict | None) -> str:
