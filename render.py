@@ -136,7 +136,10 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
     name = textkit.normalize_name(name)
     quote = " ".join(quote.split()) if "\n" not in quote else quote.strip()
     rtl = textkit.is_rtl(quote)
-    body = quote
+    # Guillemets for Persian, curly quotes for Latin: both are inline in the
+    # text, so they wrap and reorder with it.
+    open_q, close_q = ("«", "»") if rtl else ("“", "”")
+    body = f"{open_q}{quote}{close_q}"
 
     # A Persian quote needs Vazirmatn; a Latin one looks closer to the reference in serif.
     weight = "medium" if rtl else "serif"
