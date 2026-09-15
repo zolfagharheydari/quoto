@@ -16,9 +16,16 @@ log = logging.getLogger(__name__)
 
 FPS = 16
 ANIM_W, ANIM_H = 800, 450          # both even; required by yuv420p
-TYPE_START, TYPE_END = 4, 34       # frame indices for the typewriter pass
-AUTHOR_END = 42
-TOTAL_FRAMES = 52                  # ~3.25s including the hold at the end
+
+# The typing pass is timed by how much there is to type, so a long quote does not
+# race past at the same speed a three-word one is comfortable at. Clamped at both
+# ends: short quotes should not crawl, long ones should not outstay the reader.
+TYPE_CPS = 15.0                    # characters revealed per second
+MIN_TYPE_SECONDS = 2.4
+MAX_TYPE_SECONDS = 9.0
+LEAD_IN_SECONDS = 0.4              # a beat on the empty card before typing starts
+AUTHOR_FADE_SECONDS = 0.6          # the name fading in once the quote is done
+HOLD_SECONDS = 1.4                 # everything on screen, before the loop restarts
 
 
 def _ffmpeg() -> str | None:
@@ -34,11 +41,24 @@ def _ffmpeg() -> str | None:
         return None
 
 
+def _timeline(scene: Scene) -> tuple[int, int, int, int]:
+    """Frame counts for (lead-in, typing, author fade, hold)."""
+    chars = sum(len(line) for line in scene.lines) or 1
+    seconds = min(MAX_TYPE_SECONDS, max(MIN_TYPE_SECONDS, chars / TYPE_CPS))
+    return (
+        max(1, round(LEAD_IN_SECONDS * FPS)),
+        max(1, round(seconds * FPS)),
+        max(1, round(AUTHOR_FADE_SECONDS * FPS)),
+        max(1, round(HOLD_SECONDS * FPS)),
+    )
+
+
 def _frames(scene: Scene) -> list[Image.Image]:
+    lead, typing, fade, hold = _timeline(scene)
     out = []
-    for i in range(TOTAL_FRAMES):
-        reveal = (i - TYPE_START) / (TYPE_END - TYPE_START)
-        author = (i - TYPE_END) / (AUTHOR_END - TYPE_END)
+    for i in range(lead + typing + fade + hold):
+        reveal = (i - lead) / typing
+        author = (i - lead - typing) / fade
         frame = scene.render(reveal=reveal, author_alpha=author)
         out.append(frame.resize((ANIM_W, ANIM_H), Image.LANCZOS))
     return out
