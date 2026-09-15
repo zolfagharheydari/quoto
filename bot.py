@@ -39,7 +39,6 @@ import extract
 import fonts
 import i18n
 import inline
-import media as media_tools
 import render
 import screenshot
 import stickerpack
@@ -163,8 +162,7 @@ async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"  author: {who}",
             f"  sender_chat: {target.sender_chat.title if target.sender_chat else None}",
             f"  text found: {'YES' if extract.quote_text(target) else 'NO'}",
-            f"  media found: {'YES' if extract.find_media(target) else 'NO'}",
-        ]
+            ]
     else:
         lines.append("  (اگر ریپلای کرده‌ای و اینجا NO است، ربات ریپلای را نمی‌بیند:")
         lines.append("   ربات را از گروه حذف و دوباره اضافه کن.)")
@@ -364,67 +362,6 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await _announce_pack(update, context, webp)
 
 
-async def _grab_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
-    target = message.reply_to_message
-    if target is None:
-        key = "need_reply_group" if message.chat.type in ("group", "supergroup") else "need_reply"
-        await message.reply_text(_t(key, update, context))
-        return None
-    found = extract.find_media(target)
-    if found is None:
-        await message.reply_text(_t("need_media", update, context))
-        return None
-    if found.size and found.size > extract.MAX_DOWNLOAD_BYTES:
-        await message.reply_text(_t("too_big", update, context))
-        return None
-    data = await extract.download(update.get_bot(), found)
-    return target, found, data
-
-
-async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    grabbed = await _grab_media(update, context)
-    if grabbed is None:
-        return
-    target, found, data = grabbed
-    message = update.effective_message
-    await message.chat.send_action(ChatAction.CHOOSE_STICKER)
-    try:
-        if found.is_video:
-            buf = await asyncio.to_thread(media_tools.video_to_sticker, data, found.suffix)
-        else:
-            buf = await asyncio.to_thread(media_tools.image_to_sticker, data)
-        await message.reply_sticker(buf, reply_to_message_id=target.message_id)
-    except media_tools.ConversionError as exc:
-        await message.reply_text(_t(str(exc), update, context))
-    except TelegramError:
-        raise
-    except Exception:  # noqa: BLE001
-        log.exception("sticker conversion failed")
-        await message.reply_text(_t("failed", update, context))
-
-
-async def cmd_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    grabbed = await _grab_media(update, context)
-    if grabbed is None:
-        return
-    target, found, data = grabbed
-    message = update.effective_message
-    await message.chat.send_action(ChatAction.UPLOAD_VIDEO)
-    try:
-        buf, ext = await asyncio.to_thread(media_tools.to_animation, data, found.suffix)
-        await message.reply_animation(
-            buf, filename=f"converted.{ext}", reply_to_message_id=target.message_id
-        )
-    except media_tools.ConversionError as exc:
-        await message.reply_text(_t(str(exc), update, context))
-    except TelegramError:
-        raise
-    except Exception:  # noqa: BLE001
-        log.exception("gif conversion failed")
-        await message.reply_text(_t("failed", update, context))
-
-
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     log.error("handler error", exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
@@ -492,12 +429,12 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler(["pack", "stickers"], cmd_pack))
-    app.add_handler(CommandHandler(["q", "quote", "qoute", "quto", "qute", "quot"], cmd_quote))
-    app.add_handler(CommandHandler(["qs", "quotesticker"], cmd_quote_sticker))
-    app.add_handler(CommandHandler(["qg", "quotegif"], cmd_quote_gif))
-    app.add_handler(CommandHandler(["ss", "shot", "screenshot"], cmd_screenshot))
-    app.add_handler(CommandHandler(["sticker", "s"], cmd_sticker))
-    app.add_handler(CommandHandler(["gif", "g"], cmd_gif))
+    # Long names are what the menu shows; the short ones stay as aliases.
+    app.add_handler(CommandHandler(
+        ["quote", "q", "qoute", "quto", "qute", "quot"], cmd_quote))
+    app.add_handler(CommandHandler(["sticker", "qs"], cmd_quote_sticker))
+    app.add_handler(CommandHandler(["gif", "qg"], cmd_quote_gif))
+    app.add_handler(CommandHandler(["screenshot", "ss", "shot"], cmd_screenshot))
     # Saying it in plain Persian instead of typing a command. These are ordinary
     # messages, so in a group they only reach the bot once it is an admin.
     # "اینو استیکرش کن لطفا!" should work as readily as "استیکرش کن".

@@ -39,7 +39,7 @@ MAX_INLINE_CHARS = 700
 # is dropped, and a query that is nothing but a command gets a hint instead of a
 # card reading "/quote".
 _VERBS = (
-    "q|quote|qs|qg|quotesticker|quotegif|sticker|gif|s|g"
+    "quote|sticker|gif|screenshot|q|qs|qg|ss|shot"
     # "quote" is easy to mistype, and the typo is still clearly meant as a command.
     "|qoute|quto|qute|quot|quoet|qoutes"
 )
