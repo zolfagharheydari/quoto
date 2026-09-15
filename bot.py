@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -37,6 +38,7 @@ import inline
 import media as media_tools
 import render
 import screenshot
+import stickerpack
 
 load_dotenv()
 
@@ -216,12 +218,40 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         scene = await _build_scene(update, target, text)
         image = await asyncio.to_thread(scene.render)
         buf = await asyncio.to_thread(render.to_sticker_webp, image)
-        await message.reply_sticker(buf, reply_to_message_id=target.message_id)
+        webp = buf.getvalue()
+        await message.reply_sticker(io.BytesIO(webp),
+                                    reply_to_message_id=target.message_id)
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
         log.exception("quote sticker failed")
         await message.reply_text(_t("failed", update, context))
+        return
+
+    # The sticker is already delivered; the pack is a bonus that may quietly fail.
+    result = await stickerpack.add_quote(context.bot, message.chat, webp, OWNER_ID)
+    if result and result[1]:
+        link, _ = result
+        await message.reply_text(
+            _t("pack_created", update, context).format(link=link),
+            disable_web_page_preview=True,
+        )
+
+
+async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Hand back the link to this group's pack."""
+    message = update.effective_message
+    if message.chat.type not in stickerpack.GROUP_TYPES:
+        await message.reply_text(_t("pack_groups_only", update, context))
+        return
+    link = await stickerpack.link_for(context.bot, message.chat)
+    if link is None:
+        await message.reply_text(_t("pack_none", update, context))
+        return
+    await message.reply_text(
+        _t("pack_link", update, context).format(link=link),
+        disable_web_page_preview=True,
+    )
 
 
 async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -261,11 +291,17 @@ async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
         member = await bot.get_chat_member(chat.id, author.avatar_key)
     except TelegramError:
         return None
-    if member.status == ChatMemberStatus.OWNER:
-        return i18n.t("badge_owner", lang)
-    if member.status == ChatMemberStatus.ADMINISTRATOR:
-        return getattr(member, "custom_title", None) or i18n.t("badge_admin", lang)
-    return None
+    if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
+        return None  # an ordinary member carries no tag at all
+    # Whatever this group actually calls them wins; the generic word is the
+    # fallback Telegram itself shows when nobody has set a title.
+    title = (getattr(member, "custom_title", None) or "").strip()
+    if title:
+        return title
+    return i18n.t(
+        "badge_owner" if member.status == ChatMemberStatus.OWNER else "badge_admin",
+        lang,
+    )
 
 
 def _screenshot_handler(style: str):
@@ -415,6 +451,7 @@ def main() -> None:
     app.add_handler(CommandHandler(["help", "guide"], cmd_help))
     app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
     app.add_handler(CommandHandler("debug", cmd_debug))
+    app.add_handler(CommandHandler(["pack", "stickers"], cmd_pack))
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler(["q", "quote", "qoute", "quto", "qute", "quot"], cmd_quote))
     app.add_handler(CommandHandler(["qs", "quotesticker"], cmd_quote_sticker))

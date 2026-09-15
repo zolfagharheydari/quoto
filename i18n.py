@@ -44,7 +44,7 @@ Full guide: /help""",
 
 ➋ <b>شکل‌های خروجی</b>
 <code>/q</code> — کارت نقل‌قول
-<code>/qs</code> — همان کارت، استیکر
+<code>/qs</code> — همان کارت، استیکر (در گروه به استیکرپک گروه هم اضافه می‌شود)
 <code>/qg</code> — همان کارت، گیف؛ متن جلوی چشم تایپ می‌شود
 <code>/ss</code> — اسکرین‌شات، تلگرامِ تیره
 <code>/ios</code> — اسکرین‌شات، تلگرامِ آیفون (تم روشن)
@@ -86,7 +86,7 @@ That's it — the card comes back in the same chat.
 
 ➋ <b>Output formats</b>
 <code>/q</code> — a quote card
-<code>/qs</code> — the same card, as a sticker
+<code>/qs</code> — the same card, as a sticker (in a group it joins the group's pack)
 <code>/qg</code> — the same card, animated; the text types itself
 <code>/ss</code> — a screenshot, Telegram dark
 <code>/ios</code> — a screenshot, Telegram on iOS (light)
@@ -183,6 +183,26 @@ Meanwhile you can type: /q any text you like""",
         "fa": "اول ربات را استارت کن، بعد دوباره امتحان کن",
         "en": "Start the bot first, then try again",
     },
+    "pack_created": {
+        "fa": """استیکرپک این گروه ساخته شد 🎉
+{link}""",
+        "en": """Made a sticker pack for this group 🎉
+{link}""",
+    },
+    "pack_link": {
+        "fa": """استیکرپک این گروه:
+{link}""",
+        "en": """This group's sticker pack:
+{link}""",
+    },
+    "pack_none": {
+        "fa": "هنوز استیکری برای این گروه ساخته نشده. روی یک پیام ریپلای کن و /qs بزن.",
+        "en": "No pack for this group yet. Reply to a message with /qs to start one.",
+    },
+    "pack_groups_only": {
+        "fa": "استیکرپک فقط برای گروه‌ها ساخته می‌شود.",
+        "en": "Sticker packs are made for groups only.",
+    },
     "badge_owner": {"fa": "مالک", "en": "owner"},
     "badge_admin": {"fa": "ادمین", "en": "admin"},
     "inline_photo": {
@@ -204,6 +224,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("ios", "اسکرین‌شات تلگرامِ آیفون"),
         ("sticker", "تبدیل عکس/ویدیوی ریپلای‌شده به استیکر"),
         ("gif", "تبدیل ویدیو/استیکر ریپلای‌شده به گیف"),
+        ("pack", "استیکرپک این گروه"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
@@ -215,6 +236,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("ios", "A screenshot, Telegram on iOS"),
         ("sticker", "Turn the replied-to photo/video into a sticker"),
         ("gif", "Turn the replied-to video/sticker into a GIF"),
+        ("pack", "This group's sticker pack"),
         ("lang", "Change language"),
         ("help", "Help"),
     ],
