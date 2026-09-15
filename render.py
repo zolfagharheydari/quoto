@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import io
 from dataclasses import dataclass, field
-from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageEnhance
 
@@ -22,7 +21,6 @@ QUOTE_COLOR = (244, 244, 244)
 NAME_COLOR = (255, 255, 255)
 HANDLE_COLOR = (150, 150, 150)
 MARK_COLOR = (105, 105, 105)
-MARK_QUOTE_COLOR = (150, 150, 150)   # the drawn quotation ornaments
 
 AVATAR_PALETTE = [
     (200, 90, 80), (90, 130, 200), (95, 175, 120),
@@ -44,10 +42,6 @@ class Scene:
     name_y: int
     watermark: str = ""
     watermark_font: object = None
-    open_mark: Image.Image | None = None
-    close_mark: Image.Image | None = None
-    open_pos: tuple[int, int] = (0, 0)
-    close_pos: tuple[int, int] = (0, 0)
     _shaped: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -57,15 +51,6 @@ class Scene:
         img = self.background.copy()
         draw = ImageDraw.Draw(img)
         cx = TEXT_X + TEXT_W // 2
-
-        # The opening ornament is there from the first frame; the closing one
-        # arrives when the sentence it closes is finished.
-        if self.open_mark is not None:
-            img.paste(Image.new("RGB", self.open_mark.size, MARK_QUOTE_COLOR),
-                      self.open_pos, self.open_mark)
-        if self.close_mark is not None and reveal >= 1.0:
-            img.paste(Image.new("RGB", self.close_mark.size, MARK_QUOTE_COLOR),
-                      self.close_pos, self.close_mark)
 
         total = sum(len(line) for line in self.lines) or 1
         budget = int(total * max(0.0, min(1.0, reveal)))
@@ -87,32 +72,6 @@ class Scene:
             draw.text((WIDTH - 24, HEIGHT - 22), self.watermark,
                       font=self.watermark_font, fill=MARK_COLOR, anchor="rs")
         return img
-
-
-@lru_cache(maxsize=32)
-def _quote_mark(height: int, turned: bool) -> Image.Image:
-    """A heavy pair of commas, drawn from a serif apostrophe.
-
-    The characters this imitates (U+275B/U+275C) exist in almost no font we can
-    rely on, so the ornament is composed here instead: two apostrophes side by
-    side, turned 180 degrees for the opening mark.
-    """
-    font = fonts.load("serif", height * 3)
-    glyph = "’"
-    x0, y0, x1, y1 = font.getbbox(glyph)
-    tile = Image.new("L", (x1 - x0 + 8, y1 - y0 + 8), 0)
-    ImageDraw.Draw(tile).text((-x0 + 4, -y0 + 4), glyph, font=font, fill=255)
-    tile = tile.crop(tile.getbbox())
-    scale = height / tile.height
-    tile = tile.resize((max(1, round(tile.width * scale)), height), Image.LANCZOS)
-
-    gap = max(1, round(tile.width * 0.18))
-    pair = Image.new("L", (tile.width * 2 + gap, tile.height), 0)
-    pair.paste(tile, (0, 0))
-    pair.paste(tile, (tile.width + gap, 0))
-    if turned:
-        pair = pair.rotate(180, expand=True)
-    return pair
 
 
 def _fade(color: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
@@ -190,10 +149,8 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
 
     # A long quote used to shrink to 22px, which is unreadable at a glance; 30 is
     # the floor now, and anything that still will not fit is trimmed instead.
-    # Leave a gutter either side for the ornaments, which sit outside the text.
-    text_width = int(TEXT_W * 0.82)
     lines, quote_font, line_height = textkit.fit(
-        body, loader, text_width, max_text_h, range(60, 29, -2), line_spacing=1.34
+        body, loader, TEXT_W, max_text_h, range(60, 29, -2), line_spacing=1.34
     )
     max_lines = max(1, max_text_h // line_height)
     if len(lines) > max_lines:
@@ -204,29 +161,6 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
     block_h = quote_h + 56 + author_block
     top = (HEIGHT - block_h) // 2
     name_y = top + quote_h + 56
-
-    # Ornaments hug the first and last lines, just outside the text itself.
-    mark_h = max(18, int(quote_font.size * 0.62))
-    # The shapes mirror with the script, not just their positions: right-to-left
-    # text opens with the plain comma pair and closes with the turned one.
-    open_mark = _quote_mark(mark_h, turned=not rtl)
-    close_mark = _quote_mark(mark_h, turned=rtl)
-    gap = max(6, mark_h // 4)
-    cx = TEXT_X + TEXT_W // 2
-    first_w = textkit.width_of(lines[0], quote_font)
-    last_w = textkit.width_of(lines[-1], quote_font)
-
-    def _clamp(x: int, width: int) -> int:
-        return max(TEXT_X, min(x, TEXT_X + TEXT_W - width))
-
-    if rtl:
-        open_x = _clamp(int(cx + first_w / 2 + gap), open_mark.width)
-        close_x = _clamp(int(cx - last_w / 2 - gap - close_mark.width), close_mark.width)
-    else:
-        open_x = _clamp(int(cx - first_w / 2 - gap - open_mark.width), open_mark.width)
-        close_x = _clamp(int(cx + last_w / 2 + gap), close_mark.width)
-    open_y = top + max(0, (line_height - mark_h) // 3)
-    close_y = top + (len(lines) - 1) * line_height + line_height - mark_h
 
     return Scene(
         background=build_background(avatar),
@@ -239,10 +173,6 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
         name_y=name_y,
         watermark=watermark,
         watermark_font=fonts.load("regular", 19),
-        open_mark=open_mark,
-        close_mark=close_mark,
-        open_pos=(open_x, open_y),
-        close_pos=(close_x, close_y),
     )
 
 
