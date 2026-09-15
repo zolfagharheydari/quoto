@@ -1,9 +1,7 @@
-"""Render a message as a chat screenshot: a bubble, an avatar, a name, a time.
+"""Render a message as a chat screenshot, the way Telegram on iOS draws it.
 
-Two Telegram skins — the dark desktop/Android theme and the light iOS one. The
-layout is the same in both, because Telegram's is: the sender's name sits inside
-the bubble above the text, coloured per user, and the timestamp sits at the end.
-Only the palette, the metrics and the iOS bubble shadow differ.
+The sender's name sits inside the bubble above the text, coloured per user the
+way the app colours it, with the timestamp at the end of the message.
 
 Everything is drawn at SCALE and kept at that size; these are small images and the
 extra resolution is what makes them read as a screenshot rather than as artwork.
@@ -21,45 +19,23 @@ import textkit
 SCALE = 3
 
 # Telegram picks a sender's name colour from a fixed palette, by account id.
-# The light theme uses darker variants so they hold up against a white bubble.
-NAME_COLORS_DARK = [
-    (225, 112, 118), (123, 200, 98), (229, 202, 119), (101, 170, 221),
-    (166, 149, 231), (238, 122, 174), (110, 201, 203),
-]
-NAME_COLORS_LIGHT = [
+# These are the darker variants, which hold up against a white bubble.
+NAME_COLORS = [
     (204, 82, 82), (56, 148, 78), (168, 128, 44), (51, 129, 191),
     (122, 91, 189), (199, 71, 130), (44, 148, 150),
 ]
 
-THEMES = {
-    # Telegram dark, as on desktop and Android
-    "telegram": {
-        "bg": (23, 33, 43),
-        "bubble": (24, 37, 51),
-        "text": (233, 237, 240),
-        "time": (109, 127, 143),
-        "names": NAME_COLORS_DARK,
-        "radius": 16,
-        "avatar": 42,
-        "name_size": 15,
-        "text_size": 17,
-        "time_size": 12,
-        "shadow": False,
-    },
-    # Telegram on iOS: white bubble, soft shadow, pale blue wallpaper
-    "ios": {
-        "bg": (220, 231, 240),
-        "bubble": (255, 255, 255),
-        "text": (0, 0, 0),
-        "time": (161, 170, 179),
-        "names": NAME_COLORS_LIGHT,
-        "radius": 18,
-        "avatar": 36,
-        "name_size": 15,
-        "text_size": 17,
-        "time_size": 12,
-        "shadow": True,
-    },
+# Telegram on iOS: white bubble with a soft shadow, over the pale blue wallpaper.
+THEME = {
+    "bg": (220, 231, 240),
+    "bubble": (255, 255, 255),
+    "text": (0, 0, 0),
+    "time": (161, 170, 179),
+    "radius": 18,
+    "avatar": 36,
+    "name_size": 15,
+    "text_size": 17,
+    "time_size": 12,
 }
 
 PAD = 18
@@ -73,9 +49,9 @@ def _px(value: float) -> int:
     return int(value * SCALE)
 
 
-def name_color(seed: str, palette: list[tuple[int, int, int]]) -> tuple[int, int, int]:
+def name_color(seed: str) -> tuple[int, int, int]:
     digest = hashlib.md5(seed.encode()).digest()
-    return palette[digest[0] % len(palette)]
+    return NAME_COLORS[digest[0] % len(NAME_COLORS)]
 
 
 def _circle(avatar: Image.Image, size: int) -> Image.Image:
@@ -111,9 +87,8 @@ def _bubble_shape(draw: ImageDraw.ImageDraw, box, radius: int, tail: int, fill) 
 
 
 def render(avatar: Image.Image, name: str, text: str, time_str: str,
-           badge: str | None = None, seed: str = "",
-           style: str = "telegram") -> Image.Image:
-    theme = THEMES.get(style, THEMES["telegram"])
+           badge: str | None = None, seed: str = "") -> Image.Image:
+    theme = THEME
     rtl = textkit.is_rtl(text)
 
     name_font = fonts.load("bold", _px(theme["name_size"]))
@@ -125,7 +100,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     lines = _layout(text, text_font, max_content)
     shaped = [textkit.shape(line) for line in lines]
 
-    accent = name_color(seed or name, theme["names"])
+    accent = name_color(seed or name)
     name_shaped = textkit.shape(name)
     name_w = name_font.getlength(name_shaped)
     badge_pad = _px(6)
@@ -164,13 +139,12 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     bubble_bottom = bubble_y + bubble_h
     box = [bubble_x, bubble_y, bubble_x + bubble_w, bubble_bottom]
 
-    if theme["shadow"]:
-        # iOS lifts the bubble off the wallpaper with a soft, barely-there shadow.
-        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        offset = [box[0], box[1] + _px(1), box[2], box[3] + _px(1)]
-        _bubble_shape(ImageDraw.Draw(layer), offset, radius, tail, (0, 0, 0, 40))
-        layer = layer.filter(ImageFilter.GaussianBlur(_px(1.6)))
-        img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
+    # iOS lifts the bubble off the wallpaper with a soft, barely-there shadow.
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    offset = [box[0], box[1] + _px(1), box[2], box[3] + _px(1)]
+    _bubble_shape(ImageDraw.Draw(layer), offset, radius, tail, (0, 0, 0, 40))
+    layer = layer.filter(ImageFilter.GaussianBlur(_px(1.6)))
+    img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
 
     draw = ImageDraw.Draw(img)
     _bubble_shape(draw, box, radius, tail, theme["bubble"])

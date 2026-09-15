@@ -8,19 +8,12 @@ import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
-from telegram import (
-    BotCommand,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-    Update,
-)
+from telegram import BotCommand, Message, Update
 from telegram.constants import ChatAction, ChatMemberStatus
 from telegram.error import InvalidToken, NetworkError, TelegramError
 from telegram.ext import (
     AIORateLimiter,
     Application,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     InlineQueryHandler,
@@ -78,38 +71,7 @@ async def _send(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str) ->
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _send(update, context, "welcome")
-
-
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _send(update, context, "help")
-
-
-async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = i18n.resolve(update, context.user_data)
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(i18n.t("btn_fa", lang), callback_data="lang:fa"),
-            InlineKeyboardButton(i18n.t("btn_en", lang), callback_data="lang:en"),
-        ],
-        [InlineKeyboardButton(i18n.t("btn_auto", lang), callback_data="lang:auto")],
-    ])
-    await update.effective_message.reply_text(
-        i18n.t("lang_prompt", lang), reply_markup=keyboard
-    )
-
-
-async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    choice = query.data.split(":", 1)[1]
-    if choice == "auto":
-        context.user_data.pop("lang", None)
-        message = i18n.t("lang_auto", i18n.resolve(update, context.user_data))
-    else:
-        context.user_data["lang"] = choice
-        message = i18n.t("lang_set", choice)
-    await query.answer()
-    await query.edit_message_text(message)
 
 
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -207,6 +169,18 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text(_t("failed", update, context))
 
 
+async def _announce_pack(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                          webp: bytes) -> None:
+    """Add a rendered sticker to the group's pack; say so only when it is new."""
+    message = update.effective_message
+    result = await stickerpack.add_quote(context.bot, message.chat, webp, OWNER_ID)
+    if result and result[1]:
+        await message.reply_text(
+            _t("pack_created", update, context).format(link=result[0]),
+            disable_web_page_preview=True,
+        )
+
+
 async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     prepared = await _prepare(update, context)
     if prepared is None:
@@ -229,13 +203,7 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     # The sticker is already delivered; the pack is a bonus that may quietly fail.
-    result = await stickerpack.add_quote(context.bot, message.chat, webp, OWNER_ID)
-    if result and result[1]:
-        link, _ = result
-        await message.reply_text(
-            _t("pack_created", update, context).format(link=link),
-            disable_web_page_preview=True,
-        )
+    await _announce_pack(update, context, webp)
 
 
 async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -304,32 +272,33 @@ async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
     )
 
 
-def _screenshot_handler(style: str):
-    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        prepared = await _prepare(update, context)
-        if prepared is None:
-            return
-        target, text = prepared
-        message = update.effective_message
-        await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
-        try:
-            author = authors.resolve(target)
-            avatar = await authors.fetch_avatar(context.bot, author)
-            badge = await _badge(context.bot, message.chat, author,
-                                 i18n.resolve(update, context.user_data))
-            image = await asyncio.to_thread(
-                screenshot.render, avatar, author.name, text,
-                _clock(target.date), badge, author.seed, style,
-            )
-            buf = await asyncio.to_thread(screenshot.to_png, image)
-            await message.reply_photo(buf, reply_to_message_id=target.message_id)
-        except TelegramError:
-            raise
-        except Exception:  # noqa: BLE001
-            log.exception("screenshot render failed")
-            await message.reply_text(_t("failed", update, context))
+async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    prepared = await _prepare(update, context)
+    if prepared is None:
+        return
+    target, text = prepared
+    message = update.effective_message
+    await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+    try:
+        author = authors.resolve(target)
+        avatar = await authors.fetch_avatar(context.bot, author)
+        badge = await _badge(context.bot, message.chat, author,
+                             i18n.resolve(update, context.user_data))
+        image = await asyncio.to_thread(
+            screenshot.render, avatar, author.name, text,
+            _clock(target.date), badge, author.seed,
+        )
+        buf = await asyncio.to_thread(screenshot.to_png, image)
+        await message.reply_photo(buf, reply_to_message_id=target.message_id)
+        webp = (await asyncio.to_thread(render.to_sticker_webp, image)).getvalue()
+    except TelegramError:
+        raise
+    except Exception:  # noqa: BLE001
+        log.exception("screenshot render failed")
+        await message.reply_text(_t("failed", update, context))
+        return
 
-    return handler
+    await _announce_pack(update, context, webp)
 
 
 async def _grab_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -448,16 +417,12 @@ def main() -> None:
     app = builder.build()
 
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler(["help", "guide"], cmd_help))
-    app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler(["pack", "stickers"], cmd_pack))
-    app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler(["q", "quote", "qoute", "quto", "qute", "quot"], cmd_quote))
     app.add_handler(CommandHandler(["qs", "quotesticker"], cmd_quote_sticker))
     app.add_handler(CommandHandler(["qg", "quotegif"], cmd_quote_gif))
-    app.add_handler(CommandHandler(["ss", "shot"], _screenshot_handler("telegram")))
-    app.add_handler(CommandHandler(["ios", "ssi"], _screenshot_handler("ios")))
+    app.add_handler(CommandHandler(["ss", "shot", "screenshot"], cmd_screenshot))
     app.add_handler(CommandHandler(["sticker", "s"], cmd_sticker))
     app.add_handler(CommandHandler(["gif", "g"], cmd_gif))
     # Bare-word trigger; only reachable in groups when privacy mode is off.

@@ -10,28 +10,6 @@ SUPPORTED = ("fa", "en")
 _FA_PREFIXES = ("fa", "fa-ir", "per", "prs")
 
 STRINGS: dict[str, dict[str, str]] = {
-    "welcome": {
-        "fa": """سلام! 👋
-من از پیام‌ها عکسِ نقل‌قول می‌سازم — یک کارت سیاه‌وسفید با متن پیام، اسم گوینده و عکس پروفایلش.
-
-<b>سریع‌ترین راه امتحان کردن:</b>
-همین حالا بنویس <code>/q سلام دنیا</code>
-
-<b>کار اصلی‌ام:</b>
-روی هر پیامی ریپلای کن و <code>/q</code> بفرست.
-
-راهنمای کامل: /help""",
-        "en": """Hi! 👋
-I turn messages into quote cards — black and white, carrying the text, the sender's name and their profile photo.
-
-<b>Quickest way to try me:</b>
-Send <code>/q hello world</code> right now
-
-<b>What I'm really for:</b>
-Reply to any message and send <code>/q</code>.
-
-Full guide: /help""",
-    },
     "help": {
         "fa": """📖 <b>راهنمای Quoto</b>
 
@@ -46,9 +24,7 @@ Full guide: /help""",
 <code>/q</code> — کارت نقل‌قول
 <code>/qs</code> — همان کارت، استیکر (در گروه به استیکرپک گروه هم اضافه می‌شود)
 <code>/qg</code> — همان کارت، گیف؛ متن جلوی چشم تایپ می‌شود
-<code>/ss</code> — اسکرین‌شات، تلگرامِ تیره
-<code>/ios</code> — اسکرین‌شات، تلگرامِ آیفون (تم روشن)
-دو تای آخر پیام را همان‌طور که در چت دیده می‌شود می‌سازند: حباب، عکس پروفایل، اسم و ساعت.
+<code>/ss</code> — اسکرین‌شات؛ پیام را همان‌طور که در تلگرام دیده می‌شود می‌سازد: حباب، عکس پروفایل، اسم و ساعت (در گروه به استیکرپک هم اضافه می‌شود)
 
 ➌ <b>بدون ریپلای هم می‌شود</b>
 <code>/q هر متنی که بخواهی</code>
@@ -70,9 +46,6 @@ Full guide: /help""",
 ➐ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/q</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
 
-➑ <b>زبان</b>
-<code>/lang</code> — فارسی، انگلیسی یا خودکار
-
 <b>اگر عکس پروفایل روی کارت نیامد</b>
 یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
         "en": """📖 <b>Quoto help</b>
@@ -88,9 +61,7 @@ That's it — the card comes back in the same chat.
 <code>/q</code> — a quote card
 <code>/qs</code> — the same card, as a sticker (in a group it joins the group's pack)
 <code>/qg</code> — the same card, animated; the text types itself
-<code>/ss</code> — a screenshot, Telegram dark
-<code>/ios</code> — a screenshot, Telegram on iOS (light)
-The last two draw the message as it looks in the chat: bubble, avatar, name, time.
+<code>/ss</code> — a screenshot: the message as it looks in Telegram, with bubble, avatar, name and time (in a group it joins the pack too)
 
 ➌ <b>No reply needed</b>
 <code>/q any text you like</code>
@@ -111,9 +82,6 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 
 ➐ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/q</code>. I read the original sender's name and photo from the forward.
-
-➑ <b>Language</b>
-<code>/lang</code> — Persian, English, or automatic
 
 <b>If the profile photo is missing from the card</b>
 Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
@@ -160,21 +128,6 @@ Meanwhile you can type: /q any text you like""",
         "fa": "تبدیل با خطا مواجه شد.",
         "en": "The conversion failed.",
     },
-    "lang_prompt": {
-        "fa": "زبان ربات را انتخاب کن:",
-        "en": "Choose the bot's language:",
-    },
-    "lang_set": {
-        "fa": "زبان روی فارسی تنظیم شد. ✅",
-        "en": "Language set to English. ✅",
-    },
-    "lang_auto": {
-        "fa": "زبان خودکار شد؛ از روی تنظیمات تلگرام تو انتخاب می‌شود.",
-        "en": "Language set to automatic; I'll follow your Telegram settings.",
-    },
-    "btn_fa": {"fa": "فارسی", "en": "فارسی"},
-    "btn_en": {"fa": "English", "en": "English"},
-    "btn_auto": {"fa": "خودکار 🌐", "en": "Automatic 🌐"},
     "inline_empty": {
         "fa": "متن را بنویس تا برایت کوت بسازم",
         "en": "Type some text and I'll turn it into a quote",
@@ -220,25 +173,19 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("quote", "ساخت عکس نقل‌قول از پیام ریپلای‌شده"),
         ("qs", "نقل‌قول به شکل استیکر"),
         ("qg", "نقل‌قول به شکل گیف"),
-        ("ss", "اسکرین‌شات به سبک تلگرام"),
-        ("ios", "اسکرین‌شات تلگرامِ آیفون"),
+        ("ss", "اسکرین‌شات از پیام"),
         ("sticker", "تبدیل عکس/ویدیوی ریپلای‌شده به استیکر"),
         ("gif", "تبدیل ویدیو/استیکر ریپلای‌شده به گیف"),
         ("pack", "استیکرپک این گروه"),
-        ("lang", "تغییر زبان"),
-        ("help", "راهنما"),
     ],
     "en": [
         ("quote", "Make a quote card from the replied-to message"),
         ("qs", "The quote as a sticker"),
         ("qg", "The quote as an animation"),
-        ("ss", "A screenshot, Telegram style"),
-        ("ios", "A screenshot, Telegram on iOS"),
+        ("ss", "A screenshot of the message"),
         ("sticker", "Turn the replied-to photo/video into a sticker"),
         ("gif", "Turn the replied-to video/sticker into a GIF"),
         ("pack", "This group's sticker pack"),
-        ("lang", "Change language"),
-        ("help", "Help"),
     ],
 }
 
