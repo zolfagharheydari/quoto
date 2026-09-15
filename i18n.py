@@ -49,36 +49,56 @@ Full guide: /help""",
     "btn_en": {"fa": "English", "en": "English"},
     "btn_auto": {"fa": "خودکار 🌐", "en": "Automatic 🌐"},
     "group_intro": {
-        "fa": """سلام! 👋 من <b>Quoto</b> هستم.
+        "fa": """سلام! 👋 من <b>Quoto</b> هستم و از پیام‌های این گروه عکسِ نقل‌قول می‌سازم.
 
-روی هر پیامی <b>ریپلای</b> کنید و یکی از این‌ها را بفرستید:
-<code>/q</code> — کارت نقل‌قول
-<code>/qs</code> — استیکر
-<code>/qg</code> — گیف
-<code>/ss</code> — اسکرین‌شات
+<b>چطور کار می‌کنم؟</b>
+روی پیامی که می‌خواهید <b>ریپلای</b> کنید، بعد یکی از این‌ها را بفرستید:
 
-یا به‌جای دستور، فارسی بگویید:
+<code>/q</code> — کارت نقل‌قول، به شکل عکس
+<code>/qs</code> — همان کارت، به شکل استیکر
+<code>/qg</code> — همان کارت، به شکل گیف با افکت تایپ
+<code>/ss</code> — اسکرین‌شات، همان‌طور که در تلگرام دیده می‌شود
+
+<b>فارسی هم می‌فهمم</b>
+به‌جای دستور، در جواب همان پیام کافی است بنویسید:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
 
-استیکرهایی که ساخته می‌شوند در یک استیکرپک به نام همین گروه جمع می‌شوند — لینکش با <code>/pack</code>.
+<b>تبدیل خودِ فایل</b>
+<code>/sticker</code> — عکس یا ویدیوی ریپلای‌شده را استیکر می‌کند
+<code>/gif</code> — ویدیو یا استیکر متحرک را گیف می‌کند
 
-⚠️ اگر جواب ندادم، مرا <b>ادمین</b> کنید. تا آن موقع تلگرام اجازه نمی‌دهد پیام‌ها را ببینم و نه ریپلای‌ها کار می‌کنند نه دستورهای فارسی.
+<b>استیکرپک گروه</b>
+هر استیکری که اینجا ساخته شود، در یک پک به نام همین گروه جمع می‌شود.
+<code>/pack</code> — لینک پک را می‌دهد
+
+⚠️ <b>لطفاً مرا ادمین کنید</b>
+تا ادمین نشوم، تلگرام ریپلای‌ها را به من نمی‌دهد و هیچ‌کدام از دستورهای بالا روی پیام‌ها کار نمی‌کند.
 
 راهنمای کامل: /help""",
-        "en": """Hi! 👋 I'm <b>Quoto</b>.
+        "en": """Hi! 👋 I'm <b>Quoto</b>, and I turn this group's messages into quote cards.
 
-<b>Reply</b> to any message and send one of these:
-<code>/q</code> — a quote card
-<code>/qs</code> — a sticker
-<code>/qg</code> — an animation
-<code>/ss</code> — a screenshot
+<b>How it works</b>
+<b>Reply</b> to the message you want, then send one of these:
 
-Or reply in Persian instead of using a command:
+<code>/q</code> — a quote card, as an image
+<code>/qs</code> — the same card, as a sticker
+<code>/qg</code> — the same card, animated
+<code>/ss</code> — a screenshot, the way Telegram draws it
+
+<b>Persian phrases work too</b>
+As a reply, instead of a command:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
 
-The stickers collect into a pack named after this group — <code>/pack</code> for the link.
+<b>Converting a file</b>
+<code>/sticker</code> — the replied-to photo or video, as a sticker
+<code>/gif</code> — a video or animated sticker, as a GIF
 
-⚠️ If I stay silent, make me an <b>admin</b>. Until then Telegram will not let me see your messages, so replies never reach me.
+<b>This group's sticker pack</b>
+Every sticker made here joins a pack named after the group.
+<code>/pack</code> — the link
+
+⚠️ <b>Please make me an admin</b>
+Until then Telegram will not pass replies to me, and none of the above will work on your messages.
 
 Full guide: /help""",
     },

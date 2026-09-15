@@ -128,8 +128,9 @@ async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
     if not joined:
         return
-    lang = i18n.normalize(member.from_user.language_code if member.from_user else None)
-    text = i18n.t("group_intro", lang).replace("@BOT", f"@{context.bot.username}")
+    # Groups are greeted in Persian regardless of who added the bot: the intro is
+    # read by everyone in the chat, not just by that one person.
+    text = i18n.t("group_intro", "fa").replace("@BOT", f"@{context.bot.username}")
     try:
         await context.bot.send_message(member.chat.id, text, parse_mode="HTML")
     except TelegramError as exc:
