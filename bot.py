@@ -19,7 +19,13 @@ from telegram import (
     Update,
 )
 from telegram.constants import ChatAction, ChatMemberStatus
-from telegram.error import InvalidToken, NetworkError, TelegramError
+from telegram.error import (
+    BadRequest,
+    Forbidden,
+    InvalidToken,
+    NetworkError,
+    TelegramError,
+)
 from telegram.ext import (
     AIORateLimiter,
     Application,
@@ -81,7 +87,41 @@ async def _send(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str) ->
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data["started"] = True
     await _send(update, context, "welcome")
+
+
+async def _has_started(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Whether this user has ever opened a chat with the bot.
+
+    Telegram exposes no flag for it, but it does refuse to let a bot contact
+    someone who never started it — so a chat action that costs the user nothing
+    answers the question. The result is remembered, so it is asked once.
+    """
+    if context.user_data.get("started"):
+        return True
+    user = update.effective_user
+    if user is None:
+        return False
+    try:
+        await context.bot.send_chat_action(user.id, ChatAction.TYPING)
+    except (Forbidden, BadRequest):
+        return False
+    context.user_data["started"] = True
+    return True
+
+
+async def _require_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if await _has_started(update, context):
+        return True
+    lang = i18n.resolve(update, context.user_data)
+    button = InlineKeyboardButton(
+        i18n.t("btn_start", lang), url=f"https://t.me/{context.bot.username}?start=use"
+    )
+    await update.effective_message.reply_text(
+        i18n.t("need_start", lang), reply_markup=InlineKeyboardMarkup([[button]])
+    )
+    return False
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -188,6 +228,8 @@ async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Returns (source message, text). The source is what we attribute the quote to
     and what we reply under, so "/q some words" quotes the sender themselves.
     """
+    if not await _require_start(update, context):
+        return None
     message = update.effective_message
     target = message.reply_to_message
     log.info(

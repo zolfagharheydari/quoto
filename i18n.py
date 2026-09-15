@@ -67,6 +67,9 @@ Full guide: /help""",
 هر استیکری که اینجا ساخته شود، در یک پک به نام همین گروه جمع می‌شود.
 <code>/pack</code> — لینک پک را می‌دهد
 
+<b>یک نکته</b>
+هر کسی که می‌خواهد از من استفاده کند، باید یک بار در چت خصوصی مرا استارت کرده باشد. اگر نکرده باشد، خودم دکمه‌اش را نشانش می‌دهم.
+
 ⚠️ <b>لطفاً مرا ادمین کنید</b>
 تا ادمین نشوم، تلگرام ریپلای‌ها را به من نمی‌دهد و هیچ‌کدام از دستورهای بالا روی پیام‌ها کار نمی‌کند.
 
@@ -88,6 +91,9 @@ As a reply, instead of a command:
 <b>This group's sticker pack</b>
 Every sticker made here joins a pack named after the group.
 <code>/pack</code> — the link
+
+<b>One note</b>
+Anyone who wants to use me has to have started me once in a private chat. If they haven't, I'll show them the button.
 
 ⚠️ <b>Please make me an admin</b>
 Until then Telegram will not pass replies to me, and none of the above will work on your messages.
@@ -202,6 +208,15 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 <b>If the profile photo is missing from the card</b>
 Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
     },
+    "need_start": {
+        "fa": """برای استفاده از من، اول باید یک بار مرا استارت کنی.
+
+روی دکمه‌ی زیر بزن، در چت خصوصی Start را بزن، بعد همین‌جا دوباره امتحان کن.""",
+        "en": """You need to start me once before you can use me.
+
+Tap the button below, press Start in the private chat, then try again here.""",
+    },
+    "btn_start": {"fa": "شروع ربات", "en": "Start the bot"},
     "need_reply": {
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
         "en": "Reply to the message you want me to turn into a card, then send the command again.",
