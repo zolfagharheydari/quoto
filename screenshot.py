@@ -1,8 +1,9 @@
 """Render a message as a chat screenshot: a bubble, an avatar, a name, a time.
 
-Two skins, Telegram dark and iOS light. Both lay the message out the way the real
-client does — incoming bubble on the left, name above the text, time below it —
-and both mirror the text when it is right-to-left, the way Telegram does.
+Two Telegram skins — the dark desktop/Android theme and the light iOS one. The
+layout is the same in both, because Telegram's is: the sender's name sits inside
+the bubble above the text, coloured per user, and the timestamp sits at the end.
+Only the palette, the metrics and the iOS bubble shadow differ.
 
 Everything is drawn at SCALE and kept at that size; these are small images and the
 extra resolution is what makes them read as a screenshot rather than as artwork.
@@ -12,42 +13,53 @@ from __future__ import annotations
 import hashlib
 import io
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 import fonts
 import textkit
 
 SCALE = 3
 
-# Telegram's own palette for sender names, picked per user id the way the app does.
-NAME_COLORS = [
+# Telegram picks a sender's name colour from a fixed palette, by account id.
+# The light theme uses darker variants so they hold up against a white bubble.
+NAME_COLORS_DARK = [
     (225, 112, 118), (123, 200, 98), (229, 202, 119), (101, 170, 221),
     (166, 149, 231), (238, 122, 174), (110, 201, 203),
 ]
+NAME_COLORS_LIGHT = [
+    (204, 82, 82), (56, 148, 78), (168, 128, 44), (51, 129, 191),
+    (122, 91, 189), (199, 71, 130), (44, 148, 150),
+]
 
-TELEGRAM = {
-    "bg": (23, 33, 43),
-    "bubble": (24, 37, 51),
-    "text": (233, 237, 240),
-    "time": (109, 127, 143),
-    "radius": 16,
-    "avatar": 42,
-    "name_size": 15,
-    "text_size": 17,
-    "time_size": 12,
-}
-
-IOS = {
-    "bg": (255, 255, 255),
-    "bubble": (233, 233, 235),
-    "text": (0, 0, 0),
-    "time": (142, 142, 147),
-    "name": (142, 142, 147),
-    "radius": 19,
-    "avatar": 30,
-    "name_size": 12,
-    "text_size": 17,
-    "time_size": 12,
+THEMES = {
+    # Telegram dark, as on desktop and Android
+    "telegram": {
+        "bg": (23, 33, 43),
+        "bubble": (24, 37, 51),
+        "text": (233, 237, 240),
+        "time": (109, 127, 143),
+        "names": NAME_COLORS_DARK,
+        "radius": 16,
+        "avatar": 42,
+        "name_size": 15,
+        "text_size": 17,
+        "time_size": 12,
+        "shadow": False,
+    },
+    # Telegram on iOS: white bubble, soft shadow, pale blue wallpaper
+    "ios": {
+        "bg": (220, 231, 240),
+        "bubble": (255, 255, 255),
+        "text": (0, 0, 0),
+        "time": (161, 170, 179),
+        "names": NAME_COLORS_LIGHT,
+        "radius": 18,
+        "avatar": 36,
+        "name_size": 15,
+        "text_size": 17,
+        "time_size": 12,
+        "shadow": True,
+    },
 }
 
 PAD = 18
@@ -57,13 +69,13 @@ MAX_BUBBLE_W = 430
 MAX_LINES = 30
 
 
-def _px(value: int) -> int:
+def _px(value: float) -> int:
     return int(value * SCALE)
 
 
-def name_color(seed: str) -> tuple[int, int, int]:
+def name_color(seed: str, palette: list[tuple[int, int, int]]) -> tuple[int, int, int]:
     digest = hashlib.md5(seed.encode()).digest()
-    return NAME_COLORS[digest[0] % len(NAME_COLORS)]
+    return palette[digest[0] % len(palette)]
 
 
 def _circle(avatar: Image.Image, size: int) -> Image.Image:
@@ -90,45 +102,41 @@ def _layout(text: str, font, max_width: int) -> list[str]:
     return lines
 
 
-def _tail(draw: ImageDraw.ImageDraw, x: int, bottom: int, size: int,
-          colour: tuple[int, int, int]) -> None:
-    """The little spur on the bottom-left of an incoming bubble."""
-    draw.polygon(
-        [(x, bottom - size), (x, bottom), (x - int(size * 0.62), bottom)],
-        fill=colour,
-    )
+def _bubble_shape(draw: ImageDraw.ImageDraw, box, radius: int, tail: int, fill) -> None:
+    """A rounded bubble with the little spur on its bottom-left corner."""
+    x0, y0, x1, y1 = box
+    draw.rounded_rectangle(box, radius=radius, fill=fill,
+                           corners=(True, True, True, False))
+    draw.polygon([(x0, y1 - tail), (x0, y1), (x0 - int(tail * 0.62), y1)], fill=fill)
 
 
 def render(avatar: Image.Image, name: str, text: str, time_str: str,
-           badge: str | None = None, seed: str = "", style: str = "telegram") -> Image.Image:
-    theme = IOS if style == "ios" else TELEGRAM
-    ios = style == "ios"
+           badge: str | None = None, seed: str = "",
+           style: str = "telegram") -> Image.Image:
+    theme = THEMES.get(style, THEMES["telegram"])
     rtl = textkit.is_rtl(text)
 
-    name_font = fonts.load("medium" if ios else "bold", _px(theme["name_size"]))
+    name_font = fonts.load("bold", _px(theme["name_size"]))
     text_font = fonts.load("regular", _px(theme["text_size"]))
-    time_font = fonts.load("medium", _px(theme["time_size"]))
+    time_font = fonts.load("regular", _px(theme["time_size"]))
     badge_font = fonts.load("medium", _px(11))
 
     max_content = _px(MAX_BUBBLE_W - 2 * BUBBLE_PAD_X)
     lines = _layout(text, text_font, max_content)
     shaped = [textkit.shape(line) for line in lines]
 
-    accent = name_color(seed or name)
+    accent = name_color(seed or name, theme["names"])
     name_shaped = textkit.shape(name)
     name_w = name_font.getlength(name_shaped)
-    badge_w = 0
     badge_pad = _px(6)
-    if badge:
-        badge_w = badge_font.getlength(badge) + badge_pad * 2 + _px(6)
+    # The badge is text too: a Persian "مالک" needs shaping like everything else.
+    badge_shaped = textkit.shape(badge) if badge else ""
+    badge_text_w = badge_font.getlength(badge_shaped) if badge else 0
+    badge_w = badge_text_w + badge_pad * 2 + _px(6) if badge else 0
 
     time_w = time_font.getlength(time_str)
     text_w = max([text_font.getlength(s) for s in shaped] or [0])
-
-    # iOS puts the sender name above the bubble, so it doesn't widen it.
-    header_w = 0 if ios else name_w + badge_w
-    content_w = int(max(header_w, text_w, time_w))
-    content_w = min(content_w, max_content)
+    content_w = int(min(max(name_w + badge_w, text_w, time_w), max_content))
 
     line_h = _px(theme["text_size"] + 6)
     name_h = _px(theme["name_size"] + 5)
@@ -136,77 +144,67 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     pad_x = _px(BUBBLE_PAD_X)
     pad_top = _px(9)
     pad_bottom = _px(8)
+    radius = _px(theme["radius"])
+    tail = _px(13)
 
     bubble_w = content_w + pad_x * 2
-    # iOS carries the time above the conversation, not inside the bubble.
-    bubble_h = (pad_top + (0 if ios else name_h) + len(lines) * line_h
-                + (0 if ios else time_h) + pad_bottom)
+    bubble_h = pad_top + name_h + len(lines) * line_h + time_h + pad_bottom
 
     avatar_size = _px(theme["avatar"])
     pad = _px(PAD)
     gap = _px(GAP)
-    name_above_h = _px(theme["name_size"] + 6) if ios else 0
-    time_header_h = _px(theme["time_size"] + 14) if ios else 0
 
     width = pad + avatar_size + gap + bubble_w + pad
-    height = pad + time_header_h + name_above_h + bubble_h + pad
+    height = pad + bubble_h + pad
 
     img = Image.new("RGB", (width, height), theme["bg"])
-    draw = ImageDraw.Draw(img)
-
-    if ios:
-        # iMessage shows the time as a centred separator above the conversation.
-        draw.text((width // 2, pad), time_str, font=time_font,
-                  fill=theme["time"], anchor="ma")
 
     bubble_x = pad + avatar_size + gap
-    bubble_y = pad + time_header_h + name_above_h
+    bubble_y = pad
     bubble_bottom = bubble_y + bubble_h
+    box = [bubble_x, bubble_y, bubble_x + bubble_w, bubble_bottom]
 
-    if ios:
-        draw.text((bubble_x + pad_x, pad + time_header_h), textkit.shape(name),
-                  font=name_font, fill=theme["name"], anchor="la")
+    if theme["shadow"]:
+        # iOS lifts the bubble off the wallpaper with a soft, barely-there shadow.
+        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        offset = [box[0], box[1] + _px(1), box[2], box[3] + _px(1)]
+        _bubble_shape(ImageDraw.Draw(layer), offset, radius, tail, (0, 0, 0, 40))
+        layer = layer.filter(ImageFilter.GaussianBlur(_px(1.6)))
+        img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
 
-    draw.rounded_rectangle(
-        [bubble_x, bubble_y, bubble_x + bubble_w, bubble_bottom],
-        radius=_px(theme["radius"]), fill=theme["bubble"],
-        corners=(True, True, True, False),
-    )
-    _tail(draw, bubble_x, bubble_bottom, _px(13), theme["bubble"])
+    draw = ImageDraw.Draw(img)
+    _bubble_shape(draw, box, radius, tail, theme["bubble"])
 
     circle = _circle(avatar, avatar_size)
     img.paste(circle, (pad, bubble_bottom - avatar_size), circle)
 
     y = bubble_y + pad_top
-    if not ios:
-        draw.text((bubble_x + pad_x, y), name_shaped, font=name_font,
-                  fill=accent, anchor="la")
-        if badge:
-            bx = bubble_x + pad_x + name_w + _px(6)
-            bh = _px(theme["name_size"] + 3)
-            draw.rounded_rectangle(
-                [bx, y, bx + badge_font.getlength(badge) + badge_pad * 2, y + bh],
-                radius=bh // 2,
-                fill=tuple(int(b + (a - b) * 0.25)
-                           for a, b in zip(accent, theme["bubble"])),
-            )
-            draw.text((bx + badge_pad, y + bh // 2), badge, font=badge_font,
-                      fill=accent, anchor="lm")
-        y += name_h
+    draw.text((bubble_x + pad_x, y), name_shaped, font=name_font, fill=accent,
+              anchor="la")
+    if badge:
+        bx = bubble_x + pad_x + name_w + _px(6)
+        bh = _px(theme["name_size"] + 3)
+        draw.rounded_rectangle(
+            [bx, y, bx + badge_text_w + badge_pad * 2, y + bh],
+            radius=bh // 2,
+            fill=tuple(int(b + (a - b) * 0.22)
+                       for a, b in zip(accent, theme["bubble"])),
+        )
+        draw.text((bx + badge_pad, y + bh // 2), badge_shaped, font=badge_font,
+                  fill=accent, anchor="lm")
+    y += name_h
 
     # Right-to-left text hugs the right edge of the bubble, as it does in the app.
     text_x = bubble_x + bubble_w - pad_x if rtl else bubble_x + pad_x
-    anchor = "ra" if rtl else "la"
     for shaped_line in shaped:
         draw.text((text_x, y), shaped_line, font=text_font, fill=theme["text"],
-                  anchor=anchor)
+                  anchor=("ra" if rtl else "la"))
         y += line_h
 
-    if not ios:
-        # The timestamp sits at the end of the line, which flips with the text.
-        time_x = bubble_x + pad_x if rtl else bubble_x + bubble_w - pad_x
-        draw.text((time_x, y), time_str, font=time_font, fill=theme["time"],
-                  anchor=("la" if rtl else "ra"))
+    # The timestamp sits at the end of the line, which flips with the text.
+    time_x = bubble_x + pad_x if rtl else bubble_x + bubble_w - pad_x
+    draw.text((time_x, y), time_str, font=time_font, fill=theme["time"],
+              anchor=("la" if rtl else "ra"))
 
     return img
 

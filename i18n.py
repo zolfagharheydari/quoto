@@ -46,8 +46,8 @@ Full guide: /help""",
 <code>/q</code> — کارت نقل‌قول
 <code>/qs</code> — همان کارت، استیکر
 <code>/qg</code> — همان کارت، گیف؛ متن جلوی چشم تایپ می‌شود
-<code>/ss</code> — اسکرین‌شات، به سبک تلگرام تیره
-<code>/ios</code> — اسکرین‌شات، به سبک آیفون
+<code>/ss</code> — اسکرین‌شات، تلگرامِ تیره
+<code>/ios</code> — اسکرین‌شات، تلگرامِ آیفون (تم روشن)
 دو تای آخر پیام را همان‌طور که در چت دیده می‌شود می‌سازند: حباب، عکس پروفایل، اسم و ساعت.
 
 ➌ <b>بدون ریپلای هم می‌شود</b>
@@ -89,7 +89,7 @@ That's it — the card comes back in the same chat.
 <code>/qs</code> — the same card, as a sticker
 <code>/qg</code> — the same card, animated; the text types itself
 <code>/ss</code> — a screenshot, Telegram dark
-<code>/ios</code> — a screenshot, iPhone style
+<code>/ios</code> — a screenshot, Telegram on iOS (light)
 The last two draw the message as it looks in the chat: bubble, avatar, name, time.
 
 ➌ <b>No reply needed</b>
@@ -201,7 +201,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("qs", "نقل‌قول به شکل استیکر"),
         ("qg", "نقل‌قول به شکل گیف"),
         ("ss", "اسکرین‌شات به سبک تلگرام"),
-        ("ios", "اسکرین‌شات به سبک آیفون"),
+        ("ios", "اسکرین‌شات تلگرامِ آیفون"),
         ("sticker", "تبدیل عکس/ویدیوی ریپلای‌شده به استیکر"),
         ("gif", "تبدیل ویدیو/استیکر ریپلای‌شده به گیف"),
         ("lang", "تغییر زبان"),
@@ -212,7 +212,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("qs", "The quote as a sticker"),
         ("qg", "The quote as an animation"),
         ("ss", "A screenshot, Telegram style"),
-        ("ios", "A screenshot, iPhone style"),
+        ("ios", "A screenshot, Telegram on iOS"),
         ("sticker", "Turn the replied-to photo/video into a sticker"),
         ("gif", "Turn the replied-to video/sticker into a GIF"),
         ("lang", "Change language"),
