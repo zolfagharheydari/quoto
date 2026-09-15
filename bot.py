@@ -431,10 +431,16 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler("pack", cmd_pack))
-    app.add_handler(CommandHandler("quote", cmd_quote))
-    app.add_handler(CommandHandler("sticker", cmd_quote_sticker))
-    app.add_handler(CommandHandler("gif", cmd_quote_gif))
-    app.add_handler(CommandHandler("screenshot", cmd_screenshot))
+    # The menu lists the first name of each; the rest are common misspellings,
+    # unlisted, so a slip of the fingers still does what was meant.
+    app.add_handler(CommandHandler(
+        ["quote", "qoute", "quto", "qute", "quot", "quoet"], cmd_quote))
+    app.add_handler(CommandHandler(
+        ["sticker", "stiker", "stickr", "sticekr", "stcker"], cmd_quote_sticker))
+    app.add_handler(CommandHandler(["gif", "gfi"], cmd_quote_gif))
+    app.add_handler(CommandHandler(
+        ["screenshot", "screenshoot", "screanshot", "screnshot", "sceenshot"],
+        cmd_screenshot))
     # Saying it in plain Persian instead of typing a command. These are ordinary
     # messages, so in a group they only reach the bot once it is an admin.
     # "اینو استیکرش کن لطفا!" should work as readily as "استیکرش کن".

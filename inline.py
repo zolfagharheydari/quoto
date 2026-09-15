@@ -38,7 +38,12 @@ MAX_INLINE_CHARS = 700
 # Inline mode has no commands, but people reach for them anyway. A leading /quote
 # is dropped, and a query that is nothing but a command gets a hint instead of a
 # card reading "/quote".
-_VERBS = "quote|sticker|gif|screenshot"
+_VERBS = (
+    "quote|sticker|gif|screenshot"
+    # the same misspellings the command handlers accept
+    "|qoute|quto|qute|quot|quoet|stiker|stickr|sticekr|stcker|gfi"
+    "|screenshoot|screanshot|screnshot|sceenshot"
+)
 LEADING_COMMAND_RE = re.compile(f"^/({_VERBS})(@[A-Za-z0-9_]+)?[ ]+", re.IGNORECASE)
 COMMAND_ONLY_RE = re.compile(
     f"^/?({_VERBS}|کوت|نقل[ ]*قول)(@[A-Za-z0-9_]+)?$", re.IGNORECASE
