@@ -426,17 +426,15 @@ def main() -> None:
     app = builder.build()
 
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler(["help", "guide"], cmd_help))
-    app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("lang", cmd_lang))
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
-    app.add_handler(CommandHandler(["pack", "stickers"], cmd_pack))
-    # Long names are what the menu shows; the short ones stay as aliases.
-    app.add_handler(CommandHandler(
-        ["quote", "q", "qoute", "quto", "qute", "quot"], cmd_quote))
-    app.add_handler(CommandHandler(["sticker", "qs"], cmd_quote_sticker))
-    app.add_handler(CommandHandler(["gif", "qg"], cmd_quote_gif))
-    app.add_handler(CommandHandler(["screenshot", "ss", "shot"], cmd_screenshot))
+    app.add_handler(CommandHandler("pack", cmd_pack))
+    app.add_handler(CommandHandler("quote", cmd_quote))
+    app.add_handler(CommandHandler("sticker", cmd_quote_sticker))
+    app.add_handler(CommandHandler("gif", cmd_quote_gif))
+    app.add_handler(CommandHandler("screenshot", cmd_screenshot))
     # Saying it in plain Persian instead of typing a command. These are ordinary
     # messages, so in a group they only reach the bot once it is an admin.
     # "اینو استیکرش کن لطفا!" should work as readily as "استیکرش کن".
