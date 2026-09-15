@@ -122,6 +122,23 @@ Full guide: /help""",
 ➐ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/q</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
 
+<b>📋 همه‌ی دستورها</b>
+<code>/q</code> — از پیام ریپلای‌شده کارت نقل‌قول می‌سازد
+<code>/qs</code> — همان کارت، به شکل استیکر
+<code>/qg</code> — همان کارت، به شکل گیف با افکت تایپ
+<code>/ss</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
+<code>/sticker</code> — عکس یا ویدیوی ریپلای‌شده را استیکر می‌کند
+<code>/gif</code> — ویدیو یا استیکر متحرک را گیف می‌کند
+<code>/pack</code> — لینک استیکرپک این گروه
+<code>/lang</code> — تغییر زبان ربات
+<code>/help</code> — همین راهنما
+
+<b>معادل فارسی‌شان، در جواب یک پیام:</b>
+«کوتش کن» = /q
+«استیکرش کن» = /qs
+«گیفش کن» = /qg
+«شاتش کن» = /ss
+
 <b>اگر عکس پروفایل روی کارت نیامد</b>
 یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
         "en": """📖 <b>Quoto help</b>
@@ -162,6 +179,23 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 
 ➐ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/q</code>. I read the original sender's name and photo from the forward.
+
+<b>📋 Every command</b>
+<code>/q</code> — a quote card from the replied-to message
+<code>/qs</code> — the same card, as a sticker
+<code>/qg</code> — the same card, animated
+<code>/ss</code> — the message as a Telegram screenshot
+<code>/sticker</code> — the replied-to photo or video, as a sticker
+<code>/gif</code> — the replied-to video or animated sticker, as a GIF
+<code>/pack</code> — the link to this group's sticker pack
+<code>/lang</code> — change the bot's language
+<code>/help</code> — this guide
+
+<b>Their Persian equivalents, as a reply:</b>
+«کوتش کن» = /q
+«استیکرش کن» = /qs
+«گیفش کن» = /qg
+«شاتش کن» = /ss
 
 <b>If the profile photo is missing from the card</b>
 Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
