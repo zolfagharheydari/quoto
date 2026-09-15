@@ -131,6 +131,9 @@ def build_background(avatar: Image.Image) -> Image.Image:
 
 def build_scene(avatar: Image.Image, quote: str, name: str,
                 watermark: str = "") -> Scene:
+    # Decorative Unicode in a name or a message would draw as empty boxes.
+    quote = textkit.normalize_display(quote)
+    name = textkit.normalize_display(name)
     quote = " ".join(quote.split()) if "\n" not in quote else quote.strip()
     rtl = textkit.is_rtl(quote)
     open_q, close_q = ("«", "»") if rtl else ("\u201c", "\u201d")

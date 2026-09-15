@@ -77,3 +77,37 @@ def fit(text: str, font_loader, max_width: float, max_height: float,
             return lines, font, line_height
         best = (lines, font, line_height)
     return best  # smallest size; caller may clip
+
+
+# Display names love decorative Unicode: 𝓙𝓾𝓼𝓽, ＪＵＳＴ, ᴊᴜsᴛ. The bundled fonts have
+# no glyphs for any of it, so it would draw as blank boxes. NFKC folds most of it
+# back to plain letters; small capitals are real letters, so NFKC leaves them and
+# they need a map of their own.
+_SMALL_CAPS = str.maketrans({
+    "ᴀ": "a", "ʙ": "b", "ᴄ": "c", "ᴅ": "d", "ᴇ": "e",
+    "ꜰ": "f", "ɢ": "g", "ʜ": "h", "ɪ": "i", "ᴊ": "j",
+    "ᴋ": "k", "ʟ": "l", "ᴍ": "m", "ɴ": "n", "ᴏ": "o",
+    "ᴘ": "p", "ǫ": "q", "ʀ": "r", "ꜱ": "s", "ᴛ": "t",
+    "ᴜ": "u", "ᴠ": "v", "ᴡ": "w", "ʏ": "y", "ᴢ": "z",
+})
+
+# Invisible characters that only cause trouble. U+200C is deliberately absent:
+# Persian needs it between letters (می‌روم), and dropping it would misspell words.
+_INVISIBLE = str.maketrans({
+    "​": "", "‎": "", "‏": "", "﻿": "",
+    "︎": "", "️": "", " ": " ",
+})
+
+
+def normalize_display(text: str) -> str:
+    """Fold decorative Unicode back to letters the bundled fonts can actually draw."""
+    if not text:
+        return text
+    text = unicodedata.normalize("NFKC", text)
+    text = text.translate(_SMALL_CAPS).translate(_INVISIBLE)
+    # Whatever is left and still unprintable would come out as a box; drop it.
+    cleaned = "".join(
+        ch for ch in text
+        if ch in "‌\n" or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf")
+    )
+    return cleaned.strip()
