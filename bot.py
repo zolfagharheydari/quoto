@@ -8,12 +8,21 @@ import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
-from telegram import BotCommand, Message, Update
+from telegram import (
+    BotCommand,
+    BotCommandScopeAllGroupChats,
+    BotCommandScopeAllPrivateChats,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    Update,
+)
 from telegram.constants import ChatAction, ChatMemberStatus
 from telegram.error import InvalidToken, NetworkError, TelegramError
 from telegram.ext import (
     AIORateLimiter,
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     InlineQueryHandler,
@@ -71,7 +80,38 @@ async def _send(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str) ->
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(update, context, "welcome")
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _send(update, context, "help")
+
+
+async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = i18n.resolve(update, context.user_data)
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(i18n.t("btn_fa", lang), callback_data="lang:fa"),
+            InlineKeyboardButton(i18n.t("btn_en", lang), callback_data="lang:en"),
+        ],
+        [InlineKeyboardButton(i18n.t("btn_auto", lang), callback_data="lang:auto")],
+    ])
+    await update.effective_message.reply_text(
+        i18n.t("lang_prompt", lang), reply_markup=keyboard
+    )
+
+
+async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    choice = query.data.split(":", 1)[1]
+    if choice == "auto":
+        context.user_data.pop("lang", None)
+        message = i18n.t("lang_auto", i18n.resolve(update, context.user_data))
+    else:
+        context.user_data["lang"] = choice
+        message = i18n.t("lang_set", choice)
+    await query.answer()
+    await query.edit_message_text(message)
 
 
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -380,9 +420,16 @@ async def post_init(app: Application) -> None:
     username = app.bot.username
 
     async def publish(lang: str, **kwargs) -> None:
+        core = [BotCommand(n, d) for n, d in i18n.COMMANDS[lang]]
+        extra = [BotCommand(n, d) for n, d in i18n.PRIVATE_ONLY[lang]]
+        # A group's "/" menu stays short; help and lang belong in the bot's own chat.
         await app.bot.set_my_commands(
-            [BotCommand(name, desc) for name, desc in i18n.COMMANDS[lang]], **kwargs
+            core + extra, scope=BotCommandScopeAllPrivateChats(), **kwargs
         )
+        await app.bot.set_my_commands(
+            core, scope=BotCommandScopeAllGroupChats(), **kwargs
+        )
+        await app.bot.set_my_commands(core, **kwargs)  # anywhere else
         await app.bot.set_my_description(
             i18n.DESCRIPTIONS[lang].replace("@BOT", f"@{username}"), **kwargs
         )
@@ -417,6 +464,9 @@ def main() -> None:
     app = builder.build()
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler(["help", "guide"], cmd_help))
+    app.add_handler(CommandHandler(["lang", "language"], cmd_lang))
+    app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler(["pack", "stickers"], cmd_pack))
     app.add_handler(CommandHandler(["q", "quote", "qoute", "quto", "qute", "quot"], cmd_quote))

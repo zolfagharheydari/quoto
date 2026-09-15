@@ -10,6 +10,43 @@ SUPPORTED = ("fa", "en")
 _FA_PREFIXES = ("fa", "fa-ir", "per", "prs")
 
 STRINGS: dict[str, dict[str, str]] = {
+    "welcome": {
+        "fa": """سلام! 👋
+من از پیام‌ها عکسِ نقل‌قول می‌سازم — یک کارت سیاه‌وسفید با متن پیام، اسم گوینده و عکس پروفایلش.
+
+<b>سریع‌ترین راه امتحان کردن:</b>
+همین حالا بنویس <code>/q سلام دنیا</code>
+
+<b>کار اصلی‌ام:</b>
+روی هر پیامی ریپلای کن و <code>/q</code> بفرست.
+
+راهنمای کامل: /help""",
+        "en": """Hi! 👋
+I turn messages into quote cards — black and white, carrying the text, the sender's name and their profile photo.
+
+<b>Quickest way to try me:</b>
+Send <code>/q hello world</code> right now
+
+<b>What I'm really for:</b>
+Reply to any message and send <code>/q</code>.
+
+Full guide: /help""",
+    },
+    "lang_prompt": {
+        "fa": "زبان ربات را انتخاب کن:",
+        "en": "Choose the bot's language:",
+    },
+    "lang_set": {
+        "fa": "زبان روی فارسی تنظیم شد. ✅",
+        "en": "Language set to English. ✅",
+    },
+    "lang_auto": {
+        "fa": "زبان خودکار شد؛ از روی تنظیمات تلگرام تو انتخاب می‌شود.",
+        "en": "Language set to automatic; I'll follow your Telegram settings.",
+    },
+    "btn_fa": {"fa": "فارسی", "en": "فارسی"},
+    "btn_en": {"fa": "English", "en": "English"},
+    "btn_auto": {"fa": "خودکار 🌐", "en": "Automatic 🌐"},
     "help": {
         "fa": """📖 <b>راهنمای Quoto</b>
 
@@ -166,6 +203,20 @@ Meanwhile you can type: /q any text you like""",
         "fa": "اینجا دستور لازم نیست — فقط خودِ متن را بنویس",
         "en": "No command needed here — just type the text itself",
     },
+}
+
+# Commands Telegram lists in the "/" menu. Both /help and /lang still work in a
+# group if typed; they are simply not worth a slot in a group's menu, so they are
+# offered in private chats only.
+PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
+    "fa": [
+        ("lang", "تغییر زبان"),
+        ("help", "راهنما"),
+    ],
+    "en": [
+        ("lang", "Change language"),
+        ("help", "Help"),
+    ],
 }
 
 COMMANDS: dict[str, list[tuple[str, str]]] = {
