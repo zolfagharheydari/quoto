@@ -105,7 +105,7 @@ def make_handler(watermark: str, storage_chat: str | int | None):
         try:
             avatar = await authors.fetch_avatar(context.bot, author)
             scene = await asyncio.to_thread(
-                render.build_scene, avatar, text, author.name, author.handle, watermark
+                render.build_scene, avatar, text, author.name, watermark
             )
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)

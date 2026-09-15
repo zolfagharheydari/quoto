@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -23,6 +24,7 @@ from telegram.ext import (
     AIORateLimiter,
     Application,
     CallbackQueryHandler,
+    ChatMemberHandler,
     CommandHandler,
     ContextTypes,
     InlineQueryHandler,
@@ -114,6 +116,26 @@ async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.edit_message_text(message)
 
 
+async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Introduce the bot the moment it lands in a group."""
+    member = update.my_chat_member
+    if member.chat.type not in ("group", "supergroup"):
+        return
+    was = member.old_chat_member.status
+    now = member.new_chat_member.status
+    joined = was in (ChatMemberStatus.LEFT, ChatMemberStatus.BANNED) and now in (
+        ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR
+    )
+    if not joined:
+        return
+    lang = i18n.normalize(member.from_user.language_code if member.from_user else None)
+    text = i18n.t("group_intro", lang).replace("@BOT", f"@{context.bot.username}")
+    try:
+        await context.bot.send_message(member.chat.id, text, parse_mode="HTML")
+    except TelegramError as exc:
+        log.info("could not greet %s: %s", member.chat.id, exc)
+
+
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Report what actually arrived, so a silent failure can be diagnosed.
 
@@ -157,7 +179,7 @@ async def _build_scene(update: Update, target: Message, text: str):
     author = authors.resolve(target)
     avatar = await authors.fetch_avatar(update.get_bot(), author)
     return await asyncio.to_thread(
-        render.build_scene, avatar, text, author.name, author.handle, WATERMARK
+        render.build_scene, avatar, text, author.name, WATERMARK
     )
 
 
@@ -475,10 +497,23 @@ def main() -> None:
     app.add_handler(CommandHandler(["ss", "shot", "screenshot"], cmd_screenshot))
     app.add_handler(CommandHandler(["sticker", "s"], cmd_sticker))
     app.add_handler(CommandHandler(["gif", "g"], cmd_gif))
-    # Bare-word trigger; only reachable in groups when privacy mode is off.
-    app.add_handler(MessageHandler(
-        filters.REPLY & filters.Regex(r"(?i)^\s*(کوت|نقل\s*قول|quote|q)\s*$"), cmd_quote
-    ))
+    # Saying it in plain Persian instead of typing a command. These are ordinary
+    # messages, so in a group they only reach the bot once it is an admin.
+    # "اینو استیکرش کن لطفا!" should work as readily as "استیکرش کن".
+    lead = r"^\s*(?:این\s*(?:رو|و)?\s*)?"
+    tail = r"\s*(?:لطفا|لطفاً|please)?\s*[.!?؟،]*\s*$"
+    do = r"\s*(?:کن|کنید)"
+    triggers = [
+        (lead + r"(?:کوت|نقل\s*قول|quote)(?:\s*ش)?(?:" + do + r")?" + tail, cmd_quote),
+        (lead + r"(?:استیکر|sticker)(?:\s*ش)?" + do + tail, cmd_quote_sticker),
+        (lead + r"(?:گیف|gif)(?:\s*ش)?" + do + tail, cmd_quote_gif),
+        (lead + r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + do + tail, cmd_screenshot),
+    ]
+    for pattern, handler in triggers:
+        app.add_handler(MessageHandler(
+            filters.REPLY & filters.Regex(re.compile(pattern, re.IGNORECASE)), handler
+        ))
+    app.add_handler(ChatMemberHandler(on_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(InlineQueryHandler(inline.make_handler(WATERMARK, STORAGE_CHAT)))
     app.add_error_handler(on_error)
 

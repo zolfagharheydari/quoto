@@ -37,13 +37,13 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     portrait = stand_in_portrait()
 
-    for tag, text, name, handle in SAMPLES:
-        scene = render.build_scene(portrait, text, name, handle, watermark="@MyQuoteBot")
+    for tag, text, name, _handle in SAMPLES:
+        scene = render.build_scene(portrait, text, name, watermark="@MyQuoteBot")
         scene.render().save(out / f"{tag}.png")
         render.to_sticker_webp(scene.render()).getbuffer()
         print(f"wrote {out / f'{tag}.png'}")
 
-    scene = render.build_scene(portrait, SAMPLES[0][1], SAMPLES[0][2], SAMPLES[0][3],
+    scene = render.build_scene(portrait, SAMPLES[0][1], SAMPLES[0][2],
                                watermark="@MyQuoteBot")
     buf, ext = animate.to_animation(scene)
     (out / f"animation.{ext}").write_bytes(buf.getvalue())
@@ -51,7 +51,7 @@ def main() -> int:
 
     # Fallback avatar path (users with no profile photo).
     render.build_scene(render.fallback_avatar("42", "ع"), "بدون عکس پروفایل هم کار می‌کنه",
-                       "کاربر بی‌عکس", "").render().save(out / "no_avatar.png")
+                       "کاربر بی‌عکس").render().save(out / "no_avatar.png")
     print(f"wrote {out / 'no_avatar.png'}")
     return 0
 

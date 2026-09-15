@@ -12,7 +12,7 @@ _FA_PREFIXES = ("fa", "fa-ir", "per", "prs")
 STRINGS: dict[str, dict[str, str]] = {
     "welcome": {
         "fa": """سلام! 👋
-من از پیام‌ها عکسِ نقل‌قول می‌سازم — یک کارت سیاه‌وسفید با متن پیام، اسم گوینده و عکس پروفایلش.
+من از پیام‌ها عکسِ نقل‌قول می‌سازم — کارتی با متن پیام، اسم گوینده و عکس پروفایلش.
 
 <b>سریع‌ترین راه امتحان کردن:</b>
 همین حالا بنویس <code>/q سلام دنیا</code>
@@ -22,7 +22,7 @@ STRINGS: dict[str, dict[str, str]] = {
 
 راهنمای کامل: /help""",
         "en": """Hi! 👋
-I turn messages into quote cards — black and white, carrying the text, the sender's name and their profile photo.
+I turn messages into quote cards carrying the text, the sender's name and their profile photo.
 
 <b>Quickest way to try me:</b>
 Send <code>/q hello world</code> right now
@@ -47,10 +47,41 @@ Full guide: /help""",
     "btn_fa": {"fa": "فارسی", "en": "فارسی"},
     "btn_en": {"fa": "English", "en": "English"},
     "btn_auto": {"fa": "خودکار 🌐", "en": "Automatic 🌐"},
+    "group_intro": {
+        "fa": """سلام! 👋 من <b>Quoto</b> هستم.
+
+روی هر پیامی <b>ریپلای</b> کنید و یکی از این‌ها را بفرستید:
+<code>/q</code> — کارت نقل‌قول
+<code>/qs</code> — استیکر
+<code>/qg</code> — گیف
+<code>/ss</code> — اسکرین‌شات
+
+یا به‌جای دستور، فارسی بگویید:
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+
+استیکرهایی که ساخته می‌شوند در یک استیکرپک به نام همین گروه جمع می‌شوند — لینکش با <code>/pack</code>.
+
+⚠️ اگر جواب ندادم، مرا <b>ادمین</b> کنید. تا آن موقع تلگرام اجازه نمی‌دهد پیام‌ها را ببینم و نه ریپلای‌ها کار می‌کنند نه دستورهای فارسی.
+
+راهنمای کامل: /help""",
+        "en": """Hi! 👋 I'm <b>Quoto</b>.
+
+<b>Reply</b> to any message and send one of these:
+<code>/q</code> — a quote card
+<code>/qs</code> — a sticker
+<code>/qg</code> — an animation
+<code>/ss</code> — a screenshot
+
+The stickers collect into a pack named after this group — <code>/pack</code> for the link.
+
+⚠️ If I stay silent, make me an <b>admin</b>. Until then Telegram will not let me see your messages, so replies never reach me.
+
+Full guide: /help""",
+    },
     "help": {
         "fa": """📖 <b>راهنمای Quoto</b>
 
-من از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم: یک کارت سیاه‌وسفید که متن پیام، اسم گوینده و عکس پروفایلش رویش نوشته شده.
+من از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم: کارتی که متن پیام، اسم گوینده و عکس پروفایلش رویش نوشته شده.
 
 ➊ <b>ساده‌ترین کار</b>
 ۱. روی پیامی که می‌خواهی <b>ریپلای</b> کن
@@ -87,7 +118,7 @@ Full guide: /help""",
 یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
         "en": """📖 <b>Quoto help</b>
 
-I turn Telegram messages into quote cards: a black-and-white card carrying the message text, the sender's name and their profile photo.
+I turn Telegram messages into quote cards: the message text, the sender's name and their profile photo on one card.
 
 ➊ <b>The basic move</b>
 1. <b>Reply</b> to the message you want
@@ -248,7 +279,7 @@ DESCRIPTIONS: dict[str, str] = {
     "fa": """سلام! 👋
 من از پیام‌ها عکسِ نقل‌قول می‌سازم.
 
-هر پیامی را تبدیل می‌کنم به یک کارت سیاه‌وسفید، با متن پیام و اسم و عکس پروفایلِ گوینده‌اش. خروجی را به شکل عکس، استیکر یا گیف می‌گیری.
+هر پیامی را تبدیل می‌کنم به یک کارت، با متن پیام و اسم و عکس پروفایلِ گوینده‌اش. خروجی را به شکل عکس، استیکر یا گیف می‌گیری.
 
 در گروه‌ها هم کار می‌کنم.
 
@@ -256,7 +287,7 @@ DESCRIPTIONS: dict[str, str] = {
     "en": """Hi! 👋
 I turn messages into quote cards.
 
-Any message becomes a black-and-white card carrying its text, the sender's name and their profile photo — as an image, a sticker or an animation.
+Any message becomes a card carrying its text, the sender's name and their profile photo — as an image, a sticker or an animation.
 
 I work in groups too.
 

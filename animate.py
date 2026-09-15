@@ -20,12 +20,12 @@ ANIM_W, ANIM_H = 800, 450          # both even; required by yuv420p
 # The typing pass is timed by how much there is to type, so a long quote does not
 # race past at the same speed a three-word one is comfortable at. Clamped at both
 # ends: short quotes should not crawl, long ones should not outstay the reader.
-TYPE_CPS = 15.0                    # characters revealed per second
-MIN_TYPE_SECONDS = 2.4
-MAX_TYPE_SECONDS = 9.0
+TYPE_CPS = 26.0                    # characters revealed per second
+MIN_TYPE_SECONDS = 1.8
+MAX_TYPE_SECONDS = 5.5
 LEAD_IN_SECONDS = 0.4              # a beat on the empty card before typing starts
 AUTHOR_FADE_SECONDS = 0.6          # the name fading in once the quote is done
-HOLD_SECONDS = 1.4                 # everything on screen, before the loop restarts
+HOLD_SECONDS = 1.2                 # everything on screen, before the loop restarts
 
 
 def _ffmpeg() -> str | None:

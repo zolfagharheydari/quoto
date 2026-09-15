@@ -38,11 +38,8 @@ class Scene:
     line_height: int
     quote_top: int
     name: str
-    handle: str
     name_font: object
-    handle_font: object
     name_y: int
-    handle_y: int
     watermark: str = ""
     watermark_font: object = None
     _shaped: list[str] = field(default_factory=list)
@@ -70,9 +67,6 @@ class Scene:
             a = max(0.0, min(1.0, author_alpha))
             draw.text((cx, self.name_y), textkit.shape(self.name), font=self.name_font,
                       fill=_fade(NAME_COLOR, a), anchor="ma")
-            if self.handle:
-                draw.text((cx, self.handle_y), self.handle, font=self.handle_font,
-                          fill=_fade(HANDLE_COLOR, a), anchor="ma")
 
         if self.watermark:
             draw.text((WIDTH - 24, HEIGHT - 22), self.watermark,
@@ -128,14 +122,14 @@ def _fade_mask(width: int, height: int) -> Image.Image:
 
 def build_background(avatar: Image.Image) -> Image.Image:
     canvas = Image.new("RGB", (WIDTH, HEIGHT), BG)
-    photo = _cover(avatar.convert("RGB"), (PHOTO_W, HEIGHT)).convert("L").convert("RGB")
-    photo = ImageEnhance.Contrast(photo).enhance(1.12)
-    photo = ImageEnhance.Brightness(photo).enhance(0.92)
+    photo = _cover(avatar.convert("RGB"), (PHOTO_W, HEIGHT))
+    photo = ImageEnhance.Contrast(photo).enhance(1.06)
+    photo = ImageEnhance.Brightness(photo).enhance(0.95)
     canvas.paste(photo, (0, 0), _fade_mask(PHOTO_W, HEIGHT))
     return canvas
 
 
-def build_scene(avatar: Image.Image, quote: str, name: str, handle: str = "",
+def build_scene(avatar: Image.Image, quote: str, name: str,
                 watermark: str = "") -> Scene:
     quote = " ".join(quote.split()) if "\n" not in quote else quote.strip()
     rtl = textkit.is_rtl(quote)
@@ -146,21 +140,25 @@ def build_scene(avatar: Image.Image, quote: str, name: str, handle: str = "",
     weight = "medium" if rtl else "serif"
     loader = lambda s: fonts.load(weight, s)  # noqa: E731
 
-    name_font = fonts.load("bold", 34)
-    handle_font = fonts.load("regular", 27)
-    author_block = 34 + 12 + 27 + 6
-    max_text_h = int(HEIGHT * 0.60)
+    name_font = fonts.load("bold", 36)
+    # Only the name sits under the quote now, so the text block gets the rest.
+    author_block = 36
+    max_text_h = int(HEIGHT * 0.68)
 
+    # A long quote used to shrink to 22px, which is unreadable at a glance; 30 is
+    # the floor now, and anything that still will not fit is trimmed instead.
     lines, quote_font, line_height = textkit.fit(
-        body, loader, TEXT_W, max_text_h, range(58, 21, -2), line_spacing=1.34
+        body, loader, TEXT_W, max_text_h, range(60, 29, -2), line_spacing=1.34
     )
-    lines = lines[:12]
+    max_lines = max(1, max_text_h // line_height)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1].rstrip() + "…"
 
     quote_h = len(lines) * line_height
-    block_h = quote_h + 64 + author_block
+    block_h = quote_h + 56 + author_block
     top = (HEIGHT - block_h) // 2
-    name_y = top + quote_h + 64
-    handle_y = name_y + 34 + 12
+    name_y = top + quote_h + 56
 
     return Scene(
         background=build_background(avatar),
@@ -169,19 +167,16 @@ def build_scene(avatar: Image.Image, quote: str, name: str, handle: str = "",
         line_height=line_height,
         quote_top=top,
         name=f"- {name}" if not rtl else f"— {name}",
-        handle=f"@{handle}" if handle else "",
         name_font=name_font,
-        handle_font=handle_font,
         name_y=name_y,
-        handle_y=handle_y,
         watermark=watermark,
         watermark_font=fonts.load("regular", 19),
     )
 
 
-def render_quote(avatar: Image.Image, quote: str, name: str, handle: str = "",
+def render_quote(avatar: Image.Image, quote: str, name: str,
                  watermark: str = "") -> Image.Image:
-    return build_scene(avatar, quote, name, handle, watermark).render()
+    return build_scene(avatar, quote, name, watermark).render()
 
 
 def to_png(img: Image.Image) -> io.BytesIO:
