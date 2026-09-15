@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from telegram import (
@@ -13,7 +14,7 @@ from telegram import (
     Message,
     Update,
 )
-from telegram.constants import ChatAction
+from telegram.constants import ChatAction, ChatMemberStatus
 from telegram.error import InvalidToken, NetworkError, TelegramError
 from telegram.ext import (
     AIORateLimiter,
@@ -35,6 +36,7 @@ import i18n
 import inline
 import media as media_tools
 import render
+import screenshot
 
 load_dotenv()
 
@@ -48,6 +50,13 @@ TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WATERMARK = os.getenv("WATERMARK", "").strip()
 STATE_FILE = os.getenv("STATE_FILE", "botdata.pkl").strip()
 PROXY = os.getenv("PROXY", "").strip()
+_tz = os.getenv("TIMEZONE", "").strip()
+try:
+    # Telegram timestamps arrive in UTC; screenshots should show the local clock.
+    TZ = ZoneInfo(_tz) if _tz else None
+except (ZoneInfoNotFoundError, ValueError):
+    log.warning("unknown TIMEZONE %r; screenshot times will be UTC", _tz)
+    TZ = None
 _owner = os.getenv("OWNER_ID", "").strip()
 OWNER_ID: int | None = int(_owner) if _owner.lstrip("-").isdigit() else None
 _storage = os.getenv("STORAGE_CHAT_ID", "").strip()
@@ -235,6 +244,58 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text(_t("failed", update, context))
 
 
+def _clock(when) -> str:
+    """The time as a chat client prints it: 3:47 PM, not 03:47."""
+    if TZ is not None:
+        when = when.astimezone(TZ)
+    return when.strftime("%I:%M %p").lstrip("0")
+
+
+async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
+    """The owner/admin pill Telegram shows beside a name in a group."""
+    if chat.type not in ("group", "supergroup") or author.kind != "user":
+        return None
+    if author.avatar_key is None:
+        return None
+    try:
+        member = await bot.get_chat_member(chat.id, author.avatar_key)
+    except TelegramError:
+        return None
+    if member.status == ChatMemberStatus.OWNER:
+        return i18n.t("badge_owner", lang)
+    if member.status == ChatMemberStatus.ADMINISTRATOR:
+        return getattr(member, "custom_title", None) or i18n.t("badge_admin", lang)
+    return None
+
+
+def _screenshot_handler(style: str):
+    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        prepared = await _prepare(update, context)
+        if prepared is None:
+            return
+        target, text = prepared
+        message = update.effective_message
+        await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+        try:
+            author = authors.resolve(target)
+            avatar = await authors.fetch_avatar(context.bot, author)
+            badge = await _badge(context.bot, message.chat, author,
+                                 i18n.resolve(update, context.user_data))
+            image = await asyncio.to_thread(
+                screenshot.render, avatar, author.name, text,
+                _clock(target.date), badge, author.seed, style,
+            )
+            buf = await asyncio.to_thread(screenshot.to_png, image)
+            await message.reply_photo(buf, reply_to_message_id=target.message_id)
+        except TelegramError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("screenshot render failed")
+            await message.reply_text(_t("failed", update, context))
+
+    return handler
+
+
 async def _grab_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     target = message.reply_to_message
@@ -358,6 +419,8 @@ def main() -> None:
     app.add_handler(CommandHandler(["q", "quote", "qoute", "quto", "qute", "quot"], cmd_quote))
     app.add_handler(CommandHandler(["qs", "quotesticker"], cmd_quote_sticker))
     app.add_handler(CommandHandler(["qg", "quotegif"], cmd_quote_gif))
+    app.add_handler(CommandHandler(["ss", "shot"], _screenshot_handler("telegram")))
+    app.add_handler(CommandHandler(["ios", "ssi"], _screenshot_handler("ios")))
     app.add_handler(CommandHandler(["sticker", "s"], cmd_sticker))
     app.add_handler(CommandHandler(["gif", "g"], cmd_gif))
     # Bare-word trigger; only reachable in groups when privacy mode is off.

@@ -1,8 +1,8 @@
 """Inline mode: `@bot some text` builds a quote card in any chat, member or not.
 
 Telegram never tells an inline query what message the user is replying to, so
-the text has to be typed or pasted. In exchange the bot works in groups it was
-never added to.
+the text has to be typed or pasted, and the card is always credited to whoever
+typed it. In exchange the bot works in groups it was never added to.
 
 Inline results can only reference files Telegram already stores, so each card is
 uploaded once to a storage chat to obtain a file_id, then handed back as a
@@ -34,8 +34,6 @@ log = logging.getLogger("quotebot.inline")
 # Inline queries arrive on every keystroke; wait for a pause before rendering.
 DEBOUNCE_SECONDS = 0.45
 MAX_INLINE_CHARS = 700
-# "text | name" lets someone attribute the quote to a person other than themselves.
-ATTRIBUTION_SEP = "|"
 
 # Inline mode has no commands, but people reach for them anyway. A leading /quote
 # is dropped, and a query that is nothing but a command gets a hint instead of a
@@ -49,16 +47,6 @@ LEADING_COMMAND_RE = re.compile(f"^/({_VERBS})(@[A-Za-z0-9_]+)?[ ]+", re.IGNOREC
 COMMAND_ONLY_RE = re.compile(
     f"^/?({_VERBS}|کوت|نقل[ ]*قول)(@[A-Za-z0-9_]+)?$", re.IGNORECASE
 )
-
-
-def _split_attribution(raw: str) -> tuple[str, str | None]:
-    if ATTRIBUTION_SEP not in raw:
-        return raw, None
-    text, _, name = raw.rpartition(ATTRIBUTION_SEP)
-    text, name = text.strip(), name.strip()
-    if not text or not name:
-        return raw, None
-    return text, name
 
 
 async def _upload(context: ContextTypes.DEFAULT_TYPE, storage_chat: str | int | None,
@@ -102,16 +90,16 @@ def make_handler(watermark: str, storage_chat: str | int | None):
         if context.user_data.get("inline_seq") != query.id:
             return
 
-        text, override_name = _split_attribution(raw[:MAX_INLINE_CHARS])
+        # The quote is always the sender's own words, under their own name.
+        text = raw[:MAX_INLINE_CHARS]
         author = authors.Author(
-            name=override_name or " ".join(
+            name=" ".join(
                 filter(None, [query.from_user.first_name, query.from_user.last_name])
             ),
-            handle="" if override_name else (query.from_user.username or ""),
-            # An overridden name is someone else, so don't attach the typist's avatar.
-            avatar_key=None if override_name else query.from_user.id,
+            handle=query.from_user.username or "",
+            avatar_key=query.from_user.id,
             kind="user",
-            seed=override_name or str(query.from_user.id),
+            seed=str(query.from_user.id),
         )
 
         try:

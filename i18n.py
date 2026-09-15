@@ -42,11 +42,13 @@ Full guide: /help""",
 ۲. بنویس <code>/q</code> و بفرست
 تمام. کارت را همان‌جا می‌فرستم.
 
-➋ <b>سه شکل خروجی</b>
-<code>/q</code> — عکس
-<code>/qs</code> — استیکر
-<code>/qg</code> — گیف؛ متن جلوی چشم تایپ می‌شود
-هر سه یک کارت‌اند، فقط قالبشان فرق دارد.
+➋ <b>شکل‌های خروجی</b>
+<code>/q</code> — کارت نقل‌قول
+<code>/qs</code> — همان کارت، استیکر
+<code>/qg</code> — همان کارت، گیف؛ متن جلوی چشم تایپ می‌شود
+<code>/ss</code> — اسکرین‌شات، به سبک تلگرام تیره
+<code>/ios</code> — اسکرین‌شات، به سبک آیفون
+دو تای آخر پیام را همان‌طور که در چت دیده می‌شود می‌سازند: حباب، عکس پروفایل، اسم و ساعت.
 
 ➌ <b>بدون ریپلای هم می‌شود</b>
 <code>/q هر متنی که بخواهی</code>
@@ -63,9 +65,7 @@ Full guide: /help""",
 ➏ <b>در چتی که عضوش نیستم</b>
 لازم نیست اضافه‌ام کنی. در همان چت بنویس:
 <code>@BOT متن مورد نظر</code>
-منویی باز می‌شود و انتخاب می‌کنی. چون تلگرام در این حالت به من نمی‌گوید روی چه پیامی ریپلای کرده‌ای، متن را باید خودت بنویسی یا پیست کنی.
-برای اینکه اسم شخص دیگری زیر کوت بخورد:
-<code>@BOT متن | اسم</code>
+منویی باز می‌شود و انتخاب می‌کنی. چون تلگرام در این حالت به من نمی‌گوید روی چه پیامی ریپلای کرده‌ای، متن را باید خودت بنویسی یا پیست کنی. کارت به نام خودت ساخته می‌شود.
 
 ➐ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/q</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
@@ -84,11 +84,13 @@ I turn Telegram messages into quote cards: a black-and-white card carrying the m
 2. Send <code>/q</code>
 That's it — the card comes back in the same chat.
 
-➋ <b>Three output formats</b>
-<code>/q</code> — an image
-<code>/qs</code> — a sticker
-<code>/qg</code> — an animation; the text types itself
-Same card, different wrapper.
+➋ <b>Output formats</b>
+<code>/q</code> — a quote card
+<code>/qs</code> — the same card, as a sticker
+<code>/qg</code> — the same card, animated; the text types itself
+<code>/ss</code> — a screenshot, Telegram dark
+<code>/ios</code> — a screenshot, iPhone style
+The last two draw the message as it looks in the chat: bubble, avatar, name, time.
 
 ➌ <b>No reply needed</b>
 <code>/q any text you like</code>
@@ -105,9 +107,7 @@ Add me to the group. If I answer "reply to a message" even though you did, Teleg
 ➏ <b>In a chat I'm not in</b>
 No need to add me. Type this in that chat:
 <code>@BOT your text</code>
-A menu opens and you pick one. Telegram never tells me what you replied to in this mode, so the text has to be typed or pasted.
-To credit someone else:
-<code>@BOT your text | name</code>
+A menu opens and you pick one. Telegram never tells me what you replied to in this mode, so the text has to be typed or pasted, and the card is credited to you.
 
 ➐ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/q</code>. I read the original sender's name and photo from the forward.
@@ -183,6 +183,8 @@ Meanwhile you can type: /q any text you like""",
         "fa": "اول ربات را استارت کن، بعد دوباره امتحان کن",
         "en": "Start the bot first, then try again",
     },
+    "badge_owner": {"fa": "مالک", "en": "owner"},
+    "badge_admin": {"fa": "ادمین", "en": "admin"},
     "inline_photo": {
         "fa": "عکس نقل‌قول",
         "en": "Quote card",
@@ -198,6 +200,8 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("quote", "ساخت عکس نقل‌قول از پیام ریپلای‌شده"),
         ("qs", "نقل‌قول به شکل استیکر"),
         ("qg", "نقل‌قول به شکل گیف"),
+        ("ss", "اسکرین‌شات به سبک تلگرام"),
+        ("ios", "اسکرین‌شات به سبک آیفون"),
         ("sticker", "تبدیل عکس/ویدیوی ریپلای‌شده به استیکر"),
         ("gif", "تبدیل ویدیو/استیکر ریپلای‌شده به گیف"),
         ("lang", "تغییر زبان"),
@@ -207,6 +211,8 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("quote", "Make a quote card from the replied-to message"),
         ("qs", "The quote as a sticker"),
         ("qg", "The quote as an animation"),
+        ("ss", "A screenshot, Telegram style"),
+        ("ios", "A screenshot, iPhone style"),
         ("sticker", "Turn the replied-to photo/video into a sticker"),
         ("gif", "Turn the replied-to video/sticker into a GIF"),
         ("lang", "Change language"),
