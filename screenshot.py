@@ -90,9 +90,9 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
            badge: str | None = None, seed: str = "") -> Image.Image:
     theme = THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
-    name = textkit.normalize_display(name)
+    name = textkit.normalize_name(name)
     text = textkit.normalize_display(text)
-    badge = textkit.normalize_display(badge) if badge else badge
+    badge = textkit.normalize_name(badge) if badge else badge
     rtl = textkit.is_rtl(text)
 
     name_font = fonts.load("bold", _px(theme["name_size"]))

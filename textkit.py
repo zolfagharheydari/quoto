@@ -111,3 +111,19 @@ def normalize_display(text: str) -> str:
         if ch in "‌\n" or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf")
     )
     return cleaned.strip()
+
+
+def normalize_name(text: str) -> str:
+    """Like normalize_display, but strips emoji too.
+
+    A name is a label, so losing the roses costs nothing and spares us a row of
+    boxes the bundled fonts cannot draw. Message text keeps its emoji, because a
+    message that is nothing but emoji would otherwise come out empty. If a name
+    happens to be all emoji, the original is kept for the same reason.
+    """
+    cleaned = normalize_display(text)
+    stripped = "".join(
+        ch for ch in cleaned if unicodedata.category(ch) not in ("So", "Sk")
+    )
+    stripped = " ".join(stripped.split())
+    return stripped or cleaned

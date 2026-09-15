@@ -133,10 +133,12 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
                 watermark: str = "") -> Scene:
     # Decorative Unicode in a name or a message would draw as empty boxes.
     quote = textkit.normalize_display(quote)
-    name = textkit.normalize_display(name)
+    name = textkit.normalize_name(name)
     quote = " ".join(quote.split()) if "\n" not in quote else quote.strip()
     rtl = textkit.is_rtl(quote)
-    open_q, close_q = ("«", "»") if rtl else ("\u201c", "\u201d")
+    # Doubled single quotes, which read like the heavy comma ornaments but exist
+    # in the bundled fonts; U+275B/U+275C do not, and would draw as empty boxes.
+    open_q, close_q = "‘‘", "’’"
     body = f"{open_q}{quote}{close_q}"
 
     # A Persian quote needs Vazirmatn; a Latin one looks closer to the reference in serif.
