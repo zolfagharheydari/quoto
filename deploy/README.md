@@ -9,12 +9,15 @@
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip git ffmpeg fonts-dejavu-core
+sudo apt install -y python3 python3-venv python3-pip git ffmpeg fonts-dejavu-core \
+  fonts-noto-core fonts-noto-cjk
 ```
 
 `ffmpeg` برای `/gif` لازم است؛ بدون آن هم کار می‌کند ولی خروجی چند برابر سنگین‌تر
 می‌شود. `fonts-dejavu-core` فونت سریفِ متن‌های انگلیسی را می‌دهد؛ فونت فارسی جداگانه
 دانلود می‌شود.
+
+دو بستهٔ `fonts-noto-*` برای زبان‌های دیگر است: بدونشان یک پیام چینی یا کره‌ای روی کارت به مربع خالی تبدیل می‌شود. ربات موقع بالا آمدن تعداد فونت‌هایی را که پیدا کرده در لاگ می‌نویسد (`fallback fonts available`).
 
 ## ۲. کاربر و پوشه
 

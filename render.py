@@ -67,17 +67,18 @@ class Scene:
             budget -= len(logical)
             text = (self._shaped[i] if visible == logical
                     else textkit.shape(visible, self.rtl))
-            draw.text((cx, self.quote_top + i * self.line_height), text,
-                      font=self.quote_font, fill=QUOTE_COLOR, anchor="ma")
+            self.quote_font.draw_on(
+                draw, (cx, self.quote_top + i * self.line_height), text,
+                fill=QUOTE_COLOR, anchor="ma")
 
         if author_alpha > 0:
             a = max(0.0, min(1.0, author_alpha))
-            draw.text((cx, self.name_y), textkit.shape(self.name), font=self.name_font,
-                      fill=_fade(NAME_COLOR, a), anchor="ma")
+            self.name_font.draw_on(draw, (cx, self.name_y), textkit.shape(self.name),
+                                   fill=_fade(NAME_COLOR, a), anchor="ma")
 
         if self.watermark:
-            draw.text((WIDTH - 24, HEIGHT - 22), self.watermark,
-                      font=self.watermark_font, fill=MARK_COLOR, anchor="rs")
+            self.watermark_font.draw_on(draw, (WIDTH - 24, HEIGHT - 22), self.watermark,
+                                        fill=MARK_COLOR, anchor="rs")
         return img
 
 
@@ -95,8 +96,8 @@ def fallback_avatar(seed: str, letter: str, size: int = 640) -> Image.Image:
     img = Image.composite(img, top, mask)
     draw = ImageDraw.Draw(img)
     font = fonts.load("bold", int(size * 0.45))
-    draw.text((size // 2, size // 2), textkit.shape(letter or "?"), font=font,
-              fill=(255, 255, 255), anchor="mm")
+    font.draw_on(draw, (size // 2, size // 2), textkit.shape(letter or "?"),
+                 fill=(255, 255, 255), anchor="mm")
     return img
 
 

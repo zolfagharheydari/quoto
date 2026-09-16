@@ -766,6 +766,75 @@ def test_admin() -> None:
     check("admin is unlisted", "admin" not in listed and "panel" not in listed)
 
 
+# --------------------------------------------------------------------------- fallback fonts
+def _ink(img: Image.Image, box) -> int:
+    """How many pixels in this box are not the background colour."""
+    crop = img.convert("RGB").crop(box)
+    background = crop.getpixel((0, 0))
+    return sum(1 for pixel in crop.getdata() if pixel != background)
+
+
+def test_fallback_fonts() -> None:
+    section("other scripts")
+
+    vazir = fonts.FONT_DIR / "Vazirmatn-Regular.ttf"
+    if vazir.exists():
+        covered = fonts._coverage(vazir)
+        check("the bundled font's table is readable", len(covered) > 200, str(len(covered)))
+        check("it has Persian", ord("س") in covered)
+        check("it has Latin", ord("A") in covered)
+        check("it has no Chinese", ord("你") not in covered)
+
+    available = fonts._available_fallbacks()
+    check("fallback fonts were found", bool(available),
+          "none on this machine; other scripts will still draw as boxes")
+
+    font = fonts.load("medium", 40)
+    check("a font set stands in for a font",
+          hasattr(font, "getlength") and hasattr(font, "draw_on"))
+    check("Persian stays in one run", len(font.runs("سلام دنیا")) == 1)
+    check("an empty string has no runs", font.runs("") == [])
+
+    # Width has to account for the fallback, or wrapping would overflow.
+    check("width is measured across runs",
+          font.getlength("سلام 你好") > font.getlength("سلام "))
+
+    if available:
+        runs = font.runs("你好")
+        check("Chinese leaves the primary font", runs[0][1] is not font.primary)
+        mixed = font.runs("سلام 你好 ok")
+        check("a mixed line splits into runs", len(mixed) >= 3)
+        check("and loses nothing", "".join(part for part, _ in mixed) == "سلام 你好 ok")
+
+    # Nothing on earth draws a private-use character; it must not raise.
+    lonely = font.runs("")
+    check("an undrawable character falls back to the primary",
+          len(lonely) == 1 and lonely[0][1] is font.primary)
+
+    # The real proof: ink on the card where there used to be boxes.
+    if available:
+        box = (render.TEXT_X, 150, render.WIDTH - 40, render.HEIGHT - 200)
+        avatar = render.fallback_avatar("x", "K")
+        chinese = _ink(render.render_quote(avatar, "你好世界，这是测试", "王"), box)
+        korean = _ink(render.render_quote(avatar, "안녕하세요 테스트입니다", "김"), box)
+        check("Chinese draws something", chinese > 500, str(chinese))
+        check("Korean draws something", korean > 500, str(korean))
+
+        # A name in another script reaches the avatar tile too, which is a single
+        # run and so took a different path through the drawing code.
+        tile = render.fallback_avatar("y", "김")
+        check("an initial in another script draws",
+              _ink(tile, (0, 0, tile.width, tile.height)) > 200)
+
+    # Every anchor the renderer uses must survive the multi-font path.
+    img = Image.new("RGB", (400, 120), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    small = fonts.load("regular", 28)
+    for i, anchor in enumerate(("la", "ma", "ra", "lm", "rs")):
+        small.draw_on(draw, (200, 10 + i), "a你b", fill=(255, 255, 255), anchor=anchor)
+    check("every anchor draws without error", _ink(img, (0, 0, 400, 120)) > 0)
+
+
 def main() -> int:
     test_text()
     test_i18n()
@@ -778,6 +847,7 @@ def main() -> int:
     test_extract()
     test_pack_names()
     test_fonts()
+    test_fallback_fonts()
     test_security()
     if "--api" in sys.argv:
         test_api()

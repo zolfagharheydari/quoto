@@ -162,7 +162,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     # The name keeps the left edge in either direction. In Persian the badge is
     # pushed to the opposite edge instead of trailing the name.
     name_x = bubble_x + pad_x
-    draw.text((name_x, y), name_shaped, font=name_font, fill=accent, anchor="la")
+    name_font.draw_on(draw, (name_x, y), name_shaped, fill=accent, anchor="la")
     if badge:
         pill_w = badge_text_w + badge_pad * 2
         bx = (bubble_x + bubble_w - pad_x - pill_w) if rtl else (name_x + name_w + _px(6))
@@ -173,21 +173,21 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
             fill=tuple(int(b + (a - b) * 0.22)
                        for a, b in zip(accent, theme["bubble"])),
         )
-        draw.text((bx + badge_pad, y + bh // 2), badge_shaped, font=badge_font,
-                  fill=accent, anchor="lm")
+        badge_font.draw_on(draw, (bx + badge_pad, y + bh // 2), badge_shaped,
+                           fill=accent, anchor="lm")
     y += name_h
 
     # Right-to-left text hugs the right edge of the bubble, as it does in the app.
     text_x = bubble_x + bubble_w - pad_x if rtl else bubble_x + pad_x
     for shaped_line in shaped:
-        draw.text((text_x, y), shaped_line, font=text_font, fill=theme["text"],
-                  anchor=("ra" if rtl else "la"))
+        text_font.draw_on(draw, (text_x, y), shaped_line, fill=theme["text"],
+                          anchor=("ra" if rtl else "la"))
         y += line_h
 
     # The timestamp stays in the bottom-right corner whichever way the text runs,
     # as it does on an incoming message in the app.
-    draw.text((bubble_x + bubble_w - pad_x, y), time_str, font=time_font,
-              fill=theme["time"], anchor="ra")
+    time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y), time_str,
+                      fill=theme["time"], anchor="ra")
 
     return img
 

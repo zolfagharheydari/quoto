@@ -5,3 +5,4 @@ python-bidi==0.6.3
 imageio-ffmpeg==0.5.1
 python-dotenv==1.0.1
 tzdata==2024.2
+fonttools>=4.50   # reads a font's character table, to pick a fallback that has the glyph

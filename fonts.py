@@ -1,4 +1,12 @@
-"""Font discovery: prefers bundled Vazirmatn (Persian + Latin), falls back to system fonts."""
+"""Font discovery: prefers bundled Vazirmatn (Persian + Latin), falls back to system fonts.
+
+Vazirmatn covers Persian and Latin and nothing else, so a Chinese, Korean,
+Russian or Hindi message used to draw as a row of empty boxes. A card carries
+whatever someone actually wrote, so every font is now a *set*: the one that sets
+the look, plus whatever else on this machine can draw the characters it cannot.
+A run of text is split by which font has the glyphs and drawn piece by piece,
+along one shared baseline so the join is invisible.
+"""
 from __future__ import annotations
 
 import logging
@@ -40,6 +48,37 @@ CANDIDATES = {
     ],
 }
 
+# Tried in order for any character the chosen font has no glyph for. Broad
+# coverage first, then the scripts that need a font of their own. Missing files
+# are skipped, so the same list serves Windows and a Linux server.
+FALLBACKS = [
+    # Latin, Greek, Cyrillic, Hebrew, Armenian, and a good deal of Arabic
+    Path("C:/Windows/Fonts/micross.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
+    Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+    # Chinese
+    Path("C:/Windows/Fonts/msyh.ttc"),
+    Path("C:/Windows/Fonts/simsun.ttc"),
+    # Japanese
+    Path("C:/Windows/Fonts/YuGothR.ttc"),
+    Path("C:/Windows/Fonts/meiryo.ttc"),
+    # Korean
+    Path("C:/Windows/Fonts/malgun.ttf"),
+    # All three at once, which is what a server usually has (fonts-noto-cjk)
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+    # Devanagari, Tamil, Bengali and the rest of the Indic scripts
+    Path("C:/Windows/Fonts/Nirmala.ttf"),
+    Path("C:/Windows/Fonts/Nirmala.ttc"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"),
+    # Thai
+    Path("C:/Windows/Fonts/leelawui.ttf"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf"),
+    # A last resort that carries a little of everything
+    Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+]
+
 
 @lru_cache(maxsize=None)
 def _resolve(weight: str) -> Path | None:
@@ -49,18 +88,170 @@ def _resolve(weight: str) -> Path | None:
     return None
 
 
+@lru_cache(maxsize=None)
+def _available_fallbacks() -> tuple[Path, ...]:
+    found = tuple(p for p in FALLBACKS if p.exists())
+    log.info("%s fallback fonts available", len(found))
+    return found
+
+
+@lru_cache(maxsize=None)
+def _coverage(path: Path) -> frozenset:
+    """Every code point this font actually has a glyph for.
+
+    Read from the font's own cmap table rather than guessed: asking Pillow to
+    draw a character it lacks produces a box silently, and a box is exactly what
+    this is here to prevent. A collection (.ttc) is read at its first face.
+    """
+    try:
+        from fontTools.ttLib import TTCollection, TTFont
+    except ImportError:
+        log.warning("fontTools is not installed; other scripts may draw as boxes")
+        return frozenset()
+    try:
+        if path.suffix.lower() == ".ttc":
+            with TTCollection(str(path), lazy=True) as collection:
+                return frozenset(collection.fonts[0].getBestCmap())
+        with TTFont(str(path), lazy=True) as font:
+            return frozenset(font.getBestCmap())
+    except Exception:  # noqa: BLE001 - an unreadable font is simply not used
+        log.warning("could not read the character table of %s", path)
+        return frozenset()
+
+
 @lru_cache(maxsize=256)
-def load(weight: str, size: int) -> ImageFont.FreeTypeFont:
-    """Load a truetype font at `size`, falling back to Pillow's default."""
+def _truetype(path: Path, size: int) -> ImageFont.FreeTypeFont | None:
+    try:
+        return ImageFont.truetype(str(path), size)
+    except OSError:
+        log.warning("could not open font %s", path)
+        return None
+
+
+class FontSet:
+    """One font for the look, and the rest of the machine's fonts for coverage.
+
+    It stands in for a Pillow font everywhere the code measures text, so wrapping
+    and fitting need to know nothing about any of this.
+    """
+
+    __slots__ = ("primary", "_primary_path", "_paths", "_size", "_cache")
+
+    def __init__(self, primary: ImageFont.FreeTypeFont, primary_path: Path | None = None,
+                 paths=(), size: int = 0):
+        self.primary = primary
+        self._primary_path = primary_path
+        self._paths = tuple(paths)
+        self._size = size
+        self._cache: dict[str, object] = {}
+
+    # -- standing in for a Pillow font -------------------------------------
+
+    def getlength(self, text: str) -> float:
+        return sum(font.getlength(part) for part, font in self.runs(text))
+
+    def getmetrics(self):
+        return self.primary.getmetrics()
+
+    def getbbox(self, text: str, *args, **kwargs):
+        return self.primary.getbbox(text, *args, **kwargs)
+
+    @property
+    def size(self):
+        return self.primary.size
+
+    # -- the part that matters ---------------------------------------------
+
+    def _font_for(self, ch: str):
+        """The first font that can draw this character, or the primary one."""
+        hit = self._cache.get(ch)
+        if hit is not None:
+            return hit
+        code = ord(ch)
+        font = self.primary
+        # A space has no ink; letting it pick its own font would split a run in
+        # two for nothing and lose the width the surrounding font gives it.
+        covered = (self._primary_path is not None
+                   and code in _coverage(self._primary_path))
+        if not ch.isspace() and not covered:
+            for path in self._paths:
+                if code in _coverage(path):
+                    loaded = _truetype(path, self._size)
+                    if loaded is not None:
+                        font = loaded
+                        break
+        self._cache[ch] = font
+        return font
+
+    def runs(self, text: str) -> list:
+        """The text split into the longest stretches one font can draw."""
+        if not text:
+            return []
+        out = []
+        current = text[0]
+        font = self._font_for(text[0])
+        for ch in text[1:]:
+            nxt = self._font_for(ch)
+            if nxt is font:
+                current += ch
+            else:
+                out.append((current, font))
+                current, font = ch, nxt
+        out.append((current, font))
+        return out
+
+    def draw_on(self, draw, xy, text: str, fill=None, anchor: str = "la") -> None:
+        """Draw `text`, using a different font for any character the first lacks.
+
+        Every piece is placed on one baseline, taken from the primary font, so a
+        Chinese word inside a Persian sentence sits on the line with it instead
+        of floating by its own metrics.
+        """
+        runs = self.runs(text)
+        if len(runs) <= 1:
+            # The overwhelmingly common case: one font draws the whole line.
+            # It is not always the primary - a name written entirely in Hindi
+            # is one run in a font the primary knows nothing about.
+            font = runs[0][1] if runs else self.primary
+            draw.text(xy, text, font=font, fill=fill, anchor=anchor)
+            return
+
+        x, y = xy
+        horizontal = anchor[0] if anchor else "l"
+        vertical = anchor[1] if len(anchor) > 1 else "a"
+        total = sum(font.getlength(part) for part, font in runs)
+        if horizontal == "m":
+            x -= total / 2
+        elif horizontal == "r":
+            x -= total
+
+        ascent, descent = self.primary.getmetrics()
+        if vertical in ("a", "t"):
+            baseline = y + ascent
+        elif vertical == "m":
+            baseline = y + (ascent - descent) / 2
+        elif vertical in ("b", "d"):
+            baseline = y - descent
+        else:                      # "s", the baseline itself
+            baseline = y
+
+        for part, font in runs:
+            draw.text((x, baseline), part, font=font, fill=fill, anchor="ls")
+            x += font.getlength(part)
+
+
+@lru_cache(maxsize=256)
+def load(weight: str, size: int) -> FontSet:
+    """A font at `size` for the given weight, backed by the machine's fallbacks."""
     for w in (weight, "regular"):
         path = _resolve(w)
-        if path is not None:
-            try:
-                return ImageFont.truetype(str(path), size)
-            except OSError:
-                log.warning("could not open font %s", path)
+        if path is None:
+            continue
+        font = _truetype(path, size)
+        if font is not None:
+            return FontSet(font, path, _available_fallbacks(), size)
     log.warning("no truetype font found; falling back to Pillow default (size is fixed)")
-    return ImageFont.load_default(size)
+    return FontSet(ImageFont.load_default(size), None, (), size)
 
 
 def missing_bundled_font() -> bool:
