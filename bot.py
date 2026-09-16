@@ -45,6 +45,7 @@ from telegram.ext import (
     filters,
 )
 
+import admin
 import animate
 import authors
 import extract
@@ -428,6 +429,7 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         image = await asyncio.to_thread(scene.render)
         buf = await asyncio.to_thread(render.to_png, image)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
+        admin.note(context, "quote")
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -461,6 +463,7 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         webp = buf.getvalue()
         await message.reply_sticker(io.BytesIO(webp),
                                     reply_to_message_id=target.message_id)
+        admin.note(context, "sticker")
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -501,6 +504,7 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_animation(
             buf, filename=f"quote.{ext}", reply_to_message_id=target.message_id
         )
+        admin.note(context, "gif")
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -558,6 +562,7 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         buf = await asyncio.to_thread(screenshot.to_png, image)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
+        admin.note(context, "screenshot")
         webp = (await asyncio.to_thread(render.to_sticker_webp, image)).getvalue()
     except TelegramError:
         raise
@@ -648,6 +653,8 @@ def main() -> None:
 
     # Runs before everything else, so a stale command never reaches a handler.
     app.add_handler(TypeHandler(Update, ignore_stale), group=-1)
+    # Then the bookkeeping: who is using the bot, and who may not.
+    app.add_handler(TypeHandler(Update, admin.make_tracker(OWNER_ID)), group=-1)
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("lang", cmd_lang))
@@ -657,10 +664,21 @@ def main() -> None:
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CallbackQueryHandler(on_source_choice, pattern=r"^src:"))
+    # The operator's own panel: unlisted, and silent for everybody else.
+    cmd_admin, on_admin_button, on_admin_input = admin.make_panel(OWNER_ID)
+    app.add_handler(CommandHandler(["admin", "panel"], cmd_admin))
+    app.add_handler(CallbackQueryHandler(on_admin_button, pattern=r"^adm:"))
     # A photo captioned /avatar: CommandHandler only ever looks at message text.
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & (filters.PHOTO | filters.Document.IMAGE)
         & filters.CaptionRegex(r"(?i)^/avat"), cmd_avatar))
+    # What the owner types while the panel is waiting for it. Registered before
+    # the quote handlers so a broadcast draft is never mistaken for a command,
+    # and narrowed to the owner so nobody else's message ever reaches it.
+    if OWNER_ID is not None:
+        app.add_handler(MessageHandler(
+            filters.User(OWNER_ID) & filters.ChatType.PRIVATE
+            & ~filters.COMMAND & ~filters.REPLY, on_admin_input))
     # The menu lists the first name of each; the rest are common misspellings,
     # unlisted, so a slip of the fingers still does what was meant.
     app.add_handler(CommandHandler(

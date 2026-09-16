@@ -10,15 +10,18 @@ import html.parser
 import io
 import re
 import sys
+import time
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+from telegram.ext import ApplicationHandlerStop
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+import admin  # noqa: E402
 import animate  # noqa: E402
 import authors  # noqa: E402
 import bot  # noqa: E402
@@ -577,6 +580,163 @@ def test_security() -> None:
     check("token value never printed", not leaks, str(leaks))
 
 
+# --------------------------------------------------------------------------- admin panel
+OWNER = 4242
+
+
+def _admin_ctx(store=None):
+    return types.SimpleNamespace(bot_data=store if store is not None else {},
+                                 user_data={}, args=[], bot=None)
+
+
+def _admin_update(user_id, chat_type="private", text="/quote", chat_id=-100123,
+                  title="گروه تست"):
+    message = types.SimpleNamespace(text=text, chat_id=chat_id, replies=[])
+
+    async def reply_text(body, **kwargs):
+        message.replies.append(body)
+
+    message.reply_text = reply_text
+    message.reply_html = reply_text
+    return types.SimpleNamespace(
+        effective_user=types.SimpleNamespace(
+            id=user_id, is_bot=False, full_name="کاربر", username="u"),
+        effective_chat=types.SimpleNamespace(id=chat_id, type=chat_type, title=title),
+        effective_message=message,
+    )
+
+
+def test_admin() -> None:
+    section("admin panel")
+
+    track = admin.make_tracker(OWNER)
+
+    async def run_track(update, store):
+        ctx = _admin_ctx(store)
+        try:
+            await track(update, ctx)
+            return True, ctx
+        except ApplicationHandlerStop:
+            return False, ctx
+
+    async def run() -> None:
+        # Ordinary use is recorded.
+        store = {}
+        allowed, ctx = await run_track(_admin_update(7, "supergroup"), store)
+        check("a user is remembered", allowed and 7 in store["users"])
+        check("a group is remembered", -100123 in store["groups"])
+        check("the group keeps its title", store["groups"][-100123]["title"] == "گروه تست")
+
+        # A private chat is not filed as a group.
+        store = {}
+        await run_track(_admin_update(8, "private", chat_id=8), store)
+        check("private chats are not groups", not store.get("groups"))
+
+        # Blocking.
+        store = {"blocked": {9}}
+        allowed, _ = await run_track(_admin_update(9), store)
+        check("a blocked user is stopped", not allowed)
+        allowed, _ = await run_track(_admin_update(10), store)
+        check("everyone else passes", allowed)
+        store = {"blocked": {OWNER}}
+        allowed, _ = await run_track(_admin_update(OWNER), store)
+        check("the owner cannot be locked out", allowed)
+
+        # Pausing.
+        store = {"paused": True}
+        update = _admin_update(11)
+        allowed, _ = await run_track(update, store)
+        check("pausing stops a stranger", not allowed)
+        check("and says why", any("تعمیر" in r for r in update.effective_message.replies))
+        allowed, _ = await run_track(_admin_update(OWNER), store)
+        check("pausing lets the owner through", allowed)
+
+    asyncio.run(run())
+
+    # Counting.
+    ctx = _admin_ctx()
+    admin.note(ctx, "gif")
+    admin.note(ctx, "gif")
+    admin.note(ctx, "quote")
+    check("cards are counted", ctx.bot_data["counts"] == {"gif": 2, "quote": 1})
+
+    # The panel refuses a stranger before it renders anything.
+    cmd_admin, on_button, on_input = admin.make_panel(OWNER)
+
+    async def stranger() -> None:
+        update = _admin_update(99)
+        await cmd_admin(update, _admin_ctx())
+        check("the panel ignores strangers", not update.effective_message.replies)
+        update = _admin_update(OWNER)
+        await cmd_admin(update, _admin_ctx())
+        check("the panel opens for the owner", len(update.effective_message.replies) == 1)
+
+    asyncio.run(stranger())
+
+    # An unset OWNER_ID must not turn the panel into an open door.
+    open_admin, _, _ = admin.make_panel(None)
+
+    async def nobody() -> None:
+        update = _admin_update(1)
+        await open_admin(update, _admin_ctx())
+        check("no owner means no panel", not update.effective_message.replies)
+
+    asyncio.run(nobody())
+
+    # The owner cannot block themselves out of their own bot.
+    async def self_block() -> None:
+        ctx = _admin_ctx()
+        ctx.user_data["admin_await"] = "block"
+        update = _admin_update(OWNER, text=str(OWNER))
+        await on_input(update, ctx)
+        check("the owner cannot block themselves", OWNER not in ctx.bot_data.get("blocked", set()))
+
+        ctx = _admin_ctx()
+        ctx.user_data["admin_await"] = "block"
+        update = _admin_update(OWNER, text="not a number")
+        await on_input(update, ctx)
+        check("a non-numeric id is refused", not ctx.bot_data.get("blocked"))
+        check("and the panel keeps waiting", ctx.user_data.get("admin_await") == "block")
+
+        ctx = _admin_ctx({"avatar_uses": {77: 2}})
+        ctx.user_data["admin_await"] = "quota"
+        await on_input(_admin_update(OWNER, text="77"), ctx)
+        check("a quota can be reset", 77 not in ctx.bot_data["avatar_uses"])
+
+        # Nothing typed while the panel is idle is ever acted on.
+        ctx = _admin_ctx()
+        await on_input(_admin_update(OWNER, text="123"), ctx)
+        check("idle input is ignored", not ctx.bot_data)
+
+    asyncio.run(self_block())
+
+    # The screens render, and their numbers are the ones in bot_data.
+    store = {"users": {1: {"seen": time.time(), "first": time.time()}},
+             "groups": {-1: {"title": "یک", "seen": time.time()}},
+             "counts": {"quote": 3}}
+    ctx = _admin_ctx(store)
+    check("home reports the totals", "3" in admin._home_text(ctx))
+    check("stats name every kind",
+          all(label in admin._stats_text(ctx) for _, label in admin.KINDS))
+    text, _ = admin._groups_page(ctx, 0)
+    check("groups list themselves", "یک" in text)
+    beyond, _ = admin._groups_page(ctx, 99)
+    check("a page past the end clamps", "صفحهٔ 1 از 1" in beyond)
+    empty, _ = admin._groups_page(_admin_ctx(), 0)
+    check("no groups reads plainly", "هنوز" in empty)
+    check("the log screen renders", "لاگ" in admin._log_text())
+
+    # A group title with markup in it must not reach Telegram as markup.
+    ctx = _admin_ctx({"groups": {-5: {"title": "<b>x</b>", "seen": time.time()}}})
+    text, _ = admin._groups_page(ctx, 0)
+    check("group titles are escaped", "<b>x</b>" not in text and "&lt;b&gt;" in text)
+
+    # The panel is the operator's, so it is in no published menu.
+    listed = {name for lang in i18n.SUPPORTED
+              for name, _ in i18n.COMMANDS[lang] + i18n.PRIVATE_ONLY[lang]}
+    check("admin is unlisted", "admin" not in listed and "panel" not in listed)
+
+
 def main() -> int:
     test_text()
     test_i18n()
@@ -584,6 +744,7 @@ def main() -> int:
     test_animation()
     test_avatars()
     test_bot_logic()
+    test_admin()
     test_quota()
     test_extract()
     test_pack_names()
