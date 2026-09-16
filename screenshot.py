@@ -71,8 +71,8 @@ def _circle(avatar: Image.Image, size: int) -> Image.Image:
     return out
 
 
-def _layout(text: str, font, max_width: int) -> list[str]:
-    lines = textkit.wrap(text, font, max_width)
+def _layout(text: str, font, max_width: int, rtl: bool) -> list[str]:
+    lines = textkit.wrap(text, font, max_width, rtl)
     if len(lines) > MAX_LINES:
         lines = lines[:MAX_LINES]
         lines[-1] = lines[-1] + "…"
@@ -102,8 +102,8 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     badge_font = fonts.load("medium", _px(11))
 
     max_content = _px(MAX_BUBBLE_W - 2 * BUBBLE_PAD_X)
-    lines = _layout(text, text_font, max_content)
-    shaped = [textkit.shape(line) for line in lines]
+    lines = _layout(text, text_font, max_content, rtl)
+    shaped = [textkit.shape(line, rtl) for line in lines]
 
     accent = name_color(seed or name)
     name_shaped = textkit.shape(name)

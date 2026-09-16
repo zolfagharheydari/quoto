@@ -26,21 +26,30 @@ def is_rtl(text: str) -> bool:
     return letters > 0 and rtl / letters > 0.3
 
 
-def shape(text: str) -> str:
-    """Turn a logical-order string into a visual-order, glyph-shaped string."""
-    if not RTL_RE.search(text):
-        return text
+def shape(text: str, rtl: bool | None = None) -> str:
+    """Turn a logical-order string into a visual-order, glyph-shaped string.
+
+    `rtl` forces the base direction. Pass the direction of the whole paragraph
+    when shaping its lines one at a time: a line of nothing but emoji carries no
+    direction of its own, and left to itself would lay out left-to-right in the
+    middle of a Persian quote.
+    """
+    if rtl is None:
+        if not RTL_RE.search(text):
+            return text
+        rtl = True
     # Emoji clusters ride through the bidi pass as single stand-in characters,
     # which keeps them from being reversed and pulled apart.
     masked, mapping = emoji.protect(text)
-    return emoji.restore(get_display(arabic_reshaper.reshape(masked)), mapping)
+    reshaped = arabic_reshaper.reshape(masked)
+    return emoji.restore(get_display(reshaped, base_dir="R" if rtl else "L"), mapping)
 
 
-def width_of(text: str, font) -> float:
-    return emoji.measure(shape(text), font)
+def width_of(text: str, font, rtl: bool | None = None) -> float:
+    return emoji.measure(shape(text, rtl), font)
 
 
-def wrap(text: str, font, max_width: float) -> list[str]:
+def wrap(text: str, font, max_width: float, rtl: bool | None = None) -> list[str]:
     """Greedy word wrap on logical text. Returns logical lines (not yet shaped)."""
     lines: list[str] = []
     for paragraph in text.split("\n"):
@@ -50,15 +59,15 @@ def wrap(text: str, font, max_width: float) -> list[str]:
         current = ""
         for word in paragraph.split(" "):
             candidate = f"{current} {word}".strip()
-            if current and width_of(candidate, font) > max_width:
+            if current and width_of(candidate, font, rtl) > max_width:
                 lines.append(current)
                 current = word
             else:
                 current = candidate
             # A single word longer than the line: hard-break it by characters.
-            while width_of(current, font) > max_width and len(current) > 1:
+            while width_of(current, font, rtl) > max_width and len(current) > 1:
                 cut = len(current) - 1
-                while cut > 1 and width_of(current[:cut], font) > max_width:
+                while cut > 1 and width_of(current[:cut], font, rtl) > max_width:
                     cut -= 1
                 lines.append(current[:cut])
                 current = current[cut:]
@@ -68,7 +77,8 @@ def wrap(text: str, font, max_width: float) -> list[str]:
 
 
 def fit(text: str, font_loader, max_width: float, max_height: float,
-        sizes: range, line_spacing: float = 1.35) -> tuple[list[str], object, int]:
+        sizes: range, line_spacing: float = 1.35,
+        rtl: bool | None = None) -> tuple[list[str], object, int]:
     """Pick the largest font size whose wrapped text fits the box.
 
     `font_loader` is a callable size -> font. Returns (logical lines, font, line_height).
@@ -77,7 +87,7 @@ def fit(text: str, font_loader, max_width: float, max_height: float,
     for size in sizes:  # descending
         font = font_loader(size)
         line_height = int(size * line_spacing)
-        lines = wrap(text, font, max_width)
+        lines = wrap(text, font, max_width, rtl)
         if len(lines) * line_height <= max_height:
             return lines, font, line_height
         best = (lines, font, line_height)

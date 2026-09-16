@@ -41,12 +41,13 @@ class Scene:
     name: str
     name_font: object
     name_y: int
+    rtl: bool = False
     watermark: str = ""
     watermark_font: object = None
     _shaped: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self._shaped = [textkit.shape(line) for line in self.lines]
+        self._shaped = [textkit.shape(line, self.rtl) for line in self.lines]
 
     def render(self, reveal: float = 1.0, author_alpha: float = 1.0) -> Image.Image:
         img = self.background.copy()
@@ -60,7 +61,8 @@ class Scene:
                 break
             visible = logical if budget >= len(logical) else logical[:budget]
             budget -= len(logical)
-            text = self._shaped[i] if visible == logical else textkit.shape(visible)
+            text = (self._shaped[i] if visible == logical
+                    else textkit.shape(visible, self.rtl))
             emoji.draw_line(img, draw, (cx, self.quote_top + i * self.line_height),
                             text, self.quote_font, QUOTE_COLOR, anchor="ma")
 
@@ -137,9 +139,12 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
     name = textkit.normalize_name(name)
     quote = " ".join(quote.split()) if "\n" not in quote else quote.strip()
     rtl = textkit.is_rtl(quote)
-    # Guillemets for Persian, curly quotes for Latin: both are inline in the
-    # text, so they wrap and reorder with it.
-    open_q, close_q = ("«", "»") if rtl else ("“", "”")
+    # Guillemets for Persian, curly quotes for Latin, inline so they wrap with
+    # the text. The Persian pair looks swapped on purpose: python-bidi reverses
+    # the letters but leaves these outermost neutrals where they are, so the one
+    # written first is the one that ends up on the left — and in Persian the
+    # quote opens on the right.
+    open_q, close_q = ("»", "«") if rtl else ("“", "”")
     body = f"{open_q}{quote}{close_q}"
 
     # A Persian quote needs Vazirmatn; a Latin one looks closer to the reference in serif.
@@ -154,7 +159,8 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
     # A long quote used to shrink to 22px, which is unreadable at a glance; 30 is
     # the floor now, and anything that still will not fit is trimmed instead.
     lines, quote_font, line_height = textkit.fit(
-        body, loader, TEXT_W, max_text_h, range(60, 29, -2), line_spacing=1.34
+        body, loader, TEXT_W, max_text_h, range(60, 29, -2), line_spacing=1.34,
+        rtl=rtl,
     )
     max_lines = max(1, max_text_h // line_height)
     if len(lines) > max_lines:
@@ -172,6 +178,7 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
         quote_font=quote_font,
         line_height=line_height,
         quote_top=top,
+        rtl=rtl,
         name=f"- {name}" if not rtl else f"— {name}",
         name_font=name_font,
         name_y=name_y,

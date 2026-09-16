@@ -55,10 +55,16 @@ def _thumbnail(data: bytes) -> io.BytesIO | None:
 
 
 async def _chat_photo(bot: Bot, chat: Chat) -> bytes | None:
-    if chat.photo is None:
-        return None
+    """The group's picture, for the pack thumbnail.
+
+    The Chat that arrives on a message is a partial one and never carries a
+    photo, so it has to be asked for separately.
+    """
     try:
-        file = await bot.get_file(chat.photo.big_file_id)
+        full = await bot.get_chat(chat.id)
+        if full.photo is None:
+            return None
+        file = await bot.get_file(full.photo.big_file_id)
         return bytes(await file.download_as_bytearray())
     except TelegramError as exc:
         log.info("no chat photo for the pack thumbnail: %s", exc)
