@@ -62,14 +62,18 @@ def _from_chat(chat) -> Author:
                   chat.id, "chat", str(chat.id))
 
 
-async def fetch_avatar(bot: Bot, author: Author,
-                       custom_file_id: str | None = None) -> Image.Image:
+SOURCES = ("custom", "profile", "public", "letter")
+DEFAULT_SOURCE = "profile"
+
+
+async def fetch_avatar(bot: Bot, author: Author, custom_file_id: str | None = None,
+                       source: str = DEFAULT_SOURCE) -> Image.Image:
     """Profile photo as a PIL image, or a generated fallback tile.
 
-    `custom_file_id` is a picture the author chose for themselves; it beats
-    whatever Telegram would show.
+    `source` is what this author asked to be shown: their own uploaded picture,
+    their Telegram profile photo, the public one, or just their initial.
     """
-    data, source = await _avatar_bytes(bot, author, custom_file_id)
+    data, source = await _avatar_bytes(bot, author, custom_file_id, source)
     log.info("avatar for %s: %s", author.seed, source)
     if data:
         try:
@@ -80,11 +84,11 @@ async def fetch_avatar(bot: Bot, author: Author,
     return render.fallback_avatar(author.seed, letter.upper())
 
 
-async def avatar_source(bot: Bot, author: Author,
-                        custom_file_id: str | None = None) -> str:
+async def avatar_source(bot: Bot, author: Author, custom_file_id: str | None = None,
+                        source: str = DEFAULT_SOURCE) -> str:
     """Where this author's picture would come from. For diagnostics."""
-    _, source = await _avatar_bytes(bot, author, custom_file_id)
-    return source
+    _, label = await _avatar_bytes(bot, author, custom_file_id, source)
+    return label
 
 
 async def _cached(key: str, label: str, fetch) -> tuple[bytes | None, str]:
@@ -131,35 +135,43 @@ async def _public_photo(bot: Bot, chat_id: int) -> bytes | None:
     return await _download(bot, chat.photo.big_file_id)
 
 
-async def _avatar_bytes(bot: Bot, author: Author,
-                        custom_file_id: str | None = None) -> tuple[bytes | None, str]:
+async def _avatar_bytes(bot: Bot, author: Author, custom_file_id: str | None = None,
+                        source: str = DEFAULT_SOURCE) -> tuple[bytes | None, str]:
     """Best available picture, and a label saying where it came from."""
-    if custom_file_id:
+    if source == "letter":
+        return None, "initial (chosen)"
+    if source == "custom" and custom_file_id:
         # Keyed by the file itself, so choosing a new picture misses the cache
         # rather than needing the old entry hunted down and removed.
-        data, source = await _cached(f"custom:{custom_file_id}", "chosen photo",
-                                     lambda: _download(bot, custom_file_id))
+        data, label = await _cached(f"custom:{custom_file_id}", "chosen photo",
+                                    lambda: _download(bot, custom_file_id))
         if data:
-            return data, source
+            return data, label
         log.info("chosen photo for %s is gone; falling back", author.seed)
     if author.avatar_key is None:
         return None, "none (no account to look up)"
-    key = f"{author.kind}:{author.avatar_key}"
+
+    if author.kind != "user":
+        attempts = [("chat photo", _public_photo)]
+    elif source == "public":
+        # Asked for the public one specifically, so do not fall back to the other.
+        attempts = [("public photo", _public_photo)]
+    else:
+        attempts = [("profile photo", _newest_profile_photo),
+                    ("public photo", _public_photo)]
+
+    # The chain differs by source, so it has to be part of the key: a "public
+    # only" answer must not be served to someone who asked for the full chain.
+    key = f"{author.kind}:{author.avatar_key}:{attempts[0][0]}"
     hit = _avatar_cache.get(key)
     if hit:
-        age, data, source = time.time() - hit[0], hit[1], hit[2]
+        age, cached, cached_label = time.time() - hit[0], hit[1], hit[2]
         # Re-check a miss sooner: the user may have just opened their photo up.
-        if age < (_AVATAR_TTL if data else _AVATAR_MISS_TTL):
-            return data, f"{source} (cached)"
-
-    attempts = (
-        [("profile photo", _newest_profile_photo), ("public photo", _public_photo)]
-        if author.kind == "user"
-        else [("chat photo", _public_photo)]
-    )
+        if age < (_AVATAR_TTL if cached else _AVATAR_MISS_TTL):
+            return cached, f"{cached_label} (cached)"
 
     data: bytes | None = None
-    source = "none (nothing visible to the bot)"
+    found = "none (nothing visible to the bot)"
     for label, getter in attempts:
         try:
             data = await getter(bot, author.avatar_key)
@@ -167,8 +179,8 @@ async def _avatar_bytes(bot: Bot, author: Author,
             log.info("%s unavailable for %s: %s", label, key, exc)
             continue
         if data:
-            source = label
+            found = label
             break
 
-    _avatar_cache[key] = (time.time(), data, source)
-    return data, source
+    _avatar_cache[key] = (time.time(), data, found)
+    return data, found

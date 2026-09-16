@@ -176,11 +176,23 @@ async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         log.info("could not greet %s: %s", member.chat.id, exc)
 
 
-def _chosen_avatar(context: ContextTypes.DEFAULT_TYPE, author: authors.Author) -> str | None:
-    """The picture this author set for themselves, if any."""
+AVATAR_QUOTA = 2   # how many times one person may choose a picture, ever
+
+
+def _avatar_choice(context: ContextTypes.DEFAULT_TYPE,
+                   author: authors.Author) -> tuple[str | None, str]:
+    """(their chosen file, the source they asked to be shown)."""
     if author.kind != "user" or author.avatar_key is None:
-        return None
-    return context.bot_data.get("avatars", {}).get(author.avatar_key)
+        return None, authors.DEFAULT_SOURCE
+    uid = author.avatar_key
+    file_id = context.bot_data.get("avatars", {}).get(uid)
+    source = context.bot_data.get("avatar_source", {}).get(uid)
+    if source not in authors.SOURCES:
+        # Someone who uploaded a picture meant it to be used.
+        source = "custom" if file_id else authors.DEFAULT_SOURCE
+    if source == "custom" and not file_id:
+        source = authors.DEFAULT_SOURCE
+    return file_id, source
 
 
 def _photo_file_id(message: Message | None) -> str | None:
@@ -217,8 +229,59 @@ async def cmd_avatar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await message.reply_html(i18n.t("avatar_how", lang))
         return
 
+    used = context.bot_data.setdefault("avatar_uses", {}).get(user_id, 0)
+    if used >= AVATAR_QUOTA:
+        await message.reply_text(
+            i18n.t("avatar_quota_spent", lang).format(quota=AVATAR_QUOTA)
+        )
+        return
+
     avatars[user_id] = file_id
-    await message.reply_text(i18n.t("avatar_saved", lang))
+    used += 1
+    context.bot_data["avatar_uses"][user_id] = used
+    context.bot_data.setdefault("avatar_source", {})[user_id] = "custom"
+    key = "avatar_saved_last" if used >= AVATAR_QUOTA else "avatar_saved"
+    await message.reply_text(i18n.t(key, lang).format(used=used, quota=AVATAR_QUOTA))
+
+
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Let someone say which picture should stand for them."""
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    if message.chat.type != "private":
+        await message.reply_text(i18n.t("avatar_private_only", lang))
+        return
+
+    user_id = update.effective_user.id
+    has_custom = bool(context.bot_data.get("avatars", {}).get(user_id))
+    _, current = _avatar_choice(
+        context, authors.Author("", "", user_id, "user", str(user_id))
+    )
+    rows = []
+    for source in authors.SOURCES:
+        if source == "custom" and not has_custom:
+            continue
+        mark = "✅ " if source == current else ""
+        rows.append([InlineKeyboardButton(
+            mark + i18n.t(f"src_{source}", lang), callback_data=f"src:{source}"
+        )])
+    await message.reply_text(
+        i18n.t("settings_prompt", lang), reply_markup=InlineKeyboardMarkup(rows)
+    )
+
+
+async def on_source_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    source = query.data.split(":", 1)[1]
+    lang = i18n.resolve(update, context.user_data)
+    if source not in authors.SOURCES:
+        await query.answer()
+        return
+    context.bot_data.setdefault("avatar_source", {})[update.effective_user.id] = source
+    await query.answer()
+    await query.edit_message_text(
+        i18n.t("settings_set", lang).format(choice=i18n.t(f"src_{source}", lang))
+    )
 
 
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -254,7 +317,7 @@ async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     who = authors.resolve(target or message)
     lines += [
         f"quoting: {who.name} (@{who.handle or '-'})",
-        f"avatar: {await authors.avatar_source(context.bot, who, _chosen_avatar(context, who))}",
+        f"avatar: {await authors.avatar_source(context.bot, who, *_avatar_choice(context, who))}",
     ]
     await message.reply_text(chr(10).join(lines))
 
@@ -263,7 +326,7 @@ async def _build_scene(update: Update, context: ContextTypes.DEFAULT_TYPE,
                        target: Message, text: str):
     author = authors.resolve(target)
     avatar = await authors.fetch_avatar(
-        context.bot, author, _chosen_avatar(context, author)
+        context.bot, author, *_avatar_choice(context, author)
     )
     return await asyncio.to_thread(
         render.build_scene, avatar, text, author.name, WATERMARK
@@ -433,7 +496,7 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         author = authors.resolve(target)
         avatar = await authors.fetch_avatar(
-            context.bot, author, _chosen_avatar(context, author)
+            context.bot, author, *_avatar_choice(context, author)
         )
         badge = await _badge(context.bot, message.chat, author,
                              i18n.resolve(update, context.user_data))
@@ -524,6 +587,8 @@ def main() -> None:
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler("pack", cmd_pack))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
+    app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
+    app.add_handler(CallbackQueryHandler(on_source_choice, pattern=r"^src:"))
     # A photo captioned /avatar: CommandHandler only ever looks at message text.
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & (filters.PHOTO | filters.Document.IMAGE)

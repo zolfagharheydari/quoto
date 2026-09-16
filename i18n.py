@@ -64,7 +64,7 @@ Full guide: /help""",
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
 
 <b>عکس دلخواه</b>
-هر کس می‌تواند در چت خصوصی من با <code>/avatar</code> عکسی انتخاب کند که روی کوت‌هایش بنشیند.
+هر کس می‌تواند در چت خصوصی من با <code>/avatar</code> عکسی انتخاب کند که روی کوت‌هایش بنشیند (۲ بار)، و با <code>/settings</code> بگوید کدام عکس نماینده‌اش باشد.
 
 <b>استیکرپک گروه</b>
 هر استیکری که اینجا ساخته شود، در یک پک به نام همین گروه جمع می‌شود.
@@ -92,7 +92,7 @@ As a reply, instead of a command:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
 
 <b>Your own picture</b>
-Anyone can set a picture for their quotes with <code>/avatar</code> in my private chat.
+Anyone can set a picture for their quotes with <code>/avatar</code> in my private chat (twice), and choose which picture stands for them with <code>/settings</code>.
 
 <b>This group's sticker pack</b>
 Every sticker made here joins a pack named after the group.
@@ -148,13 +148,25 @@ Full guide: /help""",
 در چت خصوصی من عکس را بفرست و در کپشنش بنویس <code>/avatar</code>، یا عکس را بفرست و بعد رویش ریپلای کن و <code>/avatar</code> بزن.
 <code>/avatar off</code> دوباره عکس پروفایل تلگرامت را برمی‌گرداند.
 
+⚠️ <b>هر کاربر فقط ۲ بار</b> می‌تواند عکس دلخواه انتخاب کند. بعد از هر انتخاب می‌گویم چند سهمیه‌ات مانده، و وقتی تمام شد دیگر عکس جدیدی پذیرفته نمی‌شود. پاک کردن با <code>/avatar off</code> سهمیه مصرف نمی‌کند.
+
+➑ <b>انتخاب اینکه چه عکسی نمایندهٔ توست</b>
+<code>/settings</code> در چت خصوصی، و از بین این‌ها یکی را بزن:
+• عکسی که خودت فرستادی
+• عکس پروفایل تلگرامت
+• عکس پابلیک پروفایلت
+• فقط حرف اول اسمت
+
+هر وقت خواستی می‌توانی عوضش کنی؛ این انتخاب سهمیه‌ای ندارد.
+
 <b>📋 همه‌ی دستورها</b>
 <code>/quote</code> — از پیام ریپلای‌شده کارت نقل‌قول می‌سازد
 <code>/sticker</code> — همان کارت، به شکل استیکر
 <code>/gif</code> — همان کارت، به شکل گیف با افکت تایپ
 <code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
 <code>/pack</code> — لینک استیکرپک این گروه
-<code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی)
+<code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
+<code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
 <code>/lang</code> — تغییر زبان ربات
 <code>/help</code> — همین راهنما
 
@@ -208,13 +220,25 @@ You can pick a picture to use instead of your profile photo — on quotes you ma
 In my private chat, send the photo with <code>/avatar</code> as its caption, or send it and then reply to it with <code>/avatar</code>.
 <code>/avatar off</code> goes back to your Telegram profile photo.
 
+⚠️ <b>Two changes each, ever.</b> I tell you how many you have left after each one, and once they are gone no new picture is accepted. Clearing with <code>/avatar off</code> costs nothing.
+
+➑ <b>Choosing which picture stands for you</b>
+Send <code>/settings</code> in my private chat and pick one:
+• the picture you sent
+• your Telegram profile photo
+• your public profile photo
+• just the first letter of your name
+
+Change it whenever you like; this one has no limit.
+
 <b>📋 Every command</b>
 <code>/quote</code> — a quote card from the replied-to message
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — the same card, animated
 <code>/screenshot</code> — the message as a Telegram screenshot
 <code>/pack</code> — the link to this group's sticker pack
-<code>/avatar</code> — your own picture for your quotes (private chat only)
+<code>/avatar</code> — your own picture for your quotes (private chat, twice)
+<code>/settings</code> — choose which picture stands for you
 <code>/lang</code> — change the bot's language
 <code>/help</code> — this guide
 
@@ -230,10 +254,32 @@ Or set a picture with <code>/avatar</code> and your Telegram settings stop matte
     },
     "avatar_saved": {
         "fa": """عکس دلخواهت ذخیره شد ✅
-از این به بعد روی هر کوتی که به اسم توست همین می‌آید.""",
+شما {used} سهمیه از {quota} سهمیه خود را استفاده کردید.""",
         "en": """Saved ✅
-From now on this is the picture on quotes attributed to you.""",
+You have used {used} of your {quota} changes.""",
     },
+    "avatar_saved_last": {
+        "fa": """عکس دلخواهت ذخیره شد ✅
+شما {used} سهمیه از {quota} سهمیه خود را استفاده کردید و دیگر قادر به انتخاب آواتار جدید نیستید.""",
+        "en": """Saved ✅
+You have used {used} of your {quota} changes, and cannot choose a new avatar again.""",
+    },
+    "avatar_quota_spent": {
+        "fa": "سهمیه‌ات تمام شده است. هر کاربر فقط {quota} بار می‌تواند عکس دلخواه انتخاب کند.",
+        "en": "Your changes are used up. Each person may choose a picture {quota} times.",
+    },
+    "settings_prompt": {
+        "fa": "عکس روی کوت‌هایت از کجا بیاید؟",
+        "en": "Which picture should stand for you on your quotes?",
+    },
+    "settings_set": {
+        "fa": "انجام شد ✅ از این به بعد: {choice}",
+        "en": "Done ✅ From now on: {choice}",
+    },
+    "src_custom": {"fa": "عکسی که خودم فرستادم", "en": "The picture I sent"},
+    "src_profile": {"fa": "عکس پروفایل تلگرامم", "en": "My Telegram profile photo"},
+    "src_public": {"fa": "عکس پابلیک پروفایلم", "en": "My public profile photo"},
+    "src_letter": {"fa": "فقط حرف اول اسمم", "en": "Just the first letter of my name"},
     "avatar_cleared": {
         "fa": "عکس دلخواهت پاک شد. دوباره از عکس پروفایل تلگرامت استفاده می‌کنم.",
         "en": "Cleared. I'll go back to your Telegram profile photo.",
@@ -345,11 +391,13 @@ Meanwhile you can type: /quote any text you like""",
 PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     "fa": [
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
+        ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
     "en": [
         ("avatar", "Pick your own picture for your quotes"),
+        ("settings", "Choose which picture stands for you"),
         ("lang", "Change language"),
         ("help", "Help"),
     ],
