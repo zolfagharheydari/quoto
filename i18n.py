@@ -143,6 +143,7 @@ Full guide: /help""",
 <code>/gif</code> — همان کارت، به شکل گیف با افکت تایپ
 <code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
 <code>/pack</code> — لینک استیکرپک این گروه
+<code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی)
 <code>/lang</code> — تغییر زبان ربات
 <code>/help</code> — همین راهنما
 
@@ -196,6 +197,7 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 <code>/gif</code> — the same card, animated
 <code>/screenshot</code> — the message as a Telegram screenshot
 <code>/pack</code> — the link to this group's sticker pack
+<code>/avatar</code> — your own picture for your quotes (private chat only)
 <code>/lang</code> — change the bot's language
 <code>/help</code> — this guide
 
@@ -207,6 +209,42 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 
 <b>If the profile photo is missing from the card</b>
 Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
+    },
+    "avatar_saved": {
+        "fa": """عکس دلخواهت ذخیره شد ✅
+از این به بعد روی هر کوتی که به اسم توست همین می‌آید.""",
+        "en": """Saved ✅
+From now on this is the picture on quotes attributed to you.""",
+    },
+    "avatar_cleared": {
+        "fa": "عکس دلخواهت پاک شد. دوباره از عکس پروفایل تلگرامت استفاده می‌کنم.",
+        "en": "Cleared. I'll go back to your Telegram profile photo.",
+    },
+    "avatar_none": {
+        "fa": "عکس دلخواهی نداری که پاک کنم.",
+        "en": "You have no chosen picture to clear.",
+    },
+    "avatar_private_only": {
+        "fa": "این دستور فقط در چت خصوصی من کار می‌کند.",
+        "en": "This command only works in my private chat.",
+    },
+    "avatar_how": {
+        "fa": """با این دستور می‌توانی عکسی انتخاب کنی که به‌جای عکس پروفایلت روی کوت‌ها بنشیند.
+
+<b>چطور:</b>
+عکس را برایم بفرست و در کپشنش بنویس <code>/avatar</code>
+یا عکس را بفرست، بعد روی آن ریپلای کن و <code>/avatar</code> بزن.
+
+<b>برای برگشتن به عکس پروفایل تلگرام:</b>
+<code>/avatar off</code>""",
+        "en": """This lets you pick a picture to use on your quotes instead of your profile photo.
+
+<b>How:</b>
+Send me the photo with <code>/avatar</code> as its caption,
+or send the photo, then reply to it with <code>/avatar</code>.
+
+<b>To go back to your Telegram profile photo:</b>
+<code>/avatar off</code>""",
     },
     "need_start": {
         "fa": """برای استفاده از من، اول باید یک بار مرا استارت کنی.
@@ -288,10 +326,12 @@ Meanwhile you can type: /quote any text you like""",
 # offered in private chats only.
 PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     "fa": [
+        ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
     "en": [
+        ("avatar", "Pick your own picture for your quotes"),
         ("lang", "Change language"),
         ("help", "Help"),
     ],

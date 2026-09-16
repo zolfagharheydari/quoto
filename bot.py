@@ -176,6 +176,51 @@ async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         log.info("could not greet %s: %s", member.chat.id, exc)
 
 
+def _chosen_avatar(context: ContextTypes.DEFAULT_TYPE, author: authors.Author) -> str | None:
+    """The picture this author set for themselves, if any."""
+    if author.kind != "user" or author.avatar_key is None:
+        return None
+    return context.bot_data.get("avatars", {}).get(author.avatar_key)
+
+
+def _photo_file_id(message: Message | None) -> str | None:
+    """The best-resolution photo on a message, if it carries one."""
+    if message is None:
+        return None
+    if message.photo:
+        return message.photo[-1].file_id
+    doc = message.document
+    if doc is not None and (doc.mime_type or "").startswith("image/"):
+        return doc.file_id
+    return None
+
+
+async def cmd_avatar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Let someone pin a picture of their own to every quote attributed to them."""
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    if message.chat.type != "private":
+        await message.reply_text(i18n.t("avatar_private_only", lang))
+        return
+
+    user_id = update.effective_user.id
+    avatars = context.bot_data.setdefault("avatars", {})
+    args = [a.lower() for a in (getattr(context, "args", None) or [])]
+
+    if args and args[0] in ("off", "remove", "clear", "none", "حذف", "پاک"):
+        key = "avatar_cleared" if avatars.pop(user_id, None) else "avatar_none"
+        await message.reply_text(i18n.t(key, lang))
+        return
+
+    file_id = _photo_file_id(message) or _photo_file_id(message.reply_to_message)
+    if file_id is None:
+        await message.reply_html(i18n.t("avatar_how", lang))
+        return
+
+    avatars[user_id] = file_id
+    await message.reply_text(i18n.t("avatar_saved", lang))
+
+
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Report what actually arrived, so a silent failure can be diagnosed.
 
@@ -209,14 +254,17 @@ async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     who = authors.resolve(target or message)
     lines += [
         f"quoting: {who.name} (@{who.handle or '-'})",
-        f"avatar: {await authors.avatar_source(context.bot, who)}",
+        f"avatar: {await authors.avatar_source(context.bot, who, _chosen_avatar(context, who))}",
     ]
     await message.reply_text(chr(10).join(lines))
 
 
-async def _build_scene(update: Update, target: Message, text: str):
+async def _build_scene(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                       target: Message, text: str):
     author = authors.resolve(target)
-    avatar = await authors.fetch_avatar(update.get_bot(), author)
+    avatar = await authors.fetch_avatar(
+        context.bot, author, _chosen_avatar(context, author)
+    )
     return await asyncio.to_thread(
         render.build_scene, avatar, text, author.name, WATERMARK
     )
@@ -261,7 +309,7 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
-        scene = await _build_scene(update, target, text)
+        scene = await _build_scene(update, context, target, text)
         image = await asyncio.to_thread(scene.render)
         buf = await asyncio.to_thread(render.to_png, image)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
@@ -292,7 +340,7 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     message = update.effective_message
     await message.chat.send_action(ChatAction.CHOOSE_STICKER)
     try:
-        scene = await _build_scene(update, target, text)
+        scene = await _build_scene(update, context, target, text)
         image = await asyncio.to_thread(scene.render)
         buf = await asyncio.to_thread(render.to_sticker_webp, image)
         webp = buf.getvalue()
@@ -333,7 +381,7 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message = update.effective_message
     await message.chat.send_action(ChatAction.UPLOAD_VIDEO)
     try:
-        scene = await _build_scene(update, target, text)
+        scene = await _build_scene(update, context, target, text)
         buf, ext = await asyncio.to_thread(animate.to_animation, scene)
         await message.reply_animation(
             buf, filename=f"quote.{ext}", reply_to_message_id=target.message_id
@@ -384,7 +432,9 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
         author = authors.resolve(target)
-        avatar = await authors.fetch_avatar(context.bot, author)
+        avatar = await authors.fetch_avatar(
+            context.bot, author, _chosen_avatar(context, author)
+        )
         badge = await _badge(context.bot, message.chat, author,
                              i18n.resolve(update, context.user_data))
         image = await asyncio.to_thread(
@@ -473,6 +523,11 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler("pack", cmd_pack))
+    app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
+    # A photo captioned /avatar: CommandHandler only ever looks at message text.
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & (filters.PHOTO | filters.Document.IMAGE)
+        & filters.CaptionRegex(r"(?i)^/avat"), cmd_avatar))
     # The menu lists the first name of each; the rest are common misspellings,
     # unlisted, so a slip of the fingers still does what was meant.
     app.add_handler(CommandHandler(

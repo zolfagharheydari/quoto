@@ -103,8 +103,9 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             seed=str(query.from_user.id),
         )
 
+        chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
         try:
-            avatar = await authors.fetch_avatar(context.bot, author)
+            avatar = await authors.fetch_avatar(context.bot, author, chosen)
             scene = await asyncio.to_thread(
                 render.build_scene, avatar, text, author.name, watermark
             )
