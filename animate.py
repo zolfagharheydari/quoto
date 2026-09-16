@@ -53,15 +53,19 @@ def _timeline(scene: Scene) -> tuple[int, int, int, int]:
     )
 
 
-def _frames(scene: Scene) -> list[Image.Image]:
+def _iter_frames(scene: Scene):
+    """Yield the frames one at a time, so only one need be held at once."""
     lead, typing, fade, hold = _timeline(scene)
-    out = []
     for i in range(lead + typing + fade + hold):
         reveal = (i - lead) / typing
         author = (i - lead - typing) / fade
         frame = scene.render(reveal=reveal, author_alpha=author)
-        out.append(frame.resize((ANIM_W, ANIM_H), Image.LANCZOS))
-    return out
+        yield frame.resize((ANIM_W, ANIM_H), Image.LANCZOS)
+
+
+def _frames(scene: Scene) -> list[Image.Image]:
+    # The GIF encoder needs them all at once to share one palette.
+    return list(_iter_frames(scene))
 
 
 def to_gif(scene: Scene) -> io.BytesIO:
@@ -82,29 +86,36 @@ def to_mp4(scene: Scene) -> io.BytesIO | None:
     exe = _ffmpeg()
     if not exe:
         return None
-    frames = _frames(scene)
     with tempfile.TemporaryDirectory() as tmp:
+        # The frames go to a file rather than down a pipe. Feeding ~85 MB into
+        # stdin while nothing drains stderr deadlocks the moment ffmpeg writes
+        # more than the pipe buffer, and the timeout below would never be
+        # reached because the wait happens after the write.
+        raw = Path(tmp) / "frames.rgb"
         out = Path(tmp) / "quote.mp4"
+        with raw.open("wb") as handle:
+            for frame in _iter_frames(scene):
+                handle.write(frame.convert("RGB").tobytes())
+
         cmd = [
             exe, "-y", "-loglevel", "error",
             "-f", "rawvideo", "-pix_fmt", "rgb24",
-            "-s", f"{ANIM_W}x{ANIM_H}", "-r", str(FPS), "-i", "pipe:0",
+            "-s", f"{ANIM_W}x{ANIM_H}", "-r", str(FPS), "-i", str(raw),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             str(out),
         ]
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            for frame in frames:
-                proc.stdin.write(frame.convert("RGB").tobytes())
-            proc.stdin.close()
-        except BrokenPipeError:
-            pass
-        _, err = proc.communicate(timeout=120)
-        if proc.returncode != 0 or not out.exists():
-            log.warning("ffmpeg failed: %s", err.decode("utf-8", "ignore")[:500])
+            done = subprocess.run(cmd, capture_output=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            log.warning("ffmpeg timed out after 180s")
             return None
-        return io.BytesIO(out.read_bytes())
+        if done.returncode != 0 or not out.exists():
+            log.warning("ffmpeg failed: %s",
+                        done.stderr.decode("utf-8", "ignore")[:500])
+            return None
+        data = out.read_bytes()
+        return io.BytesIO(data) if data else None
 
 
 def to_animation(scene: Scene) -> tuple[io.BytesIO, str]:
