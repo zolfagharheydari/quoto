@@ -77,7 +77,11 @@ async def fetch_avatar(bot: Bot, author: Author, custom_file_id: str | None = No
     log.info("avatar for %s: %s", author.seed, source)
     if data:
         try:
-            return Image.open(io.BytesIO(data))
+            image = Image.open(io.BytesIO(data))
+            # open() is lazy; force the decode here so a malformed or oversized
+            # picture fails inside this guard rather than deep in the renderer.
+            image.load()
+            return image
         except Exception:  # noqa: BLE001 - malformed avatars shouldn't kill the request
             log.warning("could not decode avatar for %s", author.seed)
     letter = next((c for c in author.name if c.isalnum()), "?")

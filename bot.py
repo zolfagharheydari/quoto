@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import time
 import re
 import os
 from datetime import datetime, timedelta, timezone
@@ -197,6 +198,21 @@ async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         log.info("could not greet %s: %s", member.chat.id, exc)
 
 
+# Rendering costs a second or two of CPU, and updates are handled one at a time,
+# so one person holding the command down would starve a whole group. Two seconds
+# is invisible in ordinary use and enough to stop that.
+RENDER_COOLDOWN = 2.0
+
+
+def _too_soon(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    last = context.user_data.get("last_render", 0.0)
+    now = time.monotonic()
+    if now - last < RENDER_COOLDOWN:
+        return True
+    context.user_data["last_render"] = now
+    return False
+
+
 AVATAR_QUOTA = 2   # how many times one person may choose a picture, ever
 
 
@@ -361,6 +377,9 @@ async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     and what we reply under, so "/q some words" quotes the sender themselves.
     """
     if not await _require_start(update, context):
+        return None
+    if _too_soon(context):
+        log.info("ignoring a burst from %s", update.effective_user.id)
         return None
     message = update.effective_message
     target = message.reply_to_message

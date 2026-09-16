@@ -10,6 +10,11 @@ from PIL import Image, ImageDraw, ImageEnhance
 import fonts
 import textkit
 
+# Pillow only refuses an image above ~178 megapixels and merely warns between 89
+# and 178, so a 300 KB PNG can still force a 330 MB decode. A picture of a person
+# is never near this, and anything past it is refused before a byte is decoded.
+Image.MAX_IMAGE_PIXELS = 40_000_000
+
 WIDTH, HEIGHT = 1200, 675
 PHOTO_W = int(WIDTH * 0.46)          # portrait occupies the left ~46%
 FADE_START = 0.52                    # fraction of PHOTO_W where the fade to black begins

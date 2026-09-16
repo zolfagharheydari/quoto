@@ -428,6 +428,155 @@ def test_api() -> None:
     asyncio.run(run())
 
 
+# --------------------------------------------------------------------------- security
+def test_security() -> None:
+    section("access and isolation")
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+
+    # Identity must always come from the update, never from anything a user typed.
+    # The right-hand side is read directly: a lookahead here would be defeated by
+    # \s* matching nothing and testing the space instead of the value.
+    assigned = re.findall(r"user_id\s*=\s*([A-Za-z_][\w.]*)", source)
+    forged = [rhs for rhs in assigned
+              if rhs not in {"owner_id", "OWNER_ID"}
+              and not rhs.startswith(("update.", "user.", "query."))]
+    check("no user id taken from input", not forged, str(forged))
+
+    # Only static catalogue strings may be parsed as HTML.
+    html_calls = re.findall(r"reply_html\(([^)]*)\)|parse_mode=\"HTML\"", source)
+    check("html is only sent for catalogue text",
+          all("i18n.t" in c or "text" == c.strip() for c in html_calls if c),
+          str(html_calls))
+
+    class Msg:
+        def __init__(self, chat_type):
+            self.chat = types.SimpleNamespace(type=chat_type)
+            self.photo = [types.SimpleNamespace(file_id="X")]
+            self.document = None
+            self.reply_to_message = None
+            self.out = []
+            self.markup = None
+
+        async def reply_text(self, text, reply_markup=None, **kwargs):
+            self.out.append(text)
+            self.markup = reply_markup
+
+        async def reply_html(self, text, **kwargs):
+            self.out.append(text)
+
+    def update_for(message, user_id=7):
+        return types.SimpleNamespace(
+            effective_message=message,
+            effective_user=types.SimpleNamespace(id=user_id, language_code="fa"))
+
+    async def run():
+        # Personal settings cannot be changed from a group.
+        store = {}
+        group = Msg("supergroup")
+        await bot.cmd_avatar(update_for(group),
+                             types.SimpleNamespace(bot_data=store, user_data={}, args=[]))
+        check("avatar refused in a group", not store.get("avatars"))
+        group2 = Msg("supergroup")
+        await bot.cmd_settings(update_for(group2),
+                               types.SimpleNamespace(bot_data=store, user_data={}, args=[]))
+        check("settings refused in a group", group2.markup is None)
+
+        # One person's picture cannot be set by another.
+        store = {}
+        for uid in (11, 22):
+            private = Msg("private")
+            await bot.cmd_avatar(update_for(private, uid),
+                                 types.SimpleNamespace(bot_data=store, user_data={}, args=[]))
+        check("pictures stored per user", set(store["avatars"]) == {11, 22})
+        check("quota counted per user",
+              store["avatar_uses"] == {11: 1, 22: 1}, str(store["avatar_uses"]))
+
+        # A crafted callback value must not become a source.
+        edited = []
+
+        async def noop(*args, **kwargs):
+            pass
+
+        async def edit(text, **kwargs):
+            edited.append(text)
+
+        query = types.SimpleNamespace(data="src:../../etc/passwd",
+                                      answer=noop, edit_message_text=edit)
+        ctx = types.SimpleNamespace(bot_data=store, user_data={}, args=[])
+        await bot.on_source_choice(
+            types.SimpleNamespace(callback_query=query,
+                                  effective_user=types.SimpleNamespace(id=11, language_code="fa")),
+            ctx)
+        # Uploading set it to "custom"; a bogus callback must leave that alone.
+        check("bad callback value rejected",
+              store.get("avatar_source", {}).get(11) == "custom" and not edited,
+              str(store.get("avatar_source")))
+
+        # /debug answers nobody but the operator.
+        saved = bot.OWNER_ID
+        try:
+            bot.OWNER_ID = 999
+            stranger = Msg("private")
+            stranger.reply_to_message = None
+            await bot.cmd_debug(update_for(stranger, 7),
+                                types.SimpleNamespace(bot_data={}, user_data={}, args=[]))
+            check("debug ignores strangers", not stranger.out)
+        finally:
+            bot.OWNER_ID = saved
+
+    asyncio.run(run())
+
+    # A decompression bomb must never reach the renderer.
+    from PIL import Image as PILImage
+    check("image size is capped", PILImage.MAX_IMAGE_PIXELS <= 50_000_000,
+          str(PILImage.MAX_IMAGE_PIXELS))
+
+    bomb = io.BytesIO()
+    Image.new("RGB", (9000, 9000)).save(bomb, "PNG")
+    payload = bomb.getvalue()
+
+    class FakeFile:
+        async def download_as_bytearray(self):
+            return bytearray(payload)
+
+    class FakeBot:
+        async def get_file(self, file_id):
+            return FakeFile()
+
+        async def get_user_profile_photos(self, user_id, limit=1):
+            return types.SimpleNamespace(
+                total_count=1, photos=[[types.SimpleNamespace(file_id="x")]])
+
+        async def get_chat(self, chat_id):
+            return types.SimpleNamespace(photo=None)
+
+    async def bomb_run():
+        authors._avatar_cache.clear()
+        author = authors.Author("SAli", "sali", 555, "user", "555")
+        image = await authors.fetch_avatar(FakeBot(), author)
+        return image.size
+
+    check("oversized picture falls back", asyncio.run(bomb_run()) == (640, 640))
+
+    # One person cannot monopolise the renderer.
+    ctx = types.SimpleNamespace(user_data={})
+    first = bot._too_soon(ctx)
+    second = bot._too_soon(ctx)
+    check("first render allowed", not first)
+    check("burst suppressed", second)
+
+    # The token must not be written anywhere the repository tracks.
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    check(".env is ignored", ".env" in ignored)
+    check("state file is ignored", "botdata.pkl" in ignored)
+    # Naming the setting in an error message is fine; printing its value is not.
+    leaks = [line.strip() for line in source.splitlines()
+             if re.search(r"(log\.\w+|print|reply_text|send_message|SystemExit)"
+                          r".*\bTOKEN\b(?!_)", line)
+             and "os.getenv" not in line]
+    check("token value never printed", not leaks, str(leaks))
+
+
 def main() -> int:
     test_text()
     test_i18n()
@@ -439,6 +588,7 @@ def main() -> int:
     test_extract()
     test_pack_names()
     test_fonts()
+    test_security()
     if "--api" in sys.argv:
         test_api()
 
