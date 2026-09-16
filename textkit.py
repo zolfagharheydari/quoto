@@ -15,8 +15,6 @@ import unicodedata
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-import emoji
-
 RTL_RE = re.compile(r"[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 def is_rtl(text: str) -> bool:
@@ -38,15 +36,11 @@ def shape(text: str, rtl: bool | None = None) -> str:
         if not RTL_RE.search(text):
             return text
         rtl = True
-    # Emoji clusters ride through the bidi pass as single stand-in characters,
-    # which keeps them from being reversed and pulled apart.
-    masked, mapping = emoji.protect(text)
-    reshaped = arabic_reshaper.reshape(masked)
-    return emoji.restore(get_display(reshaped, base_dir="R" if rtl else "L"), mapping)
+    return get_display(arabic_reshaper.reshape(text), base_dir="R" if rtl else "L")
 
 
 def width_of(text: str, font, rtl: bool | None = None) -> float:
-    return emoji.measure(shape(text, rtl), font)
+    return font.getlength(shape(text, rtl))
 
 
 def wrap(text: str, font, max_width: float, rtl: bool | None = None) -> list[str]:
@@ -108,6 +102,8 @@ _SMALL_CAPS = str.maketrans({
 
 # Invisible characters that only cause trouble. U+200C is deliberately absent:
 # Persian needs it between letters (می‌روم), and dropping it would misspell words.
+ZWNJ = chr(0x200C)   # the Persian half-space, which must survive
+
 _INVISIBLE = str.maketrans({
     "​": "", "‎": "", "‏": "", "﻿": "",
     "︎": "", "️": "", " ": " ",
@@ -115,35 +111,23 @@ _INVISIBLE = str.maketrans({
 
 
 def normalize_display(text: str) -> str:
-    """Fold decorative Unicode back to letters the bundled fonts can actually draw."""
+    """Fold decorative Unicode back to letters, and drop what cannot be drawn.
+
+    Emoji go with it. No font here carries them, and leaving them in left a
+    hole in the line the width of the missing glyph; taking them out closes
+    that gap too, because the spaces around them collapse.
+    """
     if not text:
         return text
     text = unicodedata.normalize("NFKC", text)
     text = text.translate(_SMALL_CAPS).translate(_INVISIBLE)
-    # Whatever is left and still unprintable would come out as a box; drop it.
-    # The exceptions are joiners that carry meaning: U+200C separates Persian
-    # letters, while U+200D and the tag characters are what hold an emoji family,
-    # a profession or a subdivision flag together as a single picture.
+    keep = ZWNJ + chr(10)
     cleaned = "".join(
         ch for ch in text
-        if ch in "‌‍\n"
-        or "\U000e0020" <= ch <= "\U000e007f"
-        or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf")
+        if ch in keep
+        or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf", "So", "Sk")
     )
-    return cleaned.strip()
-
-
-def normalize_name(text: str) -> str:
-    """Like normalize_display, but strips emoji too.
-
-    A name is a label, so losing the roses costs nothing and spares us a row of
-    boxes the bundled fonts cannot draw. Message text keeps its emoji, because a
-    message that is nothing but emoji would otherwise come out empty. If a name
-    happens to be all emoji, the original is kept for the same reason.
-    """
-    cleaned = normalize_display(text)
-    stripped = "".join(
-        ch for ch in cleaned if unicodedata.category(ch) not in ("So", "Sk")
-    )
-    stripped = " ".join(stripped.split())
-    return stripped or cleaned
+    # Collapse the run of spaces an omitted emoji leaves, line by line.
+    return chr(10).join(
+        " ".join(line.split()) for line in cleaned.split(chr(10))
+    ).strip()

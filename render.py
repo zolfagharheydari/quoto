@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageEnhance
 
-import emoji
 import fonts
 import textkit
 
@@ -63,13 +62,13 @@ class Scene:
             budget -= len(logical)
             text = (self._shaped[i] if visible == logical
                     else textkit.shape(visible, self.rtl))
-            emoji.draw_line(img, draw, (cx, self.quote_top + i * self.line_height),
-                            text, self.quote_font, QUOTE_COLOR, anchor="ma")
+            draw.text((cx, self.quote_top + i * self.line_height), text,
+                      font=self.quote_font, fill=QUOTE_COLOR, anchor="ma")
 
         if author_alpha > 0:
             a = max(0.0, min(1.0, author_alpha))
-            emoji.draw_line(img, draw, (cx, self.name_y), textkit.shape(self.name),
-                            self.name_font, _fade(NAME_COLOR, a), anchor="ma")
+            draw.text((cx, self.name_y), textkit.shape(self.name), font=self.name_font,
+                      fill=_fade(NAME_COLOR, a), anchor="ma")
 
         if self.watermark:
             draw.text((WIDTH - 24, HEIGHT - 22), self.watermark,
@@ -136,15 +135,12 @@ def build_scene(avatar: Image.Image, quote: str, name: str,
                 watermark: str = "") -> Scene:
     # Decorative Unicode in a name or a message would draw as empty boxes.
     quote = textkit.normalize_display(quote)
-    name = textkit.normalize_name(name)
+    name = textkit.normalize_display(name)
     quote = " ".join(quote.split()) if "\n" not in quote else quote.strip()
     rtl = textkit.is_rtl(quote)
-    # Guillemets for Persian, curly quotes for Latin, inline so they wrap with
-    # the text. The Persian pair looks swapped on purpose: python-bidi reverses
-    # the letters but leaves these outermost neutrals where they are, so the one
-    # written first is the one that ends up on the left — and in Persian the
-    # quote opens on the right.
-    open_q, close_q = ("»", "«") if rtl else ("“", "”")
+    # A straight quote for Persian: it is symmetric, so it needs none of the
+    # mirroring the guillemets did, and it reads the same at both ends.
+    open_q, close_q = ('"', '"') if rtl else ("“", "”")
     body = f"{open_q}{quote}{close_q}"
 
     # A Persian quote needs Vazirmatn; a Latin one looks closer to the reference in serif.
