@@ -12,8 +12,9 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip git ffmpeg fonts-dejavu-core
 ```
 
-`ffmpeg` برای گیف و استیکر ویدیویی لازم است. `fonts-dejavu-core` فونت سریفِ متن‌های
-انگلیسی را می‌دهد؛ فونت فارسی جداگانه دانلود می‌شود.
+`ffmpeg` برای `/gif` لازم است؛ بدون آن هم کار می‌کند ولی خروجی چند برابر سنگین‌تر
+می‌شود. `fonts-dejavu-core` فونت سریفِ متن‌های انگلیسی را می‌دهد؛ فونت فارسی جداگانه
+دانلود می‌شود.
 
 ## ۲. کاربر و پوشه
 
@@ -42,7 +43,8 @@ sudo -u quoto cp /opt/quoto/.env.example /opt/quoto/.env
 sudo -u quoto nano /opt/quoto/.env
 ```
 
-`BOT_TOKEN` را بگذار. اگر سرورت جایی است که تلگرام مستقیم باز است، `PROXY` را خالی
+`BOT_TOKEN` را بگذار. `OWNER_ID` را هم پر کن، وگرنه استیکرپک گروه‌ها ساخته نمی‌شود و
+`/debug` هم کار نمی‌کند. اگر سرورت جایی است که تلگرام مستقیم باز است، `PROXY` را خالی
 بگذار. دسترسی فایل را هم محدود کن تا توکن خواندنی عمومی نباشد:
 
 ```bash
