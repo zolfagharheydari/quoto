@@ -4,10 +4,12 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import logging.handlers
 import time
 import re
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
@@ -55,10 +57,20 @@ import stickerpack
 
 load_dotenv()
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO
-)
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+logging.basicConfig(format=LOG_FORMAT, level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# The console window is gone the moment it is closed, and a failure that happens
+# once an hour is impossible to catch by watching it. Everything also goes to a
+# file next to the code, rotated so it cannot grow without bound.
+_log_file = logging.handlers.RotatingFileHandler(
+    Path(__file__).with_name("quotebot.log"),
+    maxBytes=2_000_000, backupCount=2, encoding="utf-8",
+)
+_log_file.setFormatter(logging.Formatter(LOG_FORMAT))
+logging.getLogger().addHandler(_log_file)
+
 log = logging.getLogger("quotebot")
 
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -558,7 +570,12 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    log.error("handler error", exc_info=context.error)
+    where = "unknown"
+    if isinstance(update, Update):
+        message = update.effective_message
+        where = (f"chat {update.effective_chat.id if update.effective_chat else '?'}"
+                 f", text {message.text!r}" if message else "no message")
+    log.error("handler error (%s)", where, exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(_t("failed", update, context))
@@ -610,6 +627,15 @@ def main() -> None:
     builder = (
         Application.builder()
         .token(TOKEN)
+        # The defaults are five seconds for everything, which is fine for a text
+        # reply and much too tight for uploading a video over a slow or proxied
+        # link — Telegram also takes its time answering a video upload. That is
+        # how /gif ends up posting "sending video" and then nothing.
+        .connect_timeout(20.0)
+        .read_timeout(40.0)
+        .write_timeout(60.0)
+        .media_write_timeout(180.0)
+        .pool_timeout(10.0)
         .rate_limiter(AIORateLimiter())
         .persistence(PicklePersistence(filepath=STATE_FILE))
         .post_init(post_init)

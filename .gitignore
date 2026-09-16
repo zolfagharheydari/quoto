@@ -3,3 +3,4 @@ __pycache__/
 preview_out/
 assets/fonts/*.ttf
 botdata.pkl
+quotebot.log*
