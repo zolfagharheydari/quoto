@@ -146,7 +146,8 @@ Full guide: /help""",
 ➐ <b>عکس دلخواه برای کوت‌هایت</b>
 می‌توانی عکسی انتخاب کنی که به‌جای عکس پروفایلت روی کوت‌ها بنشیند — چه خودت کوت بسازی، چه کس دیگری روی پیامت ریپلای بزند.
 در چت خصوصی من عکس را بفرست و در کپشنش بنویس <code>/avatar</code>، یا عکس را بفرست و بعد رویش ریپلای کن و <code>/avatar</code> بزن.
-<code>/avatar off</code> دوباره عکس پروفایل تلگرامت را برمی‌گرداند.
+<code>/avatar off</code> دوباره عکس پروفایل تلگرامت را برمی‌گرداند — یا در <code>/settings</code> دکمهٔ حذف را بزن.
+می‌خواهی عکس بماند ولی فعلاً استفاده نشود؟ در <code>/settings</code> گزینهٔ دیگری را انتخاب کن؛ عکست غیرفعال می‌شود و پاک نمی‌شود.
 
 ⚠️ <b>هر کاربر فقط ۲ بار</b> می‌تواند عکس دلخواه انتخاب کند. بعد از هر انتخاب می‌گویم چند سهمیه‌ات مانده، و وقتی تمام شد دیگر عکس جدیدی پذیرفته نمی‌شود. پاک کردن با <code>/avatar off</code> سهمیه مصرف نمی‌کند.
 
@@ -218,7 +219,8 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 ➐ <b>Your own picture on your quotes</b>
 You can pick a picture to use instead of your profile photo — on quotes you make and on quotes others make of you.
 In my private chat, send the photo with <code>/avatar</code> as its caption, or send it and then reply to it with <code>/avatar</code>.
-<code>/avatar off</code> goes back to your Telegram profile photo.
+<code>/avatar off</code> goes back to your Telegram profile photo — or use the delete button in <code>/settings</code>.
+Want to keep the picture but not use it for now? Pick another option in <code>/settings</code>: it is turned off, not deleted.
 
 ⚠️ <b>Two changes each, ever.</b> I tell you how many you have left after each one, and once they are gone no new picture is accepted. Clearing with <code>/avatar off</code> costs nothing.
 
@@ -269,8 +271,12 @@ You have used {used} of your {quota} changes, and cannot choose a new avatar aga
         "en": "Your changes are used up. Each person may choose a picture {quota} times.",
     },
     "settings_prompt": {
-        "fa": "عکس روی کوت‌هایت از کجا بیاید؟",
-        "en": "Which picture should stand for you on your quotes?",
+        "fa": """عکس روی کوت‌هایت از کجا بیاید؟
+
+اگر گزینه‌ای جز عکس خودت را انتخاب کنی، آن عکس فقط <b>غیرفعال</b> می‌شود و پاک نمی‌شود — هر وقت خواستی برمی‌گردانی‌اش، بدون اینکه سهمیه‌ای خرج شود.""",
+        "en": """Which picture should stand for you on your quotes?
+
+Choosing anything other than your own picture only <b>turns it off</b> — it is not deleted, and you can switch back any time without spending a change.""",
     },
     "settings_set": {
         "fa": "انجام شد ✅ از این به بعد: {choice}",
@@ -281,8 +287,16 @@ You have used {used} of your {quota} changes, and cannot choose a new avatar aga
     "src_public": {"fa": "عکس پابلیک پروفایلم", "en": "My public profile photo"},
     "src_letter": {"fa": "فقط حرف اول اسمم", "en": "Just the first letter of my name"},
     "avatar_cleared": {
-        "fa": "عکس دلخواهت پاک شد. دوباره از عکس پروفایل تلگرامت استفاده می‌کنم.",
-        "en": "Cleared. I'll go back to your Telegram profile photo.",
+        "fa": """عکس دلخواهت پاک شد. دوباره از عکس پروفایل تلگرامت استفاده می‌کنم.
+
+توجه: سهمیه‌ای که خرج کرده بودی برنمی‌گردد.""",
+        "en": """Cleared. I'll go back to your Telegram profile photo.
+
+Note: the change you spent is not given back.""",
+    },
+    "btn_avatar_delete": {
+        "fa": "🗑 حذف کامل عکسی که فرستادم",
+        "en": "🗑 Delete the picture I sent",
     },
     "avatar_none": {
         "fa": "عکس دلخواهی نداری که پاک کنم.",

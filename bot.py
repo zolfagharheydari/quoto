@@ -321,7 +321,13 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         rows.append([InlineKeyboardButton(
             mark + i18n.t(f"src_{source}", lang), callback_data=f"src:{source}"
         )])
-    await message.reply_text(
+    # Switching source only turns the picture off; this is how it goes away for
+    # good. It is offered last, and only to someone who has one to delete.
+    if has_custom:
+        rows.append([InlineKeyboardButton(
+            i18n.t("btn_avatar_delete", lang), callback_data="avatar:delete"
+        )])
+    await message.reply_html(
         i18n.t("settings_prompt", lang), reply_markup=InlineKeyboardMarkup(rows)
     )
 
@@ -338,6 +344,23 @@ async def on_source_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.edit_message_text(
         i18n.t("settings_set", lang).format(choice=i18n.t(f"src_{source}", lang))
     )
+
+
+async def on_avatar_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Throw away the picture someone uploaded, from the settings screen.
+
+    The quota is not given back, exactly as when /avatar off is used: it counts
+    uploads, and deleting one does not un-upload it.
+    """
+    query = update.callback_query
+    lang = i18n.resolve(update, context.user_data)
+    user_id = update.effective_user.id
+    had = context.bot_data.setdefault("avatars", {}).pop(user_id, None)
+    if had:
+        # Nothing left to point at, so the choice goes back to the default.
+        context.bot_data.setdefault("avatar_source", {})[user_id] = authors.DEFAULT_SOURCE
+    await query.answer()
+    await query.edit_message_text(i18n.t("avatar_cleared" if had else "avatar_none", lang))
 
 
 async def cmd_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -670,6 +693,7 @@ def main() -> None:
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CallbackQueryHandler(on_source_choice, pattern=r"^src:"))
+    app.add_handler(CallbackQueryHandler(on_avatar_delete, pattern=r"^avatar:delete$"))
     # The operator's own panel: unlisted, and silent for everybody else.
     cmd_admin, on_admin_button, on_admin_input = admin.make_panel(OWNER_ID)
     app.add_handler(CommandHandler(["admin", "panel"], cmd_admin))

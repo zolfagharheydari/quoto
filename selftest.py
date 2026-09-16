@@ -336,8 +336,9 @@ def test_quota() -> None:
             self.out.append(text)
             self.markup = reply_markup
 
-        async def reply_html(self, text, **kwargs):
+        async def reply_html(self, text, reply_markup=None, **kwargs):
             self.out.append(text)
+            self.markup = reply_markup or self.markup
 
     def photo(file_id):
         return [types.SimpleNamespace(file_id=file_id)]
@@ -370,6 +371,78 @@ def test_quota() -> None:
         check("quota not refunded", store["avatar_uses"][7] == bot.AVATAR_QUOTA)
 
     asyncio.run(run())
+
+    # The same thing from the settings screen, where there is a button for it.
+    class Query:
+        def __init__(self):
+            self.text = None
+
+        async def answer(self, *a, **k):
+            pass
+
+        async def edit_message_text(self, text, **kwargs):
+            self.text = text
+
+    async def deleting():
+        store = {"avatars": {7: "P1"}, "avatar_uses": {7: 2},
+                 "avatar_source": {7: "custom"}}
+        ctx = types.SimpleNamespace(bot_data=store, user_data={}, args=[])
+
+        message = Msg()
+        update = types.SimpleNamespace(
+            effective_message=message,
+            effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+        await bot.cmd_settings(update, ctx)
+        buttons = [b.callback_data for row in message.markup.inline_keyboard for b in row]
+        check("settings offers a delete button", "avatar:delete" in buttons)
+
+        query = Query()
+        update = types.SimpleNamespace(
+            callback_query=query, effective_message=message,
+            effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+        await bot.on_avatar_delete(update, ctx)
+        check("the button deletes the picture", 7 not in store["avatars"])
+        check("the source goes back to the default",
+              store["avatar_source"][7] == authors.DEFAULT_SOURCE)
+        check("deleting refunds nothing", store["avatar_uses"][7] == 2)
+        check("and it says so", "پاک شد" in query.text)
+
+        # Pressing it twice must not pretend to delete something again.
+        query = Query()
+        await bot.on_avatar_delete(update, ctx)
+        message2 = Msg()
+        update2 = types.SimpleNamespace(
+            effective_message=message2,
+            effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+        await bot.cmd_settings(update2, ctx)
+        buttons = [b.callback_data for row in message2.markup.inline_keyboard for b in row]
+        check("with nothing to delete the button is gone", "avatar:delete" not in buttons)
+
+    asyncio.run(deleting())
+
+
+def test_wallpaper() -> None:
+    section("screenshot wallpaper")
+    paper = screenshot._wallpaper((120, 60))
+    check("it is the size asked for", paper.size == (120, 60))
+    corners = [paper.getpixel(xy) for xy in ((0, 0), (119, 0), (0, 59), (119, 59))]
+    names = ("top-left", "top-right", "bottom-left", "bottom-right")
+    # Scaling up cannot reproduce the four colours exactly at the very edge,
+    # so what matters is that each corner is nearest to its own.
+    for i, (got, where) in enumerate(zip(corners, names)):
+        distances = [sum((a - b) ** 2 for a, b in zip(got, want))
+                     for want in screenshot.WALLPAPER]
+        check(f"the {where} corner is its colour",
+              distances.index(min(distances)) == i, f"{got}")
+    check("it is a gradient, not a flat fill", len(set(paper.getdata())) > 100)
+
+    # The bubble has to stay readable on it, which is the whole point of the
+    # white fill; a screenshot is still rendered end to end.
+    img = screenshot.render(render.fallback_avatar("w", "W"), "Sep",
+                            "دانلود بلو بانک", "12:56 AM", "admin", "w")
+    check("a screenshot still renders", img.width > 100 and img.height > 50)
+    check("the background is no longer flat blue",
+          img.getpixel((2, 2)) != (220, 231, 240), str(img.getpixel((2, 2))))
 
 
 def test_extract() -> None:
@@ -844,6 +917,7 @@ def main() -> int:
     test_bot_logic()
     test_admin()
     test_quota()
+    test_wallpaper()
     test_extract()
     test_pack_names()
     test_fonts()

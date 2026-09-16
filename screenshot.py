@@ -27,9 +27,9 @@ NAME_COLORS = [
     (122, 91, 189), (199, 71, 130), (44, 148, 150),
 ]
 
-# Telegram on iOS: white bubble with a soft shadow, over the pale blue wallpaper.
+# Telegram on iOS: white bubble with a soft shadow, over the default wallpaper.
 THEME = {
-    "bg": (220, 231, 240),
+    "bg": (170, 195, 150),   # only seen if the wallpaper cannot be built
     "bubble": (255, 255, 255),
     "text": (0, 0, 0),
     "time": (161, 170, 179),
@@ -39,6 +39,23 @@ THEME = {
     "text_size": 17,
     "time_size": 12,
 }
+
+# Telegram's own default wallpaper: four colours, one at each corner, blended
+# into each other. The app builds it the same way - the whole picture is a 2x2
+# image scaled up - so upscaling a 2x2 here is not an approximation of it, it is
+# the same construction.
+WALLPAPER = ((219, 221, 187), (213, 216, 134),
+             (107, 165, 135), (136, 184, 132))
+
+
+def _wallpaper(size: tuple[int, int]) -> Image.Image:
+    """The default chat background at this size."""
+    corners = Image.new("RGB", (2, 2))
+    corners.putdata(list(WALLPAPER))
+    # Bilinear, not bicubic: bicubic overshoots at the edges and pushes the
+    # corner colours past themselves, which is visible as a bright rim.
+    return corners.resize(size, Image.BILINEAR)
+
 
 PAD = 18
 GAP = 9
@@ -138,7 +155,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     width = pad + avatar_size + gap + bubble_w + pad
     height = pad + bubble_h + pad
 
-    img = Image.new("RGB", (width, height), theme["bg"])
+    img = _wallpaper((width, height))
 
     bubble_x = pad + avatar_size + gap
     bubble_y = pad
