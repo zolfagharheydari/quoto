@@ -63,6 +63,9 @@ Full guide: /help""",
 به‌جای دستور، در جواب همان پیام کافی است بنویسید:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
 
+<b>عکس دلخواه</b>
+هر کس می‌تواند در چت خصوصی من با <code>/avatar</code> عکسی انتخاب کند که روی کوت‌هایش بنشیند.
+
 <b>استیکرپک گروه</b>
 هر استیکری که اینجا ساخته شود، در یک پک به نام همین گروه جمع می‌شود.
 <code>/pack</code> — لینک پک را می‌دهد
@@ -87,6 +90,9 @@ Full guide: /help""",
 <b>Persian phrases work too</b>
 As a reply, instead of a command:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+
+<b>Your own picture</b>
+Anyone can set a picture for their quotes with <code>/avatar</code> in my private chat.
 
 <b>This group's sticker pack</b>
 Every sticker made here joins a pack named after the group.
@@ -137,6 +143,11 @@ Full guide: /help""",
 ➏ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/quote</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
 
+➐ <b>عکس دلخواه برای کوت‌هایت</b>
+می‌توانی عکسی انتخاب کنی که به‌جای عکس پروفایلت روی کوت‌ها بنشیند — چه خودت کوت بسازی، چه کس دیگری روی پیامت ریپلای بزند.
+در چت خصوصی من عکس را بفرست و در کپشنش بنویس <code>/avatar</code>، یا عکس را بفرست و بعد رویش ریپلای کن و <code>/avatar</code> بزن.
+<code>/avatar off</code> دوباره عکس پروفایل تلگرامت را برمی‌گرداند.
+
 <b>📋 همه‌ی دستورها</b>
 <code>/quote</code> — از پیام ریپلای‌شده کارت نقل‌قول می‌سازد
 <code>/sticker</code> — همان کارت، به شکل استیکر
@@ -154,7 +165,8 @@ Full guide: /help""",
 «شاتش کن» = /screenshot
 
 <b>اگر عکس پروفایل روی کارت نیامد</b>
-یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
+یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.
+یا اصلاً با <code>/avatar</code> یک عکس دلخواه بگذار تا اصلاً به تنظیمات تلگرام کاری نداشته باشم.""",
         "en": """📖 <b>Quoto help</b>
 
 I turn Telegram messages into quote cards: the message text, the sender's name and their profile photo on one card.
@@ -191,6 +203,11 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 ➏ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/quote</code>. I read the original sender's name and photo from the forward.
 
+➐ <b>Your own picture on your quotes</b>
+You can pick a picture to use instead of your profile photo — on quotes you make and on quotes others make of you.
+In my private chat, send the photo with <code>/avatar</code> as its caption, or send it and then reply to it with <code>/avatar</code>.
+<code>/avatar off</code> goes back to your Telegram profile photo.
+
 <b>📋 Every command</b>
 <code>/quote</code> — a quote card from the replied-to message
 <code>/sticker</code> — the same card, as a sticker
@@ -208,7 +225,8 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 «شاتش کن» = /screenshot
 
 <b>If the profile photo is missing from the card</b>
-Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
+Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.
+Or set a picture with <code>/avatar</code> and your Telegram settings stop mattering.""",
     },
     "avatar_saved": {
         "fa": """عکس دلخواهت ذخیره شد ✅
