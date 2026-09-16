@@ -13,6 +13,7 @@ import io
 
 from PIL import Image, ImageDraw, ImageFilter
 
+import emoji
 import fonts
 import textkit
 
@@ -114,7 +115,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     badge_w = badge_text_w + badge_pad * 2 + _px(6) if badge else 0
 
     time_w = time_font.getlength(time_str)
-    text_w = max([text_font.getlength(s) for s in shaped] or [0])
+    text_w = max([emoji.measure(s, text_font) for s in shaped] or [0])
     content_w = int(min(max(name_w + badge_w, text_w, time_w), max_content))
 
     line_h = _px(theme["text_size"] + 6)
@@ -175,8 +176,8 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     # Right-to-left text hugs the right edge of the bubble, as it does in the app.
     text_x = bubble_x + bubble_w - pad_x if rtl else bubble_x + pad_x
     for shaped_line in shaped:
-        draw.text((text_x, y), shaped_line, font=text_font, fill=theme["text"],
-                  anchor=("ra" if rtl else "la"))
+        emoji.draw_line(img, draw, (text_x, y), shaped_line, text_font,
+                        theme["text"], anchor=("ra" if rtl else "la"))
         y += line_h
 
     # The timestamp sits at the end of the line, which flips with the text.

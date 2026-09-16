@@ -15,6 +15,8 @@ import unicodedata
 import arabic_reshaper
 from bidi.algorithm import get_display
 
+import emoji
+
 RTL_RE = re.compile(r"[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 def is_rtl(text: str) -> bool:
@@ -28,11 +30,14 @@ def shape(text: str) -> str:
     """Turn a logical-order string into a visual-order, glyph-shaped string."""
     if not RTL_RE.search(text):
         return text
-    return get_display(arabic_reshaper.reshape(text))
+    # Emoji clusters ride through the bidi pass as single stand-in characters,
+    # which keeps them from being reversed and pulled apart.
+    masked, mapping = emoji.protect(text)
+    return emoji.restore(get_display(arabic_reshaper.reshape(masked)), mapping)
 
 
 def width_of(text: str, font) -> float:
-    return font.getlength(shape(text))
+    return emoji.measure(shape(text), font)
 
 
 def wrap(text: str, font, max_width: float) -> list[str]:
@@ -106,9 +111,14 @@ def normalize_display(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     text = text.translate(_SMALL_CAPS).translate(_INVISIBLE)
     # Whatever is left and still unprintable would come out as a box; drop it.
+    # The exceptions are joiners that carry meaning: U+200C separates Persian
+    # letters, while U+200D and the tag characters are what hold an emoji family,
+    # a profession or a subdivision flag together as a single picture.
     cleaned = "".join(
         ch for ch in text
-        if ch in "‌\n" or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf")
+        if ch in "‌‍\n"
+        or "\U000e0020" <= ch <= "\U000e007f"
+        or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf")
     )
     return cleaned.strip()
 

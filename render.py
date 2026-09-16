@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageEnhance
 
+import emoji
 import fonts
 import textkit
 
@@ -60,13 +61,13 @@ class Scene:
             visible = logical if budget >= len(logical) else logical[:budget]
             budget -= len(logical)
             text = self._shaped[i] if visible == logical else textkit.shape(visible)
-            draw.text((cx, self.quote_top + i * self.line_height), text,
-                      font=self.quote_font, fill=QUOTE_COLOR, anchor="ma")
+            emoji.draw_line(img, draw, (cx, self.quote_top + i * self.line_height),
+                            text, self.quote_font, QUOTE_COLOR, anchor="ma")
 
         if author_alpha > 0:
             a = max(0.0, min(1.0, author_alpha))
-            draw.text((cx, self.name_y), textkit.shape(self.name), font=self.name_font,
-                      fill=_fade(NAME_COLOR, a), anchor="ma")
+            emoji.draw_line(img, draw, (cx, self.name_y), textkit.shape(self.name),
+                            self.name_font, _fade(NAME_COLOR, a), anchor="ma")
 
         if self.watermark:
             draw.text((WIDTH - 24, HEIGHT - 22), self.watermark,

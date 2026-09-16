@@ -32,6 +32,7 @@ git clone <آدرس مخزن> .        # یا فایل‌ها را با scp با
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python download_fonts.py
+.venv/bin/python download_emoji.py
 exit
 ```
 

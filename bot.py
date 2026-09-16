@@ -41,6 +41,7 @@ from telegram.ext import (
 
 import animate
 import authors
+import emoji as emoji_assets
 import extract
 import fonts
 import i18n
@@ -501,6 +502,8 @@ def main() -> None:
             "BOT_TOKEN is not set. Put it in the .env file.\n"
             "BOT_TOKEN تنظیم نشده. مقدارش را در فایل .env بگذار."
         )
+    if not emoji_assets.available():
+        log.warning("no emoji images; run python download_emoji.py to draw them")
     if fonts.missing_bundled_font():
         log.warning("Vazirmatn not found; run python download_fonts.py for correct Persian.")
 
