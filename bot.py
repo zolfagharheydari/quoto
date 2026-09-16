@@ -6,6 +6,7 @@ import io
 import logging
 import re
 import os
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
@@ -29,6 +30,7 @@ from telegram.error import (
 from telegram.ext import (
     AIORateLimiter,
     Application,
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     ChatMemberHandler,
     CommandHandler,
@@ -36,6 +38,7 @@ from telegram.ext import (
     InlineQueryHandler,
     MessageHandler,
     PicklePersistence,
+    TypeHandler,
     filters,
 )
 
@@ -75,6 +78,24 @@ _storage = os.getenv("STORAGE_CHAT_ID", "").strip()
 STORAGE_CHAT: str | int | None = (
     int(_storage) if _storage.lstrip("-").isdigit() else (_storage or None)
 )
+
+
+# Telegram keeps undelivered updates for 24 hours, so a bot that was down all
+# night would wake up and answer the whole backlog at once. A command worth
+# answering is a recent one; anything older than this is left alone.
+MAX_MESSAGE_AGE = timedelta(minutes=5)
+
+
+async def ignore_stale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Stop updates that queued up while the bot was offline."""
+    message = update.message
+    if message is None or message.date is None:
+        return
+    age = datetime.now(timezone.utc) - message.date
+    if age > MAX_MESSAGE_AGE:
+        log.info("ignoring a message %.0f minutes old in %s",
+                 age.total_seconds() / 60, message.chat_id)
+        raise ApplicationHandlerStop
 
 
 def _t(key: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -580,6 +601,8 @@ def main() -> None:
         builder = builder.proxy(PROXY).get_updates_proxy(PROXY)
     app = builder.build()
 
+    # Runs before everything else, so a stale command never reaches a handler.
+    app.add_handler(TypeHandler(Update, ignore_stale), group=-1)
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("lang", cmd_lang))
