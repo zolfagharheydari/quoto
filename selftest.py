@@ -291,14 +291,16 @@ def test_bot_logic() -> None:
           inline.LEADING_COMMAND_RE.sub("", "/quote سلام").strip() == "سلام")
 
     # Stale updates
-    async def stale(minutes, has_message=True):
+    async def stale(minutes, has_message=True, cutoff=0):
         message = None
         if has_message:
             message = types.SimpleNamespace(
                 date=datetime.now(timezone.utc) - timedelta(minutes=minutes),
                 chat_id=-1)
         try:
-            await bot.ignore_stale(types.SimpleNamespace(message=message), None)
+            await bot.ignore_stale(
+                types.SimpleNamespace(message=message),
+                types.SimpleNamespace(bot_data={"queue_cutoff": cutoff}))
             return True
         except Exception:
             return False
@@ -306,6 +308,11 @@ def test_bot_logic() -> None:
     check("fresh message passes", asyncio.run(stale(1)))
     check("old message stopped", not asyncio.run(stale(30)))
     check("button press unaffected", asyncio.run(stale(999, has_message=False)))
+    # A queue the owner emptied: sent before the cutoff, so it never runs.
+    check("flushed message stopped",
+          not asyncio.run(stale(1, cutoff=time.time())))
+    check("message after the flush passes",
+          asyncio.run(stale(0, cutoff=time.time() - 600)))
 
     # Clock
     when = datetime(2026, 9, 15, 7, 42, tzinfo=timezone.utc)
@@ -709,6 +716,20 @@ def test_admin() -> None:
         check("idle input is ignored", not ctx.bot_data)
 
     asyncio.run(self_block())
+
+    # Emptying the queue: what is in hand goes, and a line is drawn in time.
+    queue = asyncio.Queue()
+    for i in range(3):
+        queue.put_nowait(i)
+    ctx = _admin_ctx()
+    ctx.application = types.SimpleNamespace(update_queue=queue)
+    before = time.time()
+    check("waiting updates are dropped", admin.flush_queue(ctx) == 3)
+    check("the queue is empty after", queue.empty())
+    check("a cutoff is recorded", ctx.bot_data["queue_cutoff"] >= before)
+    ctx = _admin_ctx()
+    check("no queue is not an error", admin.flush_queue(ctx) == 0)
+    check("and a cutoff is still set", "queue_cutoff" in ctx.bot_data)
 
     # The screens render, and their numbers are the ones in bot_data.
     store = {"users": {1: {"seen": time.time(), "first": time.time()}},

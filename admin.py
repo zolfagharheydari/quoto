@@ -58,6 +58,31 @@ def note(context: ContextTypes.DEFAULT_TYPE, kind: str) -> None:
     counts[kind] = counts.get(kind, 0) + 1
 
 
+def flush_queue(context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Throw away every request that is still waiting to be answered.
+
+    Two things are waiting at any moment, and both have to go. The ones already
+    pulled from Telegram sit in the application's own queue and can simply be
+    taken out of it. The ones Telegram is still holding have not arrived yet, so
+    instead a line is drawn in time: anything sent before this moment is dropped
+    as it comes in, the same way a message from before the bot woke up is.
+
+    Returns how many were already in hand; the rest are turned away on arrival.
+    """
+    context.bot_data["queue_cutoff"] = time.time()
+    queue = getattr(getattr(context, "application", None), "update_queue", None)
+    dropped = 0
+    while queue is not None:
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+        queue.task_done()
+        dropped += 1
+    log.info("owner flushed the queue: %s waiting, the rest cut off by time", dropped)
+    return dropped
+
+
 def make_tracker(owner_id: int | None):
     """A handler that remembers who is using the bot, and stops those who may not.
 
@@ -114,6 +139,7 @@ def _menu(context) -> InlineKeyboardMarkup:
          InlineKeyboardButton("🚫 مسدودها", callback_data="adm:blocked")],
         [InlineKeyboardButton("🖼 سهمیه آواتار", callback_data="adm:quota"),
          InlineKeyboardButton("📄 لاگ", callback_data="adm:logs")],
+        [InlineKeyboardButton("🧹 پاک کردن صف", callback_data="adm:flush")],
         [InlineKeyboardButton("▶️ روشن کردن" if paused else "⏸ خاموش کردن موقت",
                               callback_data="adm:pause")],
         [InlineKeyboardButton("✖️ بستن", callback_data="adm:close")],
@@ -306,6 +332,20 @@ def make_panel(owner_id: int | None):
         elif action in ("cast", "block", "unblock", "quota"):
             context.user_data["admin_await"] = action
             await _show(query, _PROMPTS[action], _BACK)
+        elif action == "flush":
+            await _show(query, _FLUSH_PROMPT, InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ پاک کن", callback_data="adm:flushgo"),
+                 InlineKeyboardButton("✖️ بی‌خیال", callback_data="adm:home")],
+            ]))
+        elif action == "flushgo":
+            dropped = flush_queue(context)
+            await _show(
+                query,
+                f"<b>🧹 صف پاک شد</b>\n\n"
+                f"درخواست‌های در صف: {dropped}\n"
+                f"هرچه هم هنوز دست تلگرام مانده، موقع رسیدن رد می‌شود.",
+                _menu(context),
+            )
         elif action == "castgo":
             await _broadcast(query, context)
         elif action == "close":
@@ -407,3 +447,11 @@ _PROMPTS = {
     "quota": ("<b>🖼 سهمیهٔ آواتار</b>\n\n"
               "شناسهٔ عددی کاربر را بفرست تا سهمیه‌اش دوباره از صفر شروع شود."),
 }
+
+_FLUSH_PROMPT = (
+    "<b>🧹 پاک کردن صف</b>\n\n"
+    "هر دستوری که هنوز جواب داده نشده دور ریخته می‌شود — هم آن‌هایی که "
+    "دریافت شده‌اند و هم آن‌هایی که هنوز دست تلگرام است.\n\n"
+    "کاربرانی که دستور داده‌اند جوابی نمی‌گیرند و باید دوباره بفرستند. "
+    "این کار برگشت ندارد."
+)

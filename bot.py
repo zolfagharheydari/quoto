@@ -105,6 +105,12 @@ async def ignore_stale(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     message = update.message
     if message is None or message.date is None:
         return
+    # A queue the owner emptied from the panel: everything sent before that
+    # moment is gone, including what Telegram had not handed over yet.
+    cutoff = context.bot_data.get("queue_cutoff", 0)
+    if cutoff and message.date.timestamp() <= cutoff:
+        log.info("dropping a flushed message in %s", message.chat_id)
+        raise ApplicationHandlerStop
     age = datetime.now(timezone.utc) - message.date
     if age > MAX_MESSAGE_AGE:
         log.info("ignoring a message %.0f minutes old in %s",
