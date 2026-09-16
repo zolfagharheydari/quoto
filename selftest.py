@@ -381,6 +381,14 @@ def test_extract() -> None:
     check("blank is textless", extract.quote_text(message("   ")) is None)
     long_text = extract.quote_text(message("ا" * 900))
     check("long text truncated", len(long_text) <= extract.MAX_QUOTE_CHARS + 1)
+    check("and says it was cut", long_text.endswith("…"))
+    check("text at the limit is left alone",
+          extract.quote_text(message("ا" * extract.MAX_QUOTE_CHARS))
+          == "ا" * extract.MAX_QUOTE_CHARS)
+    # Nothing past the cut is normalized, so a tail of emoji costs nothing
+    # and cannot add to what is shown.
+    tail = extract.quote_text(message("ا" * 700 + "😀" * 3000))
+    check("the tail is never read", len(tail) == extract.MAX_QUOTE_CHARS + 1)
 
 
 def test_pack_names() -> None:
