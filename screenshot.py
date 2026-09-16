@@ -1,9 +1,9 @@
 """Render a message as a chat screenshot, the way Telegram on iOS draws it.
 
 The sender's name sits inside the bubble above the text, coloured per user the
-way the app colours it. The header follows the text's direction, so a Persian
-message carries it on the right; the timestamp stays in the bottom-right corner
-either way, as it does on an incoming message in the app.
+way the app colours it; a Persian message pushes the sender's badge across to
+the far edge. The timestamp stays in the bottom-right corner either way, as it
+does on an incoming message in the app.
 
 Everything is drawn at SCALE and kept at that size; these are small images and the
 extra resolution is what makes them read as a screenshot rather than as artwork.
@@ -159,16 +159,16 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     img.paste(circle, (pad, bubble_bottom - avatar_size), circle)
 
     y = bubble_y + pad_top
-    # The header follows the text: left-aligned for Latin, right-aligned for
-    # Persian, with the badge keeping its place just after the name either way.
-    header_w = name_w + badge_w
-    header_x = (bubble_x + bubble_w - pad_x - header_w) if rtl else (bubble_x + pad_x)
-    draw.text((header_x, y), name_shaped, font=name_font, fill=accent, anchor="la")
+    # The name keeps the left edge in either direction. In Persian the badge is
+    # pushed to the opposite edge instead of trailing the name.
+    name_x = bubble_x + pad_x
+    draw.text((name_x, y), name_shaped, font=name_font, fill=accent, anchor="la")
     if badge:
-        bx = header_x + name_w + _px(6)
+        pill_w = badge_text_w + badge_pad * 2
+        bx = (bubble_x + bubble_w - pad_x - pill_w) if rtl else (name_x + name_w + _px(6))
         bh = _px(theme["name_size"] + 3)
         draw.rounded_rectangle(
-            [bx, y, bx + badge_text_w + badge_pad * 2, y + bh],
+            [bx, y, bx + pill_w, y + bh],
             radius=bh // 2,
             fill=tuple(int(b + (a - b) * 0.22)
                        for a, b in zip(accent, theme["bubble"])),
