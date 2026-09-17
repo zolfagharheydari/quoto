@@ -760,17 +760,20 @@ def test_badges() -> None:
 
     # The new one: a tag an admin set on an ordinary member.
     check("a member's tag is shown",
-          badge(member(ChatMemberStatus.MEMBER, tag="تحت تعقیب")) == "تحت تعقیب")
+          badge(member(ChatMemberStatus.MEMBER, tag="تحت تعقیب"))
+          == ("تحت تعقیب", False))
     check("a plain member with no tag has none",
           badge(member(ChatMemberStatus.MEMBER)) is None)
     check("a tag wins over the generic word",
-          badge(member(ChatMemberStatus.ADMINISTRATOR, tag="افراسیاب")) == "افراسیاب")
+          badge(member(ChatMemberStatus.ADMINISTRATOR, tag="افراسیاب"))
+          == ("افراسیاب", True))
     check("an admin's own title is shown",
-          badge(member(ChatMemberStatus.ADMINISTRATOR, title="چیل")) == "چیل")
+          badge(member(ChatMemberStatus.ADMINISTRATOR, title="چیل")) == ("چیل", True))
     check("an admin with neither gets the generic word",
-          badge(member(ChatMemberStatus.ADMINISTRATOR)) == i18n.t("badge_admin", "fa"))
+          badge(member(ChatMemberStatus.ADMINISTRATOR))
+          == (i18n.t("badge_admin", "fa"), True))
     check("the owner gets theirs",
-          badge(member(ChatMemberStatus.OWNER)) == i18n.t("badge_owner", "fa"))
+          badge(member(ChatMemberStatus.OWNER)) == (i18n.t("badge_owner", "fa"), True))
     check("a blank tag counts as none",
           badge(member(ChatMemberStatus.MEMBER, tag="   ")) is None)
     check("a failed lookup is not a badge",
@@ -781,6 +784,16 @@ def test_badges() -> None:
     check("private chats have no badges",
           asyncio.run(bot._badge(member(ChatMemberStatus.OWNER), private, who, "fa"))
           is None)
+    # The app dresses the two differently, so the pictures must differ too.
+    tile = render.fallback_avatar("b", "A")
+    def shot(is_admin):
+        return screenshot.render(tile, "Ali", "سلام", "14:17", "چیل",
+                                 "ali", None, is_admin)
+    check("a tag is not drawn like a rank",
+          render.to_png(shot(True)).getvalue() != render.to_png(shot(False)).getvalue())
+    check("and takes less room, having no pill",
+          shot(False).width < shot(True).width)
+
     channel = authors.Author("کانال", "", -100, "chat", "-100")
     check("a channel has no badge",
           asyncio.run(bot._badge(member(ChatMemberStatus.OWNER), chat, channel, "fa"))

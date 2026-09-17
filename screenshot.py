@@ -175,7 +175,8 @@ def _bubble_shape(draw: ImageDraw.ImageDraw, box, radius: int, tail: int, fill) 
 
 def render(avatar: Image.Image, name: str, text: str, time_str: str,
            badge: str | None = None, seed: str = "",
-           reactions: list[tuple[str, int]] | None = None) -> Image.Image:
+           reactions: list[tuple[str, int]] | None = None,
+           badge_is_admin: bool = True) -> Image.Image:
     theme = THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
     name = textkit.normalize_display(name)
@@ -199,7 +200,10 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     # The badge is text too: a Persian "مالک" needs shaping like everything else.
     badge_shaped = textkit.shape(badge) if badge else ""
     badge_text_w = badge_font.getlength(badge_shaped) if badge else 0
-    badge_w = badge_text_w + badge_pad * 2 + _px(6) if badge else 0
+    # A member's tag is written as plain text, so it needs no room for a pill
+    # around it - only the gap that keeps it off the name.
+    badge_w = (badge_text_w + (badge_pad * 2 if badge_is_admin else 0) + _px(6)
+               if badge else 0)
 
     time_w = time_font.getlength(time_str)
     text_w = max([text_font.getlength(s) for s in shaped] or [0])
@@ -285,17 +289,23 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     name_x = bubble_x + pad_x
     name_font.draw_on(draw, (name_x, y), name_shaped, fill=accent, anchor="la")
     if badge:
-        pill_w = badge_text_w + badge_pad * 2
-        bx = (bubble_x + bubble_w - pad_x - pill_w) if rtl else (name_x + name_w + _px(6))
         bh = _px(theme["name_size"] + 3)
-        draw.rounded_rectangle(
-            [bx, y, bx + pill_w, y + bh],
-            radius=bh // 2,
-            fill=tuple(int(b + (a - b) * 0.22)
-                       for a, b in zip(accent, theme["bubble"])),
-        )
-        badge_font.draw_on(draw, (bx + badge_pad, y + bh // 2), badge_shaped,
-                           fill=accent, anchor="lm")
+        # An admin's rank sits in a pill tinted with their name colour. A tag an
+        # admin gave an ordinary member is not a rank and the app does not dress
+        # it as one: it is plain grey text in the same corner.
+        pill_w = badge_text_w + (badge_pad * 2 if badge_is_admin else 0)
+        bx = (bubble_x + bubble_w - pad_x - pill_w) if rtl else (name_x + name_w + _px(6))
+        if badge_is_admin:
+            draw.rounded_rectangle(
+                [bx, y, bx + pill_w, y + bh],
+                radius=bh // 2,
+                fill=tuple(int(b + (a - b) * 0.22)
+                           for a, b in zip(accent, theme["bubble"])),
+            )
+        badge_font.draw_on(
+            draw, (bx + (badge_pad if badge_is_admin else 0), y + bh // 2),
+            badge_shaped, fill=accent if badge_is_admin else theme["time"],
+            anchor="lm")
     y += name_h
 
     # Right-to-left text hugs the right edge of the bubble, as it does in the app.

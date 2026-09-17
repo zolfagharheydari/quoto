@@ -657,7 +657,8 @@ def _clock(when) -> str:
     return when.strftime("%I:%M %p").lstrip("0")
 
 
-async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
+async def _badge(bot, chat, author: authors.Author,
+                 lang: str) -> tuple[str, bool] | None:
     """The pill Telegram shows beside a name in a group.
 
     Three things can put one there, and they are checked in the order the app
@@ -672,6 +673,10 @@ async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
       owner / admin    the generic word, when an admin has no title of their own.
 
     An ordinary member with no tag gets nothing, which is what the app draws.
+
+    Returns the text and whether it is an admin's badge. The app draws the two
+    differently - an admin's in a coloured pill, a member's as plain grey text -
+    so the renderer has to be told which it is holding.
     """
     if chat.type not in ("group", "supergroup") or author.kind != "user":
         return None
@@ -683,21 +688,24 @@ async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
         log.info("no badge for %s in %s: %s", author.avatar_key, chat.id, exc)
         return None
 
+    is_admin = member.status in (ChatMemberStatus.OWNER,
+                                 ChatMemberStatus.ADMINISTRATOR)
+
     tag = str((member.api_kwargs or {}).get("tag") or "").strip()
     if tag:
-        return tag
+        return tag, is_admin
 
-    if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
+    if not is_admin:
         return None
     # Whatever this group actually calls them wins; the generic word is the
     # fallback Telegram itself shows when nobody has set a title.
     title = (getattr(member, "custom_title", None) or "").strip()
     if title:
-        return title
+        return title, True
     return i18n.t(
         "badge_owner" if member.status == ChatMemberStatus.OWNER else "badge_admin",
         lang,
-    )
+    ), True
 
 
 async def on_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -725,13 +733,14 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         avatar = await authors.fetch_avatar(
             context.bot, author, *_avatar_choice(context, author)
         )
-        badge = await _badge(context.bot, message.chat, author,
-                             i18n.resolve(update, context.user_data))
+        marked = await _badge(context.bot, message.chat, author,
+                              i18n.resolve(update, context.user_data))
+        badge, badge_is_admin = marked if marked else (None, False)
         seen = reactions.for_message(
             context.bot_data, message.chat_id, target.message_id)
         image = await asyncio.to_thread(
             screenshot.render, avatar, author.name, text,
-            _clock(target.date), badge, author.seed, seen,
+            _clock(target.date), badge, author.seed, seen, badge_is_admin,
         )
         buf = await asyncio.to_thread(screenshot.to_png, image)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
