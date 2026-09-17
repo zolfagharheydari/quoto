@@ -389,6 +389,10 @@ Meanwhile you can type: /quote any text you like""",
     },
     "badge_owner": {"fa": "مالک", "en": "owner"},
     "badge_admin": {"fa": "ادمین", "en": "admin"},
+    "inline_gif": {
+        "fa": "گیف با افکت تایپ",
+        "en": "GIF with the typing effect",
+    },
     "inline_photo": {
         "fa": "عکس نقل‌قول",
         "en": "Quote card",

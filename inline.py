@@ -17,6 +17,7 @@ import re
 import uuid
 
 from telegram import (
+    InlineQueryResultCachedMpeg4Gif,
     InlineQueryResultCachedPhoto,
     InlineQueryResultCachedSticker,
     InlineQueryResultsButton,
@@ -25,6 +26,7 @@ from telegram import (
 from telegram.error import Forbidden, TelegramError
 from telegram.ext import ContextTypes
 
+import animate
 import authors
 import i18n
 import render
@@ -51,20 +53,58 @@ COMMAND_ONLY_RE = re.compile(
 
 
 async def _upload(context: ContextTypes.DEFAULT_TYPE, storage_chat: str | int | None,
-                  user_id: int, png, webp) -> tuple[str, str]:
-    """Send the card somewhere Telegram will keep it, and return its file_ids."""
+                  user_id: int, png, webp, animation) -> tuple[str, str, str | None]:
+    """Send the card somewhere Telegram will keep it, and return its file_ids.
+
+    The three go up together. They are independent uploads over the same
+    connection pool, and doing them one after another would add the animation's
+    whole round trip to how long the user waits with their keyboard open.
+    """
     bot = context.bot
     target = storage_chat or user_id
-    photo_msg = await bot.send_photo(target, png, disable_notification=True)
-    sticker_msg = await bot.send_sticker(target, webp, disable_notification=True)
+    buf, ext = animation
+    photo_msg, sticker_msg, anim_msg = await asyncio.gather(
+        bot.send_photo(target, png, disable_notification=True),
+        bot.send_sticker(target, webp, disable_notification=True),
+        bot.send_animation(target, buf, filename=f"quote.{ext}",
+                           disable_notification=True),
+    )
     if not storage_chat:
         # Nothing configured, so the user's own chat was the scratch space: clean it up.
-        for msg in (photo_msg, sticker_msg):
+        for msg in (photo_msg, sticker_msg, anim_msg):
             try:
                 await msg.delete()
             except TelegramError:
                 log.debug("could not delete scratch message %s", msg.message_id)
-    return photo_msg.photo[-1].file_id, sticker_msg.sticker.file_id
+    # Telegram stores every animation as MP4, whichever way it arrived, but it
+    # can still come back as a plain document if it declined to convert one.
+    animation_id = anim_msg.animation.file_id if anim_msg.animation else None
+    return photo_msg.photo[-1].file_id, sticker_msg.sticker.file_id, animation_id
+
+
+def build_results(lang: str, photo_id: str, sticker_id: str,
+                  animation_id: str | None) -> list:
+    """What the user sees in the inline list, in the order they see it.
+
+    The photo first because it is what most people are after, then the sticker,
+    then the animation - which is absent rather than broken when Telegram would
+    not store it as one.
+    """
+    results = [
+        InlineQueryResultCachedPhoto(
+            id=str(uuid.uuid4()), photo_file_id=photo_id,
+            title=i18n.t("inline_photo", lang),
+        ),
+        InlineQueryResultCachedSticker(
+            id=str(uuid.uuid4()), sticker_file_id=sticker_id,
+        ),
+    ]
+    if animation_id:
+        results.append(InlineQueryResultCachedMpeg4Gif(
+            id=str(uuid.uuid4()), mpeg4_file_id=animation_id,
+            title=i18n.t("inline_gif", lang),
+        ))
+    return results
 
 
 def make_handler(watermark: str, storage_chat: str | int | None):
@@ -112,8 +152,12 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)
             webp = await asyncio.to_thread(render.to_sticker_webp, image)
-            photo_id, sticker_id = await _upload(
-                context, storage_chat, query.from_user.id, png, webp
+            # The long pole: a couple of hundred frames through ffmpeg. It is
+            # still worth doing here rather than on demand, because an inline
+            # result can only point at a file Telegram already holds.
+            animation = await asyncio.to_thread(animate.to_animation, scene)
+            photo_id, sticker_id, animation_id = await _upload(
+                context, storage_chat, query.from_user.id, png, webp, animation
             )
         except Forbidden:
             # The user never pressed Start, so the bot cannot use their chat as storage.
@@ -130,17 +174,8 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             return
 
         await query.answer(
-            [
-                InlineQueryResultCachedPhoto(
-                    id=str(uuid.uuid4()), photo_file_id=photo_id,
-                    title=i18n.t("inline_photo", lang),
-                ),
-                InlineQueryResultCachedSticker(
-                    id=str(uuid.uuid4()), sticker_file_id=sticker_id,
-                ),
-            ],
-            cache_time=30,
-            is_personal=True,
+            build_results(lang, photo_id, sticker_id, animation_id),
+            cache_time=30, is_personal=True,
         )
 
     return on_inline

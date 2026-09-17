@@ -421,6 +421,77 @@ def test_quota() -> None:
     asyncio.run(deleting())
 
 
+def test_inline_results() -> None:
+    section("inline results")
+
+    three = inline.build_results("fa", "PH", "ST", "AN")
+    check("three things are offered", len(three) == 3, str(len(three)))
+    check("the photo comes first", three[0].photo_file_id == "PH")
+    check("then the sticker", three[1].sticker_file_id == "ST")
+    check("then the animation", three[2].mpeg4_file_id == "AN")
+    check("the animation is labelled", bool(three[2].title))
+    check("every result has its own id", len({r.id for r in three}) == 3)
+
+    two = inline.build_results("fa", "PH", "ST", None)
+    check("no animation means no third result", len(two) == 2)
+
+    # Uploading: all three go up, and the scratch copies are cleaned away when
+    # there is no storage chat to keep them in.
+    class Msg:
+        def __init__(self, kind):
+            self.message_id = 1
+            self.deleted = False
+            self.photo = [types.SimpleNamespace(file_id="PH")] if kind == "photo" else []
+            self.sticker = types.SimpleNamespace(file_id="ST") if kind == "sticker" else None
+            self.animation = (types.SimpleNamespace(file_id="AN")
+                              if kind == "animation" else None)
+
+        async def delete(self):
+            self.deleted = True
+
+    class FakeBot:
+        def __init__(self):
+            self.sent = []
+            self.messages = []
+
+        def _make(self, kind, chat_id):
+            self.sent.append((kind, chat_id))
+            msg = Msg(kind)
+            self.messages.append(msg)
+            return msg
+
+        async def send_photo(self, chat_id, *a, **k):
+            return self._make("photo", chat_id)
+
+        async def send_sticker(self, chat_id, *a, **k):
+            return self._make("sticker", chat_id)
+
+        async def send_animation(self, chat_id, *a, **k):
+            return self._make("animation", chat_id)
+
+    async def uploading():
+        bot_ = FakeBot()
+        ctx = types.SimpleNamespace(bot=bot_)
+        ids = await inline._upload(ctx, None, 77, b"png", b"webp", (b"mp4", "mp4"))
+        check("all three are uploaded", len(bot_.sent) == 3, str(bot_.sent))
+        check("an animation is among them",
+              "animation" in [kind for kind, _ in bot_.sent])
+        check("the user's own chat is the scratch space",
+              all(chat == 77 for _, chat in bot_.sent))
+        check("scratch copies are deleted", all(m.deleted for m in bot_.messages))
+        check("the three file ids come back", ids == ("PH", "ST", "AN"), str(ids))
+
+        # With a storage chat, nothing is deleted and nothing touches the user.
+        bot_ = FakeBot()
+        ctx = types.SimpleNamespace(bot=bot_)
+        await inline._upload(ctx, -100999, 77, b"png", b"webp", (b"mp4", "mp4"))
+        check("a storage chat is used when set",
+              all(chat == -100999 for _, chat in bot_.sent))
+        check("and its copies are kept", not any(m.deleted for m in bot_.messages))
+
+    asyncio.run(uploading())
+
+
 def test_wallpaper() -> None:
     section("screenshot wallpaper")
     paper = screenshot._wallpaper((120, 60))
@@ -917,6 +988,7 @@ def main() -> int:
     test_bot_logic()
     test_admin()
     test_quota()
+    test_inline_results()
     test_wallpaper()
     test_extract()
     test_pack_names()
