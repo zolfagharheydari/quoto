@@ -96,20 +96,53 @@ EMOJI_FONTS = [
     Path("/usr/share/fonts/truetype/noto-color-emoji/NotoColorEmoji.ttf"),
     Path("/System/Library/Fonts/Apple Color Emoji.ttc"),
 ]
-NOTO_STRIKE = 109   # the one size a bitmap emoji font will open at
+
+
+@lru_cache(maxsize=None)
+def _strikes(path: Path) -> tuple[int, ...]:
+    """The pixel sizes a bitmap emoji font will open at.
+
+    A colour emoji font usually holds pictures rather than outlines, and
+    FreeType refuses every size except the ones it was built with - "invalid
+    pixel size" for anything else. Noto's is 109 and Apple's is 96, so the
+    number cannot be guessed; it is read out of the font's own size table.
+    """
+    try:
+        from fontTools.ttLib import TTFont
+    except ImportError:
+        return ()
+    try:
+        with TTFont(str(path), fontNumber=0, lazy=True) as font:
+            found = []
+            for tag in ("CBLC", "EBLC"):
+                if tag in font:
+                    found += [st.bitmapSizeTable.ppemX for st in font[tag].strikes]
+            if "sbix" in font:
+                found += [int(size) for size in font["sbix"].strikes]
+            return tuple(sorted({int(f) for f in found if f}))
+    except Exception:  # noqa: BLE001 - an unreadable font is simply not used
+        return ()
 
 
 @lru_cache(maxsize=8)
 def emoji_font(size: int) -> ImageFont.FreeTypeFont | None:
-    """A colour emoji font at this size, or None when the machine has none."""
+    """A colour emoji font at this size, or None when the machine has none.
+
+    The size asked for is a preference, not a promise: a bitmap font comes back
+    at the one size it has, and the caller scales it. That is why every emoji is
+    drawn large and resized rather than requested at its final size.
+    """
     for path in EMOJI_FONTS:
         if not path.exists():
             continue
-        for attempt in (size, NOTO_STRIKE):
+        for attempt in (size, *_strikes(path)):
             try:
-                return ImageFont.truetype(str(path), attempt)
+                font = ImageFont.truetype(str(path), attempt)
             except OSError:
-                continue  # a bitmap font refuses every size but its own strike
+                continue
+            log.info("emoji font: %s at %s", path.name, attempt)
+            return font
+        log.warning("%s has no size this build of Pillow will open", path.name)
     log.info("no colour emoji font found; reactions will not be drawn")
     return None
 

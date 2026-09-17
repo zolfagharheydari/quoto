@@ -21,7 +21,53 @@ EXTRA = {
 }
 
 
+# Apple's emoji are what Telegram itself shows on iOS, and they are the ones
+# people picture when they picture a reaction. Apple does not license the font
+# for use off its own devices, so this is never fetched by default: it happens
+# only when someone asks for it by name, and that choice is theirs to make.
+APPLE = {
+    "name": "AppleColorEmoji.ttf",
+    "repo": "samuelngs/apple-emoji-ttf",
+    "asset": "AppleColorEmoji-Linux.ttf",
+}
+
+
+def fetch_apple() -> int:
+    """Download a prebuilt Apple emoji font from its most recent release."""
+    import json
+
+    DEST.mkdir(parents=True, exist_ok=True)
+    target = DEST / APPLE["name"]
+    if target.exists():
+        print(f"= {APPLE['name']} (already here)")
+        return 0
+    try:
+        url = f"https://api.github.com/repos/{APPLE['repo']}/releases"
+        headers = {"User-Agent": "quotebot"}
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=60) as resp:
+            releases = json.loads(resp.read())
+        asset = next(
+            a for release in releases for a in release.get("assets", [])
+            if a["name"] == APPLE["asset"]
+        )
+        request = urllib.request.Request(asset["browser_download_url"], headers=headers)
+        with urllib.request.urlopen(request, timeout=600) as resp:
+            data = resp.read()
+        target.write_bytes(data)
+        print(f"+ {APPLE['name']} ({len(data) // 1024 // 1024} MB)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"! {APPLE['name']}: {exc}")
+        print(f"  Grab {APPLE['asset']} from a release of "
+              f"https://github.com/{APPLE['repo']} and save it to "
+              f"{DEST / APPLE['name']}")
+        return 1
+    return 0
+
+
 def main() -> int:
+    if "--apple" in sys.argv:
+        return fetch_apple()
     DEST.mkdir(parents=True, exist_ok=True)
     failed = []
     wanted = {name: f"{BASE}/{name}" for name in FILES}
