@@ -585,6 +585,48 @@ async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def _is_group_admin(bot, chat, user) -> bool:
+    """Whether this person runs this group."""
+    if user is None:
+        return False
+    try:
+        member = await bot.get_chat_member(chat.id, user.id)
+    except TelegramError:
+        return False
+    return member.status in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
+
+
+async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove the replied-to sticker from this group's pack.
+
+    The pack belongs to the group, so the group's admins decide what stays in
+    it. Replying to the sticker is the whole interface: it is the one place the
+    sticker can be pointed at without listing the pack out in a message.
+    """
+    message = update.effective_message
+    if message.chat.type not in stickerpack.GROUP_TYPES:
+        await message.reply_text(_t("pack_groups_only", update, context))
+        return
+    if not await _is_group_admin(context.bot, message.chat, update.effective_user):
+        await message.reply_text(_t("unpack_not_admin", update, context))
+        return
+
+    target = message.reply_to_message
+    sticker = target.sticker if target else None
+    if sticker is None:
+        await message.reply_text(_t("unpack_need_reply", update, context))
+        return
+
+    outcome = await stickerpack.remove_quote(context.bot, message.chat, sticker)
+    key = {
+        "ok": "unpack_done",
+        "not_ours": "unpack_not_ours",
+        "no_sticker": "unpack_need_reply",
+        "not_group": "pack_groups_only",
+    }.get(outcome, "unpack_failed")
+    await message.reply_text(_t(key, update, context))
+
+
 async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     prepared = await _prepare(update, context)
     if prepared is None:
@@ -755,6 +797,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler("pack", cmd_pack))
+    app.add_handler(CommandHandler(["unpack", "unpak", "delsticker"], cmd_unpack))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CallbackQueryHandler(on_source_choice, pattern=r"^src:"))

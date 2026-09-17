@@ -122,6 +122,30 @@ async def add_quote(bot: Bot, chat: Chat, webp: bytes,
         return None
 
 
+async def remove_quote(bot: Bot, chat: Chat, sticker) -> str:
+    """Take one sticker out of this chat's pack. Returns what happened.
+
+    "not_ours" is the one that matters. A bot may delete from any set it
+    created, and every group's pack was created by this bot - so without
+    checking the set name, an admin of one group could reach into another
+    group's pack through their own. The sticker must belong to the pack of the
+    chat the command was given in, and nothing else is touched.
+    """
+    if chat.type not in GROUP_TYPES:
+        return "not_group"
+    if sticker is None:
+        return "no_sticker"
+    if sticker.set_name != pack_name(chat.id, bot.username):
+        return "not_ours"
+    try:
+        await bot.delete_sticker_from_set(sticker.file_id)
+    except TelegramError as exc:
+        log.warning("could not remove a sticker from %s: %s", sticker.set_name, exc)
+        return "failed"
+    log.info("removed a sticker from %s", sticker.set_name)
+    return "ok"
+
+
 async def link_for(bot: Bot, chat: Chat) -> str | None:
     """The chat's pack link, if a pack has actually been created."""
     if chat.type not in GROUP_TYPES:

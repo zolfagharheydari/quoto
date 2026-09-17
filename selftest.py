@@ -630,6 +630,117 @@ def test_extract() -> None:
     check("the tail is never read", len(tail) == extract.MAX_QUOTE_CHARS + 1)
 
 
+def test_pack_removal() -> None:
+    section("removing a sticker")
+
+    from telegram.constants import ChatMemberStatus
+    from telegram.error import TelegramError
+
+    OURS = -1001111
+    THEIRS = -1002222
+
+    class PackBot:
+        username = "getquoto_bot"
+
+        def __init__(self, fail=False, admin=True):
+            self.deleted = []
+            self.fail = fail
+            self.admin = admin
+
+        async def delete_sticker_from_set(self, file_id):
+            if self.fail:
+                raise TelegramError("nope")
+            self.deleted.append(file_id)
+
+        async def get_chat_member(self, chat_id, user_id):
+            status = (ChatMemberStatus.ADMINISTRATOR if self.admin
+                      else ChatMemberStatus.MEMBER)
+            return types.SimpleNamespace(status=status)
+
+    def chat(chat_id=OURS, kind="supergroup"):
+        return types.SimpleNamespace(id=chat_id, type=kind, title="گروه")
+
+    def sticker(owner_chat=OURS, file_id="S1"):
+        return types.SimpleNamespace(
+            file_id=file_id,
+            set_name=stickerpack.pack_name(owner_chat, "getquoto_bot"))
+
+    async def run():
+        bot_ = PackBot()
+        got = await stickerpack.remove_quote(bot_, chat(), sticker())
+        check("a sticker from this pack is removed", got == "ok", got)
+        check("and it is the one that was pointed at", bot_.deleted == ["S1"])
+
+        # The boundary: every group's pack is created by the same bot, so the
+        # set name is the only thing keeping one group out of another's pack.
+        bot_ = PackBot()
+        got = await stickerpack.remove_quote(bot_, chat(), sticker(owner_chat=THEIRS))
+        check("another group's pack is refused", got == "not_ours", got)
+        check("and nothing is deleted", not bot_.deleted)
+
+        bot_ = PackBot()
+        check("a private chat has no pack",
+              await stickerpack.remove_quote(bot_, chat(kind="private"), sticker())
+              == "not_group")
+        check("nothing to delete is said so",
+              await stickerpack.remove_quote(bot_, chat(), None) == "no_sticker")
+
+        bot_ = PackBot(fail=True)
+        check("a refusal from Telegram is reported",
+              await stickerpack.remove_quote(bot_, chat(), sticker()) == "failed")
+
+    asyncio.run(run())
+
+    # The command in front of it.
+    class Msg:
+        def __init__(self, reply=None, kind="supergroup"):
+            self.chat = types.SimpleNamespace(id=OURS, type=kind, title="گروه")
+            self.chat_id = OURS
+            self.reply_to_message = reply
+            self.out = []
+
+        async def reply_text(self, text, **kwargs):
+            self.out.append(text)
+
+        async def reply_html(self, text, **kwargs):
+            self.out.append(text)
+
+    def update_for(message):
+        return types.SimpleNamespace(
+            effective_message=message,
+            effective_chat=message.chat,
+            effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+
+    async def command():
+        bot_ = PackBot(admin=False)
+        message = Msg(reply=types.SimpleNamespace(sticker=sticker()))
+        await bot.cmd_unpack(update_for(message),
+                             types.SimpleNamespace(bot=bot_, user_data={}, bot_data={}))
+        check("a plain member is refused", "ادمین" in message.out[0])
+        check("and nothing is deleted for them", not bot_.deleted)
+
+        bot_ = PackBot(admin=True)
+        message = Msg(reply=types.SimpleNamespace(sticker=sticker()))
+        await bot.cmd_unpack(update_for(message),
+                             types.SimpleNamespace(bot=bot_, user_data={}, bot_data={}))
+        check("an admin may remove one", bot_.deleted == ["S1"])
+
+        bot_ = PackBot(admin=True)
+        message = Msg(reply=None)
+        await bot.cmd_unpack(update_for(message),
+                             types.SimpleNamespace(bot=bot_, user_data={}, bot_data={}))
+        check("without a reply it explains itself", "ریپلای" in message.out[0])
+        check("and deletes nothing", not bot_.deleted)
+
+        bot_ = PackBot(admin=True)
+        message = Msg(reply=types.SimpleNamespace(sticker=sticker()), kind="private")
+        await bot.cmd_unpack(update_for(message),
+                             types.SimpleNamespace(bot=bot_, user_data={}, bot_data={}))
+        check("it is refused outside a group", bool(message.out) and not bot_.deleted)
+
+    asyncio.run(command())
+
+
 def test_pack_names() -> None:
     section("sticker pack naming")
     name = stickerpack.pack_name(-1001234567890, "getquoto_bot")
@@ -1087,6 +1198,7 @@ def main() -> int:
     test_storage_channel()
     test_wallpaper()
     test_extract()
+    test_pack_removal()
     test_pack_names()
     test_fonts()
     test_fallback_fonts()

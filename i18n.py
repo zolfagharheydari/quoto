@@ -69,6 +69,7 @@ Full guide: /help""",
 <b>استیکرپک گروه</b>
 هر استیکری که اینجا ساخته شود، در یک پک به نام همین گروه جمع می‌شود.
 <code>/pack</code> — لینک پک را می‌دهد
+<code>/unpack</code> — روی یک استیکر ریپلای کن تا از پک حذف شود (فقط ادمین‌های گروه)
 
 <b>یک نکته</b>
 هر کسی که می‌خواهد از من استفاده کند، باید یک بار در چت خصوصی مرا استارت کرده باشد. اگر نکرده باشد، خودم دکمه‌اش را نشانش می‌دهم.
@@ -97,6 +98,7 @@ Anyone can set a picture for their quotes with <code>/avatar</code> in my privat
 <b>This group's sticker pack</b>
 Every sticker made here joins a pack named after the group.
 <code>/pack</code> — the link
+<code>/unpack</code> — reply to a sticker to take it out of the pack (group admins only)
 
 <b>One note</b>
 Anyone who wants to use me has to have started me once in a private chat. If they haven't, I'll show them the button.
@@ -166,6 +168,7 @@ Full guide: /help""",
 <code>/gif</code> — همان کارت، به شکل گیف با افکت تایپ
 <code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
 <code>/pack</code> — لینک استیکرپک این گروه
+<code>/unpack</code> — حذف یک استیکر از پک گروه (ادمین)
 <code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
 <code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
 <code>/lang</code> — تغییر زبان ربات
@@ -239,6 +242,7 @@ Change it whenever you like; this one has no limit.
 <code>/gif</code> — the same card, animated
 <code>/screenshot</code> — the message as a Telegram screenshot
 <code>/pack</code> — the link to this group's sticker pack
+<code>/unpack</code> — remove one sticker from the pack (admins)
 <code>/avatar</code> — your own picture for your quotes (private chat, twice)
 <code>/settings</code> — choose which picture stands for you
 <code>/lang</code> — change the bot's language
@@ -301,6 +305,26 @@ Note: the change you spent is not given back.""",
     "avatar_none": {
         "fa": "عکس دلخواهی نداری که پاک کنم.",
         "en": "You have no chosen picture to clear.",
+    },
+    "unpack_need_reply": {
+        "fa": "روی همان استیکری که می‌خواهی از پک حذف شود ریپلای کن و دوباره این دستور را بفرست.",
+        "en": "Reply to the sticker you want out of the pack and send this again.",
+    },
+    "unpack_not_admin": {
+        "fa": "فقط ادمین‌های این گروه می‌توانند استیکری را از پک حذف کنند.",
+        "en": "Only this group's admins can remove a sticker from the pack.",
+    },
+    "unpack_not_ours": {
+        "fa": "این استیکر مال پکِ این گروه نیست، پس کاری با آن ندارم.",
+        "en": "That sticker is not from this group's pack, so I will not touch it.",
+    },
+    "unpack_done": {
+        "fa": "استیکر از پک حذف شد ✅\n(ممکن است تا چند دقیقه در تلگرام تو کش‌شده بماند.)",
+        "en": "Removed from the pack ✅\n(Telegram may keep showing it to you for a few minutes.)",
+    },
+    "unpack_failed": {
+        "fa": "نشد حذفش کنم. کمی بعد دوباره امتحان کن.",
+        "en": "I could not remove it. Try again in a moment.",
     },
     "avatar_private_only": {
         "fa": "این دستور فقط در چت خصوصی من کار می‌کند.",
@@ -428,6 +452,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("gif", "همان کارت، به شکل گیف"),
         ("screenshot", "پیام به شکل اسکرین‌شات تلگرام"),
         ("pack", "استیکرپک این گروه"),
+        ("unpack", "حذف یک استیکر از پک گروه (ادمین)"),
     ],
     "en": [
         ("quote", "A quote card from the replied-to message"),
@@ -435,6 +460,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("gif", "The same card, animated"),
         ("screenshot", "The message as a Telegram screenshot"),
         ("pack", "This group's sticker pack"),
+        ("unpack", "Remove one sticker from the pack (admins)"),
     ],
 }
 
