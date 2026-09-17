@@ -123,6 +123,7 @@ Full guide: /help""",
 <code>/sticker</code> — همان کارت، به شکل استیکر
 <code>/gif</code> — همان کارت، به شکل گیف؛ متن جلوی چشم تایپ می‌شود
 <code>/screenshot</code> — پیام را همان‌طور که در تلگرام دیده می‌شود می‌سازد: حباب، عکس پروفایل، اسم و ساعت
+اگر پیام ریکشن خورده باشد و ربات از قبل ادمین گروه بوده، ریکشن‌ها هم زیرش می‌آیند.
 
 در گروه، استیکر و اسکرین‌شات به استیکرپک گروه هم اضافه می‌شوند.
 
@@ -197,6 +198,7 @@ That's it — the card comes back in the same chat.
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — the same card, animated; the text types itself
 <code>/screenshot</code> — the message as it looks in Telegram: bubble, avatar, name and time
+If the message has reactions and the bot was already an admin of the group, they are drawn under it too.
 
 In a group, stickers and screenshots also join the group's sticker pack.
 

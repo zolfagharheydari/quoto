@@ -80,6 +80,33 @@ FALLBACKS = [
 ]
 
 
+# Colour emoji live in a font of their own. Segoe is an outline font Pillow can
+# draw at any size; Noto is a bitmap one it can only draw at 109, which is why
+# every emoji here is rendered large and scaled down afterwards.
+EMOJI_FONTS = [
+    Path("C:/Windows/Fonts/seguiemj.ttf"),
+    Path("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"),
+    Path("/usr/share/fonts/truetype/noto-color-emoji/NotoColorEmoji.ttf"),
+    Path("/System/Library/Fonts/Apple Color Emoji.ttc"),
+]
+NOTO_STRIKE = 109   # the one size a bitmap emoji font will open at
+
+
+@lru_cache(maxsize=8)
+def emoji_font(size: int) -> ImageFont.FreeTypeFont | None:
+    """A colour emoji font at this size, or None when the machine has none."""
+    for path in EMOJI_FONTS:
+        if not path.exists():
+            continue
+        for attempt in (size, NOTO_STRIKE):
+            try:
+                return ImageFont.truetype(str(path), attempt)
+            except OSError:
+                continue  # a bitmap font refuses every size but its own strike
+    log.info("no colour emoji font found; reactions will not be drawn")
+    return None
+
+
 @lru_cache(maxsize=None)
 def _resolve(weight: str) -> Path | None:
     for path in CANDIDATES.get(weight, []):

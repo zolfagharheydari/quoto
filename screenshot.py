@@ -57,6 +57,48 @@ def _wallpaper(size: tuple[int, int]) -> Image.Image:
     return corners.resize(size, Image.BILINEAR)
 
 
+# A reaction pill: the emoji, then how many people chose it. No faces - who
+# reacted is nobody's business once the message leaves the group.
+REACTION_SIZE = 15
+REACTION_GAP = 5
+REACTION_PAD_X = 8
+
+
+def _emoji_tile(font, emoji: str, cell: int) -> Image.Image | None:
+    """The emoji in a square of its own, centred on the pixels it actually inks.
+
+    Centring by anchor centres the glyph's *advance*, and an emoji written with
+    a variation selector - a heart, say - has an advance wider than itself, so
+    it lands left of the middle and the count beside it looks adrift. Worse, it
+    can land far enough left to run off the scratch tile and lose a slice of
+    itself. Drawing it large, cropping to its ink and fitting that to the cell
+    makes every emoji sit the same way, whatever shape it is, and scales down a
+    bitmap font's fixed-size glyphs on the way.
+    """
+    if font is None:
+        return None
+    tile = ink = None
+    for big in (cell * 4, cell * 8):
+        tile = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+        try:
+            ImageDraw.Draw(tile).text((big // 2, big // 2), emoji, font=font,
+                                      embedded_color=True, anchor="mm")
+        except Exception:  # noqa: BLE001 - an emoji the font cannot draw
+            return None
+        ink = tile.getbbox()
+        if ink is None:
+            return None
+        if ink[0] > 0 and ink[1] > 0 and ink[2] < big and ink[3] < big:
+            break
+    tile = tile.crop(ink)
+    scale = min(cell / tile.width, cell / tile.height)
+    tile = tile.resize((max(1, round(tile.width * scale)),
+                        max(1, round(tile.height * scale))), Image.LANCZOS)
+    out = Image.new("RGBA", (cell, cell), (0, 0, 0, 0))
+    out.paste(tile, ((cell - tile.width) // 2, (cell - tile.height) // 2))
+    return out
+
+
 PAD = 18
 GAP = 9
 BUBBLE_PAD_X = 13
@@ -106,7 +148,8 @@ def _bubble_shape(draw: ImageDraw.ImageDraw, box, radius: int, tail: int, fill) 
 
 
 def render(avatar: Image.Image, name: str, text: str, time_str: str,
-           badge: str | None = None, seed: str = "") -> Image.Image:
+           badge: str | None = None, seed: str = "",
+           reactions: list[tuple[str, int]] | None = None) -> Image.Image:
     theme = THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
     name = textkit.normalize_display(name)
@@ -134,7 +177,26 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
 
     time_w = time_font.getlength(time_str)
     text_w = max([text_font.getlength(s) for s in shaped] or [0])
-    content_w = int(min(max(name_w + badge_w, text_w, time_w), max_content))
+
+    # The reaction row, if there is one. Its width has a say in how wide the
+    # bubble gets, the same as any other line inside it.
+    count_font = fonts.load("medium", _px(REACTION_SIZE - 2))
+    emoji_font = fonts.emoji_font(_px(REACTION_SIZE))
+    cell = _px(REACTION_SIZE)
+    pill_h = _px(REACTION_SIZE + 9)
+    pill_gap = _px(REACTION_GAP)
+    pill_pad = _px(REACTION_PAD_X)
+    pills = []
+    if emoji_font is not None:
+        for emoji, count in (reactions or []):
+            c_text = str(count)
+            c_w = count_font.getlength(c_text)
+            pills.append((emoji, c_text, c_w,
+                          pill_pad * 2 + cell + _px(4) + c_w))
+    pills_w = sum(p[3] for p in pills) + pill_gap * max(0, len(pills) - 1)
+    row_w = pills_w + _px(10) + time_w if pills else 0
+
+    content_w = int(min(max(name_w + badge_w, text_w, time_w, row_w), max_content))
 
     line_h = _px(theme["text_size"] + 6)
     name_h = _px(theme["name_size"] + 5)
@@ -146,7 +208,10 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     tail = _px(13)
 
     bubble_w = content_w + pad_x * 2
-    bubble_h = pad_top + name_h + len(lines) * line_h + time_h + pad_bottom
+    # With reactions the row takes the place of the timestamp's own line, and
+    # the time moves onto it.
+    tail_h = (pill_h + _px(6)) if pills else time_h
+    bubble_h = pad_top + name_h + len(lines) * line_h + tail_h + pad_bottom
 
     avatar_size = _px(theme["avatar"])
     pad = _px(PAD)
@@ -203,8 +268,29 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
 
     # The timestamp stays in the bottom-right corner whichever way the text runs,
     # as it does on an incoming message in the app.
-    time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y), time_str,
-                      fill=theme["time"], anchor="ra")
+    if not pills:
+        time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y), time_str,
+                          fill=theme["time"], anchor="ra")
+        return img
+
+    # Reactions sit at the bottom left in either direction - the app puts them
+    # there in Persian too - and the time keeps the corner it has always had.
+    y += _px(3)
+    pill_fill = tuple(int(b + (a - b) * 0.16)
+                      for a, b in zip(accent, theme["bubble"]))
+    x = bubble_x + pad_x
+    for emoji, c_text, c_w, w in pills:
+        draw.rounded_rectangle([x, y, x + w, y + pill_h],
+                               radius=pill_h // 2, fill=pill_fill)
+        middle = y + pill_h // 2
+        tile = _emoji_tile(emoji_font, emoji, cell)
+        if tile is not None:
+            img.paste(tile, (int(x + pill_pad), int(middle - cell // 2)), tile)
+        count_font.draw_on(draw, (x + pill_pad + cell + _px(4), middle), c_text,
+                           fill=accent, anchor="lm")
+        x += w + pill_gap
+    time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y + pill_h // 2),
+                      time_str, fill=theme["time"], anchor="rm")
 
     return img
 

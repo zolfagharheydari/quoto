@@ -21,6 +21,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
+import reactions
+
 log = logging.getLogger("quotebot.admin")
 
 STARTED_AT = time.time()          # this process, not the bot's whole history
@@ -206,6 +208,7 @@ def _stats_text(context) -> str:
         f"🖼 آواتار دلخواه: {len(context.bot_data.get('avatars', {}))}",
         f"📦 کانال انبار: {context.bot_data.get('storage_chat') or 'تنظیم نشده'}",
         f"🚫 مسدود: {len(_blocked(context))}",
+        f"👍 ریکشن دنبال‌شده: {reactions.total_tracked(context.bot_data)} پیام",
         f"⏱ روشن از: {_uptime()} پیش",
     ]
     return "\n".join(lines)

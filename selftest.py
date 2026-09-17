@@ -29,6 +29,7 @@ import extract  # noqa: E402
 import fonts  # noqa: E402
 import i18n  # noqa: E402
 import inline  # noqa: E402
+import reactions  # noqa: E402
 import render  # noqa: E402
 import screenshot  # noqa: E402
 import stickerpack  # noqa: E402
@@ -585,6 +586,127 @@ def test_storage_channel() -> None:
             bot.OWNER_ID = owner
 
     asyncio.run(run())
+
+
+LAUGH, HEART, THUMB, FIRE = "😂", "❤️", "👍", "🔥"
+
+
+def test_reactions() -> None:
+    section("reactions")
+
+    def emoji(char):
+        return types.SimpleNamespace(emoji=char)
+
+    def change(chat_id, message_id, old, new):
+        return types.SimpleNamespace(
+            message_reaction=types.SimpleNamespace(
+                chat=types.SimpleNamespace(id=chat_id), message_id=message_id,
+                old_reaction=[emoji(c) for c in old],
+                new_reaction=[emoji(c) for c in new]),
+            message_reaction_count=None)
+
+    data = {}
+    reactions.record_change(data, change(-1, 5, [], [LAUGH]))
+    check("a new reaction counts", reactions.for_message(data, -1, 5) == [(LAUGH, 1)])
+
+    reactions.record_change(data, change(-1, 5, [], [LAUGH]))
+    reactions.record_change(data, change(-1, 5, [], [HEART]))
+    check("more of the same add up",
+          dict(reactions.for_message(data, -1, 5)) == {LAUGH: 2, HEART: 1})
+
+    # Someone swapping one reaction for another moves the count, not adds to it.
+    reactions.record_change(data, change(-1, 5, [LAUGH], [HEART]))
+    check("changing one's mind moves the count",
+          dict(reactions.for_message(data, -1, 5)) == {LAUGH: 1, HEART: 2})
+
+    # Taking the last one back leaves nothing behind, not a zero.
+    data2 = {}
+    reactions.record_change(data2, change(-1, 9, [], [FIRE]))
+    reactions.record_change(data2, change(-1, 9, [FIRE], []))
+    check("taking it back removes it", reactions.for_message(data2, -1, 9) == [])
+    check("and keeps no empty entry", not data2["reactions"][-1])
+
+    # Most reacted first, and never more than fits across a bubble.
+    data3 = {}
+    for char, times in ((LAUGH, 3), (HEART, 7), (THUMB, 1), (FIRE, 5)):
+        for _ in range(times):
+            reactions.record_change(data3, change(-1, 1, [], [char]))
+    for extra in ("😮", "😢", "🎉"):
+        reactions.record_change(data3, change(-1, 1, [], [extra]))
+    shown = reactions.for_message(data3, -1, 1)
+    check("the most reacted comes first", shown[0] == (HEART, 7), str(shown))
+    check("in descending order",
+          [n for _, n in shown] == sorted([n for _, n in shown], reverse=True))
+    check("and no more than fit", len(shown) == reactions.MAX_SHOWN, str(len(shown)))
+
+    # A custom emoji is a file, not a character: nothing to draw, so not counted.
+    data4 = {}
+    custom = types.SimpleNamespace(
+        message_reaction=types.SimpleNamespace(
+            chat=types.SimpleNamespace(id=-1), message_id=2,
+            old_reaction=[], new_reaction=[types.SimpleNamespace(custom_emoji_id="x")]),
+        message_reaction_count=None)
+    reactions.record_change(data4, custom)
+    check("a custom emoji is skipped", reactions.for_message(data4, -1, 2) == [])
+
+    # Anonymous chats send the totals instead, and those replace what we had.
+    data5 = {}
+    reactions.record_change(data5, change(-1, 3, [], [LAUGH]))
+    totals = types.SimpleNamespace(
+        message_reaction=None,
+        message_reaction_count=types.SimpleNamespace(
+            chat=types.SimpleNamespace(id=-1), message_id=3,
+            reactions=[types.SimpleNamespace(type=emoji(LAUGH), total_count=42)]))
+    reactions.record_totals(data5, totals)
+    check("totals replace a running count",
+          reactions.for_message(data5, -1, 3) == [(LAUGH, 42)])
+
+    # A busy group must not grow this without end.
+    data6 = {}
+    for message_id in range(reactions.MAX_MESSAGES_PER_CHAT + 25):
+        reactions.record_change(data6, change(-1, message_id, [], [LAUGH]))
+    kept = data6["reactions"][-1]
+    check("old messages are dropped",
+          len(kept) == reactions.MAX_MESSAGES_PER_CHAT, str(len(kept)))
+    check("and it is the oldest that go", 0 not in kept and 424 in kept)
+    check("the count is reported", reactions.total_tracked(data6) == len(kept))
+
+    # A message nobody reacted to has nothing, which is the honest answer.
+    check("an unseen message has none", reactions.for_message({}, -7, 7) == [])
+
+
+def test_reaction_row() -> None:
+    section("the reaction row")
+
+    font = fonts.emoji_font(45)
+    check("a colour emoji font was found", font is not None,
+          "none on this machine; reactions will be left off")
+    if font is None:
+        return
+
+    # The bug worth keeping a test for: a heart drawn into too small a tile lost
+    # a slice of its left side, because its advance is wider than its ink.
+    tiles = {name: screenshot._emoji_tile(font, char, 45)
+             for name, char in (("heart", HEART), ("laugh", LAUGH), ("thumb", THUMB))}
+    for name, tile in tiles.items():
+        check(f"the {name} is drawn", tile is not None and tile.getbbox() is not None)
+    widths = [t.crop(t.getbbox()).width for t in tiles.values()]
+    check("every emoji fills its cell alike",
+          max(widths) - min(widths) <= 12, str(widths))
+
+    avatar = render.fallback_avatar("x", "A")
+    plain = screenshot.render(avatar, "Ali", "سلام", "14:17", None, "ali")
+    with_row = screenshot.render(avatar, "Ali", "سلام", "14:17", None, "ali",
+                                 [(LAUGH, 4), (HEART, 2)])
+    check("the row makes the bubble taller", with_row.height > plain.height)
+    check("and wide enough for itself", with_row.width > plain.width)
+    check("no reactions changes nothing",
+          screenshot.render(avatar, "Ali", "سلام", "14:17", None, "ali", []).size
+          == plain.size)
+
+    # The count is drawn in the accent colour, so the row must actually have ink.
+    row = with_row.crop((0, with_row.height - 120, with_row.width, with_row.height))
+    check("the row has something in it", len(set(row.convert("RGB").getdata())) > 20)
 
 
 def test_wallpaper() -> None:
@@ -1196,6 +1318,8 @@ def main() -> int:
     test_quota()
     test_inline_results()
     test_storage_channel()
+    test_reactions()
+    test_reaction_row()
     test_wallpaper()
     test_extract()
     test_pack_removal()

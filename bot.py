@@ -40,6 +40,7 @@ from telegram.ext import (
     ContextTypes,
     InlineQueryHandler,
     MessageHandler,
+    MessageReactionHandler,
     PicklePersistence,
     TypeHandler,
     filters,
@@ -52,6 +53,7 @@ import extract
 import fonts
 import i18n
 import inline
+import reactions
 import render
 import screenshot
 import stickerpack
@@ -678,6 +680,19 @@ async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
     )
 
 
+async def on_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Keep a running count of the reactions on messages in this chat.
+
+    Telegram will not tell us what a message already carries, so the only way a
+    screenshot can show reactions is to have been watching when they arrived.
+    This costs a dictionary update and nothing else.
+    """
+    if update.message_reaction is not None:
+        reactions.record_change(context.bot_data, update)
+    elif update.message_reaction_count is not None:
+        reactions.record_totals(context.bot_data, update)
+
+
 async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     prepared = await _prepare(update, context)
     if prepared is None:
@@ -692,9 +707,11 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         badge = await _badge(context.bot, message.chat, author,
                              i18n.resolve(update, context.user_data))
+        seen = reactions.for_message(
+            context.bot_data, message.chat_id, target.message_id)
         image = await asyncio.to_thread(
             screenshot.render, avatar, author.name, text,
-            _clock(target.date), badge, author.seed,
+            _clock(target.date), badge, author.seed, seen,
         )
         buf = await asyncio.to_thread(screenshot.to_png, image)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
@@ -844,6 +861,9 @@ def main() -> None:
             filters.REPLY & filters.Regex(re.compile(pattern, re.IGNORECASE)), handler
         ))
     app.add_handler(ChatMemberHandler(on_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
+    # Reactions are only delivered while the bot is an administrator of the
+    # group, and only from the moment it became one.
+    app.add_handler(MessageReactionHandler(on_reaction))
     app.add_handler(InlineQueryHandler(inline.make_handler(WATERMARK, STORAGE_CHAT)))
     app.add_error_handler(on_error)
 
