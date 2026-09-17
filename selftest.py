@@ -709,6 +709,16 @@ def test_reaction_row() -> None:
     row = with_row.crop((0, with_row.height - 120, with_row.width, with_row.height))
     check("the row has something in it", len(set(row.convert("RGB").getdata())) > 20)
 
+    # The time shares the reaction row rather than stacking under it whenever
+    # the two fit side by side, which for a short message they always do.
+    short = screenshot.render(avatar, "Ali", "مرسی", "14:17", None, "ali", [(HEART, 5)])
+    stacked = screenshot.render(avatar, "Ali", "مرسی", "14:17", None, "ali")
+    check("a lone reaction does not push the time onto its own line",
+          short.height - stacked.height < screenshot._px(
+              screenshot.THEME["time_size"] + 5) + screenshot._px(
+              screenshot.REACTION_SIZE + 9),
+          f"{short.height} vs {stacked.height}")
+
     # Wrapping: a dozen reactions go onto more rows rather than losing any.
     many = [(c, 9) for c in "😂❤️👍🔥😮😢🎉🤯👏🙃😡💯"]
     tall = screenshot.render(avatar, "Ali", "سلام", "14:17", None, "ali", many)

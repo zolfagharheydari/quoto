@@ -332,8 +332,11 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
         y += pill_h + _px(4)
 
     if time_shares_row:
-        time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y - pill_h // 2 - _px(4)),
-                          time_str, fill=theme["time"], anchor="rm")
+        # Sitting on a baseline just under the pills rather than centred on
+        # them: that is where the app puts it, and centred it read as part of
+        # the row instead of the corner of the bubble.
+        time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y + _px(2)),
+                          time_str, fill=theme["time"], anchor="rs")
     else:
         time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y), time_str,
                           fill=theme["time"], anchor="ra")
