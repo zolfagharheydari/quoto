@@ -900,6 +900,36 @@ def test_badges() -> None:
           is None)
 
 
+def test_handler_groups() -> None:
+    section("handler registration")
+
+    from telegram.ext import Application, TypeHandler
+
+    app = Application.builder().token("123456:selftest").build()
+    bot.register(app)
+
+    # Only the first matching handler in a group runs. A TypeHandler on Update
+    # matches everything, so two of them in one group means the second never
+    # runs - which is exactly how the tracker was silently dead.
+    catch_all = {}
+    for group, handlers in app.handlers.items():
+        for handler in handlers:
+            if isinstance(handler, TypeHandler):
+                catch_all.setdefault(group, []).append(handler)
+    crowded = {g: len(h) for g, h in catch_all.items() if len(h) > 1}
+    check("no two catch-all handlers share a group", not crowded, str(crowded))
+    check("there are two of them", sum(len(h) for h in catch_all.values()) == 2,
+          str(catch_all))
+
+    # And the stale check has to come first, or it would be recording the very
+    # updates it exists to throw away.
+    groups = sorted(catch_all)
+    stale = catch_all[groups[0]][0].callback
+    check("the stale check runs first", stale is bot.ignore_stale)
+    check("and the handlers proper come after everything",
+          max(app.handlers) >= 0 and min(app.handlers) < 0)
+
+
 def test_wallpaper() -> None:
     section("screenshot wallpaper")
     paper = screenshot._wallpaper((120, 60))
@@ -1513,6 +1543,7 @@ def main() -> int:
     test_reactions()
     test_reaction_row()
     test_badges()
+    test_handler_groups()
     test_wallpaper()
     test_extract()
     test_pack_removal()

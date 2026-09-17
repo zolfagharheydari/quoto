@@ -802,40 +802,20 @@ async def post_init(app: Application) -> None:
     await publish("en", language_code="en")
 
 
-def main() -> None:
-    if not TOKEN:
-        raise SystemExit(
-            "BOT_TOKEN is not set. Put it in the .env file.\n"
-            "BOT_TOKEN تنظیم نشده. مقدارش را در فایل .env بگذار."
-        )
-    if fonts.missing_bundled_font():
-        log.warning("Vazirmatn not found; run python download_fonts.py for correct Persian.")
+def register(app: Application) -> None:
+    """Attach every handler to the application.
 
-    builder = (
-        Application.builder()
-        .token(TOKEN)
-        # The defaults are five seconds for everything, which is fine for a text
-        # reply and much too tight for uploading a video over a slow or proxied
-        # link — Telegram also takes its time answering a video upload. That is
-        # how /gif ends up posting "sending video" and then nothing.
-        .connect_timeout(20.0)
-        .read_timeout(40.0)
-        .write_timeout(60.0)
-        .media_write_timeout(180.0)
-        .pool_timeout(10.0)
-        .rate_limiter(AIORateLimiter())
-        .persistence(PicklePersistence(filepath=STATE_FILE))
-        .post_init(post_init)
-    )
-    if PROXY:
-        # Both the API calls and the long-polling connection need the proxy.
-        log.info("using proxy %s", PROXY)
-        builder = builder.proxy(PROXY).get_updates_proxy(PROXY)
-    app = builder.build()
-
+    Groups matter here and are easy to get wrong: only the first matching
+    handler in a group runs, so two handlers that both match everything must
+    not share one. Keeping this out of main() is what lets the self test build
+    an application and look at what actually got registered.
+    """
     # Runs before everything else, so a stale command never reaches a handler.
-    app.add_handler(TypeHandler(Update, ignore_stale), group=-1)
-    # Then the bookkeeping: who is using the bot, and who may not.
+    app.add_handler(TypeHandler(Update, ignore_stale), group=-2)
+    # Then the bookkeeping: who is using the bot, and who may not. It must be
+    # a group of its own: only the first matching handler in a group runs, and
+    # the stale check above matches every update there is - sharing a group
+    # with it meant this never ran at all.
     app.add_handler(TypeHandler(Update, admin.make_tracker(OWNER_ID)), group=-1)
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -895,6 +875,40 @@ def main() -> None:
     app.add_handler(MessageReactionHandler(on_reaction))
     app.add_handler(InlineQueryHandler(inline.make_handler(WATERMARK, STORAGE_CHAT)))
     app.add_error_handler(on_error)
+
+
+def main() -> None:
+    if not TOKEN:
+        raise SystemExit(
+            "BOT_TOKEN is not set. Put it in the .env file.\n"
+            "BOT_TOKEN تنظیم نشده. مقدارش را در فایل .env بگذار."
+        )
+    if fonts.missing_bundled_font():
+        log.warning("Vazirmatn not found; run python download_fonts.py for correct Persian.")
+
+    builder = (
+        Application.builder()
+        .token(TOKEN)
+        # The defaults are five seconds for everything, which is fine for a text
+        # reply and much too tight for uploading a video over a slow or proxied
+        # link — Telegram also takes its time answering a video upload. That is
+        # how /gif ends up posting "sending video" and then nothing.
+        .connect_timeout(20.0)
+        .read_timeout(40.0)
+        .write_timeout(60.0)
+        .media_write_timeout(180.0)
+        .pool_timeout(10.0)
+        .rate_limiter(AIORateLimiter())
+        .persistence(PicklePersistence(filepath=STATE_FILE))
+        .post_init(post_init)
+    )
+    if PROXY:
+        # Both the API calls and the long-polling connection need the proxy.
+        log.info("using proxy %s", PROXY)
+        builder = builder.proxy(PROXY).get_updates_proxy(PROXY)
+    app = builder.build()
+
+    register(app)
 
     log.info("bot is up")
     try:
