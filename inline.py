@@ -37,6 +37,19 @@ log = logging.getLogger("quotebot.inline")
 DEBOUNCE_SECONDS = 0.45
 MAX_INLINE_CHARS = 700
 
+# Telegram closes an inline query a few seconds after it opens it, and answering
+# a closed one fails with "query is too old". Everything here has to fit inside
+# that: render three files, upload three files, answer. On a slow link it does
+# not, and the animation is what does not fit - so it is given a deadline of its
+# own and the answer goes out without it rather than going out too late.
+ANSWER_BUDGET = 7.0
+ANIMATION_SHARE = 0.55      # of what is left after the photo and sticker are up
+
+# The same text typed twice should not be rendered twice. Inline queries repeat
+# constantly - every backspace and retype is the same string again - and a
+# file_id outlives the message it came from, so it can be handed back directly.
+CACHE_LIMIT = 200
+
 # Inline mode has no commands, but people reach for them anyway. A leading /quote
 # is dropped, and a query that is nothing but a command gets a hint instead of a
 # card reading "/quote".
@@ -50,6 +63,18 @@ LEADING_COMMAND_RE = re.compile(f"^/({_VERBS})(@[A-Za-z0-9_]+)?[ ]+", re.IGNOREC
 COMMAND_ONLY_RE = re.compile(
     f"^/?({_VERBS}|کوت|نقل[ ]*قول)(@[A-Za-z0-9_]+)?$", re.IGNORECASE
 )
+
+
+def _cached(context, key: str):
+    return context.bot_data.get("inline_cache", {}).get(key)
+
+
+def _remember(context, key: str, ids: tuple) -> None:
+    cache = context.bot_data.setdefault("inline_cache", {})
+    cache[key] = ids
+    # Dictionaries keep insertion order, so the front of it is the oldest.
+    while len(cache) > CACHE_LIMIT:
+        cache.pop(next(iter(cache)))
 
 
 async def _discard(messages) -> None:
@@ -77,36 +102,40 @@ def _later(context: ContextTypes.DEFAULT_TYPE, coro) -> None:
 
 
 async def _upload(context: ContextTypes.DEFAULT_TYPE, storage_chat: str | int | None,
-                  user_id: int, png, webp, animation) -> tuple[str, str, str | None]:
-    """Send the card somewhere Telegram will keep it, and return its file_ids.
+                  user_id: int, png, webp) -> tuple[str, str]:
+    """Put the photo and the sticker up, and return their file_ids.
 
-    The three go up together. They are independent uploads over the same
-    connection pool, and doing them one after another would add the animation's
-    whole round trip to how long the user waits with their keyboard open.
+    These two are what the answer cannot go out without, so they go up together
+    rather than one after the other, and the animation is not waited on here at
+    all - it has a deadline of its own.
 
-    What is left behind afterwards differs. With a storage channel the animation
-    stays, because it is the one worth having a record of, and the photo and the
-    sticker are cleared away. With no channel configured the user's own chat was
-    the scratch space, so all three go. Either way the deleting happens after
-    this returns and costs the user nothing.
+    Neither is kept: they exist to be given a file_id, which outlives the
+    message that carried it. The deleting happens after this returns and costs
+    the user nothing.
     """
     bot = context.bot
     target = storage_chat or user_id
-    buf, ext = animation
-    photo_msg, sticker_msg, anim_msg = await asyncio.gather(
+    photo_msg, sticker_msg = await asyncio.gather(
         bot.send_photo(target, png, disable_notification=True),
         bot.send_sticker(target, webp, disable_notification=True),
-        bot.send_animation(target, buf, filename=f"quote.{ext}",
-                           disable_notification=True),
     )
-    throwaway = [photo_msg, sticker_msg]
+    _later(context, _discard([photo_msg, sticker_msg]))
+    return photo_msg.photo[-1].file_id, sticker_msg.sticker.file_id
+
+
+async def _upload_animation(context: ContextTypes.DEFAULT_TYPE,
+                            storage_chat: str | int | None,
+                            user_id: int, animation) -> str | None:
+    """Put the animation up and hand back its file_id."""
+    buf, ext = animation
+    target = storage_chat or user_id
+    message = await context.bot.send_animation(
+        target, buf, filename=f"quote.{ext}", disable_notification=True)
     if not storage_chat:
-        throwaway.append(anim_msg)
-    _later(context, _discard(throwaway))
+        _later(context, _discard([message]))
     # Telegram stores every animation as MP4, whichever way it arrived, but it
     # can still come back as a plain document if it declined to convert one.
-    animation_id = anim_msg.animation.file_id if anim_msg.animation else None
-    return photo_msg.photo[-1].file_id, sticker_msg.sticker.file_id, animation_id
+    return message.animation.file_id if message.animation else None
 
 
 def build_results(lang: str, photo_id: str, sticker_id: str,
@@ -175,6 +204,16 @@ def make_handler(watermark: str, storage_chat: str | int | None):
         store = context.bot_data.get("storage_chat") or storage_chat
 
         chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
+        # The picture depends on the words, who is credited and which avatar
+        # stands for them, so all three go into the key.
+        key = f"{query.from_user.id}:{chosen or ''}:{text}"
+        remembered = _cached(context, key)
+        if remembered:
+            log.info("inline answered from cache")
+            await _answer(query, build_results(lang, *remembered))
+            return
+
+        started = asyncio.get_running_loop().time()
         try:
             avatar = await authors.fetch_avatar(context.bot, author, chosen)
             scene = await asyncio.to_thread(
@@ -183,13 +222,33 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)
             webp = await asyncio.to_thread(render.to_sticker_webp, image)
-            # The long pole: a couple of hundred frames through ffmpeg. It is
-            # still worth doing here rather than on demand, because an inline
-            # result can only point at a file Telegram already holds.
-            animation = await asyncio.to_thread(animate.to_animation, scene)
-            photo_id, sticker_id, animation_id = await _upload(
-                context, store, query.from_user.id, png, webp, animation
-            )
+
+            # The animation is a couple of hundred frames through ffmpeg and
+            # then an upload of its own. It runs alongside the other two rather
+            # than after them, and it has until the budget runs out.
+            gif = asyncio.ensure_future(_make_animation(
+                context, store, query.from_user.id, scene))
+            try:
+                photo_id, sticker_id = await _upload(
+                    context, store, query.from_user.id, png, webp
+                )
+            except BaseException:
+                gif.cancel()
+                raise
+
+            left = ANSWER_BUDGET - (asyncio.get_running_loop().time() - started)
+            animation_id = None
+            try:
+                animation_id = await asyncio.wait_for(
+                    asyncio.shield(gif), max(0.1, left * ANIMATION_SHARE))
+            except asyncio.TimeoutError:
+                # It is still going, and it will finish and land in the cache,
+                # so the next time this text is typed the animation is there.
+                log.info("inline answered without the animation; %.1fs left", left)
+            except Exception:  # noqa: BLE001 - the other two are still good
+                log.exception("inline animation failed")
+            _later(context, _finish(context, key,
+                                    (photo_id, sticker_id), gif))
         except (Forbidden, BadRequest) as exc:
             # The user never pressed Start, so the bot cannot use their chat as
             # storage. Telegram says this two different ways: Forbidden once it
@@ -209,12 +268,41 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             return
         except Exception:  # noqa: BLE001 - one bad query must not kill the handler
             log.exception("inline render failed")
-            await query.answer([], cache_time=1, is_personal=True)
+            await _answer(query, [])
             return
 
-        await query.answer(
-            build_results(lang, photo_id, sticker_id, animation_id),
-            cache_time=30, is_personal=True,
-        )
+        await _answer(query, build_results(lang, photo_id, sticker_id,
+                                           animation_id))
 
     return on_inline
+
+
+async def _make_animation(context, storage_chat, user_id, scene):
+    """Render the animation and put it up, off the answer's critical path."""
+    animation = await asyncio.to_thread(animate.to_animation, scene)
+    return await _upload_animation(context, storage_chat, user_id, animation)
+
+
+async def _finish(context, key: str, ids: tuple, gif) -> None:
+    """Wait for the animation, whenever it lands, and remember all three."""
+    animation_id = None
+    try:
+        animation_id = await gif
+    except Exception:  # noqa: BLE001 - nothing to answer any more either way
+        log.debug("inline animation never arrived for %s", key)
+    _remember(context, key, (*ids, animation_id))
+
+
+async def _answer(query, results) -> None:
+    """Answer the query, unless Telegram has already closed it.
+
+    A query that took too long is not a fault worth a traceback: the work is
+    done and cached, and the next keystroke will be answered from it.
+    """
+    try:
+        await query.answer(results, cache_time=30, is_personal=True)
+    except BadRequest as exc:
+        if "too old" in str(exc).lower() or "query id is invalid" in str(exc).lower():
+            log.info("inline query closed before the answer was ready")
+            return
+        raise

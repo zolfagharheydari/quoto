@@ -488,22 +488,28 @@ def test_inline_results() -> None:
             return self._make("animation", chat_id)
 
     async def uploading():
+        # The photo and the sticker go up together, and the answer waits only on
+        # them; the animation is uploaded on its own so it can be given up on.
         bot_ = FakeBot()
         ctx = types.SimpleNamespace(bot=bot_)
-        ids = await inline._upload(ctx, None, 77, b"png", b"webp", (b"mp4", "mp4"))
-        check("all three are uploaded", len(bot_.sent) == 3, str(bot_.sent))
-        check("an animation is among them",
-              "animation" in [kind for kind, _ in bot_.sent])
+        ids = await inline._upload(ctx, None, 77, b"png", b"webp")
+        check("the quick two are uploaded together",
+              [kind for kind, _ in bot_.sent] == ["photo", "sticker"], str(bot_.sent))
         check("the user's own chat is the scratch space",
               all(chat == 77 for _, chat in bot_.sent))
         await asyncio.sleep(0)  # the deleting is scheduled, not awaited
         check("scratch copies are deleted", all(m.deleted for m in bot_.messages))
-        check("the three file ids come back", ids == ("PH", "ST", "AN"), str(ids))
+        check("their file ids come back", ids == ("PH", "ST"), str(ids))
+
+        animation_id = await inline._upload_animation(
+            ctx, None, 77, (b"mp4", "mp4"))
+        check("the animation goes up by itself", animation_id == "AN")
 
         # With a storage chat the animation stays and the other two are cleared.
         bot_ = FakeBot()
         ctx = types.SimpleNamespace(bot=bot_)
-        await inline._upload(ctx, -100999, 77, b"png", b"webp", (b"mp4", "mp4"))
+        await inline._upload(ctx, -100999, 77, b"png", b"webp")
+        await inline._upload_animation(ctx, -100999, 77, (b"mp4", "mp4"))
         check("a storage chat is used when set",
               all(chat == -100999 for _, chat in bot_.sent))
         await asyncio.sleep(0)
@@ -512,6 +518,19 @@ def test_inline_results() -> None:
               len(kept) == 1 and kept[0].animation is not None)
         check("the photo and sticker are cleared",
               all(m.deleted for m in bot_.messages if m.animation is None))
+
+        # The cache: the same words twice should not be rendered twice.
+        ctx = types.SimpleNamespace(bot=bot_, bot_data={})
+        check("nothing is cached to begin with",
+              inline._cached(ctx, "k") is None)
+        inline._remember(ctx, "k", ("PH", "ST", "AN"))
+        check("and then it is", inline._cached(ctx, "k") == ("PH", "ST", "AN"))
+        for i in range(inline.CACHE_LIMIT + 20):
+            inline._remember(ctx, f"k{i}", ("P", "S", None))
+        check("the cache is bounded",
+              len(ctx.bot_data["inline_cache"]) == inline.CACHE_LIMIT,
+              str(len(ctx.bot_data["inline_cache"])))
+        check("and the oldest went first", "k" not in ctx.bot_data["inline_cache"])
 
     async def not_blocking():
         # The deleting must not be awaited inside _upload: an inline query is
@@ -530,10 +549,28 @@ def test_inline_results() -> None:
 
         ctx = types.SimpleNamespace(bot=SlowBot())
         started = time.monotonic()
-        await inline._upload(ctx, -100999, 77, b"png", b"webp", (b"mp4", "mp4"))
+        await inline._upload(ctx, -100999, 77, b"png", b"webp")
         check("cleanup does not hold up the answer",
               time.monotonic() - started < 0.1,
               f"{time.monotonic() - started:.2f}s")
+
+        # A slow animation must not hold up the answer either: past its share of
+        # the budget the query is answered with the two that are ready.
+        async def slow_gif():
+            await asyncio.sleep(5)
+            return "AN"
+
+        gif = asyncio.ensure_future(slow_gif())
+        started = time.monotonic()
+        late = None
+        try:
+            late = await asyncio.wait_for(asyncio.shield(gif), 0.2)
+        except asyncio.TimeoutError:
+            pass
+        check("a slow animation is given up on",
+              late is None and time.monotonic() - started < 1)
+        check("but it is left running, to land in the cache", not gif.done())
+        gif.cancel()
 
     asyncio.run(uploading())
     asyncio.run(not_blocking())
