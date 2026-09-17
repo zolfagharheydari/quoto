@@ -877,6 +877,18 @@ def test_badges() -> None:
     def shot(is_admin):
         return screenshot.render(tile, "Ali", "سلام", "14:17", "چیل",
                                  "ali", None, is_admin)
+    # The badge takes the far edge of the bubble in either direction, so an
+    # English message must not have it trailing the name.
+    def badge_at_edge(text):
+        shot = screenshot.render(tile, "Sep", text, "11:18 PM", "admin", "sep")
+        # The pill is tinted, so it is neither the bubble's white nor the
+        # wallpaper: look for it in the top-right corner of the bubble.
+        band = shot.crop((shot.width // 2, 0, shot.width, shot.height // 3))
+        return len(set(band.convert("RGB").getdata())) > 30
+    check("the badge sits at the far edge in English",
+          badge_at_edge("Hello my name is window"))
+    check("and in Persian", badge_at_edge("سلام اسم من پنجره است"))
+
     check("a tag is not drawn like a rank",
           render.to_png(shot(True)).getvalue() != render.to_png(shot(False)).getvalue())
     check("and takes less room, having no pill",

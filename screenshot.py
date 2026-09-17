@@ -294,7 +294,10 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
         # admin gave an ordinary member is not a rank and the app does not dress
         # it as one: it is plain grey text in the same corner.
         pill_w = badge_text_w + (badge_pad * 2 if badge_is_admin else 0)
-        bx = (bubble_x + bubble_w - pad_x - pill_w) if rtl else (name_x + name_w + _px(6))
+        # The far edge of the bubble, whichever way the text runs. The app
+        # puts it there in English exactly as it does in Persian; trailing
+        # the name is not where it goes in either.
+        bx = bubble_x + bubble_w - pad_x - pill_w
         if badge_is_admin:
             draw.rounded_rectangle(
                 [bx, y, bx + pill_w, y + bh],
