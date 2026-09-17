@@ -492,6 +492,63 @@ def test_inline_results() -> None:
     asyncio.run(uploading())
 
 
+def test_storage_channel() -> None:
+    section("storage channel")
+
+    from telegram.constants import ChatMemberStatus
+
+    class Bot_:
+        def __init__(self):
+            self.told = []
+
+        async def send_message(self, chat_id, text, **kwargs):
+            self.told.append((chat_id, text))
+
+    def event(chat_id, actor_id, status=ChatMemberStatus.ADMINISTRATOR,
+              kind="channel"):
+        return types.SimpleNamespace(my_chat_member=types.SimpleNamespace(
+            chat=types.SimpleNamespace(id=chat_id, type=kind, title="انبار"),
+            from_user=types.SimpleNamespace(id=actor_id),
+            old_chat_member=types.SimpleNamespace(status=ChatMemberStatus.LEFT),
+            new_chat_member=types.SimpleNamespace(status=status),
+        ))
+
+    async def run():
+        owner = bot.OWNER_ID
+        bot.OWNER_ID = 4242
+        try:
+            store, fake = {}, Bot_()
+            ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
+            await bot._adopt_storage(event(-1001, 4242), ctx)
+            check("the owner's channel is adopted", store.get("storage_chat") == -1001)
+            check("and the owner is told", fake.told and "-1001" in fake.told[0][1])
+
+            # Anyone can add a bot to their own channel; that must not move the store.
+            store, fake = {"storage_chat": -1001}, Bot_()
+            ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
+            await bot._adopt_storage(event(-2002, 9999), ctx)
+            check("a stranger's channel is ignored", store["storage_chat"] == -1001)
+            check("and nobody is told", not fake.told)
+
+            # Added as a plain member, with no right to post: not a store.
+            store, fake = {}, Bot_()
+            ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
+            await bot._adopt_storage(
+                event(-3003, 4242, status=ChatMemberStatus.MEMBER), ctx)
+            check("a non-admin channel is ignored", "storage_chat" not in store)
+
+            # With no owner configured there is nobody to trust.
+            bot.OWNER_ID = None
+            store, fake = {}, Bot_()
+            ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
+            await bot._adopt_storage(event(-4004, 4242), ctx)
+            check("without an owner nothing is adopted", "storage_chat" not in store)
+        finally:
+            bot.OWNER_ID = owner
+
+    asyncio.run(run())
+
+
 def test_wallpaper() -> None:
     section("screenshot wallpaper")
     paper = screenshot._wallpaper((120, 60))
@@ -989,6 +1046,7 @@ def main() -> int:
     test_admin()
     test_quota()
     test_inline_results()
+    test_storage_channel()
     test_wallpaper()
     test_extract()
     test_pack_names()

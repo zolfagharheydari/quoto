@@ -204,6 +204,7 @@ def _stats_text(context) -> str:
     lines += [
         f"   <b>مجموع: {sum(counts.values())}</b>", "",
         f"🖼 آواتار دلخواه: {len(context.bot_data.get('avatars', {}))}",
+        f"📦 کانال انبار: {context.bot_data.get('storage_chat') or 'تنظیم نشده'}",
         f"🚫 مسدود: {len(_blocked(context))}",
         f"⏱ روشن از: {_uptime()} پیش",
     ]

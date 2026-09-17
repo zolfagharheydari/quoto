@@ -143,6 +143,10 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             seed=str(query.from_user.id),
         )
 
+        # A channel the owner handed the bot wins over the one in .env: it was
+        # chosen later, and it is the one they can see.
+        store = context.bot_data.get("storage_chat") or storage_chat
+
         chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
         try:
             avatar = await authors.fetch_avatar(context.bot, author, chosen)
@@ -157,7 +161,7 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             # result can only point at a file Telegram already holds.
             animation = await asyncio.to_thread(animate.to_animation, scene)
             photo_id, sticker_id, animation_id = await _upload(
-                context, storage_chat, query.from_user.id, png, webp, animation
+                context, store, query.from_user.id, png, webp, animation
             )
         except Forbidden:
             # The user never pressed Start, so the bot cannot use their chat as storage.

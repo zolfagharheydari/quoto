@@ -199,6 +199,9 @@ async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Introduce the bot the moment it lands in a group."""
     member = update.my_chat_member
+    if member.chat.type == "channel":
+        await _adopt_storage(update, context)
+        return
     if member.chat.type not in ("group", "supergroup"):
         return
     was = member.old_chat_member.status
@@ -215,6 +218,44 @@ async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await context.bot.send_message(member.chat.id, text, parse_mode="HTML")
     except TelegramError as exc:
         log.info("could not greet %s: %s", member.chat.id, exc)
+
+
+async def _adopt_storage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Take a channel the owner made the bot an admin of as the inline store.
+
+    Inline results can only point at files Telegram already holds, so every card
+    is uploaded somewhere first. A private channel is the tidy place for that,
+    and a channel id cannot be typed by hand - it only arrives in an update like
+    this one. So rather than asking for it to be copied into .env, the bot keeps
+    it the moment it is handed one.
+
+    Only the owner's channel is taken. Anyone may add a bot to their own channel,
+    and a bot that adopted whichever one it was added to last would be storing
+    its owner's files in a stranger's channel.
+    """
+    member = update.my_chat_member
+    if member.new_chat_member.status != ChatMemberStatus.ADMINISTRATOR:
+        return
+    who = member.from_user
+    if OWNER_ID is None or who is None or who.id != OWNER_ID:
+        log.info("ignoring channel %s: added by %s, not the owner",
+                 member.chat.id, who.id if who else "?")
+        return
+
+    context.bot_data["storage_chat"] = member.chat.id
+    log.info("storage channel set to %s (%s)", member.chat.id, member.chat.title)
+    try:
+        await context.bot.send_message(OWNER_ID, "\n".join([
+            "✅ این کانال از این به بعد انبار فایل‌های حالت inline است:",
+            f"<b>{member.chat.title or member.chat.id}</b>",
+            f"<code>{member.chat.id}</code>",
+            "",
+            "دیگر لازم نیست کاری بکنی — همین الان فعال شد و بعد از ریستارت هم یادش می‌ماند.",
+            "اگر خواستی ثابتش کنی، همین عدد را در <code>.env</code> مقابل "
+            "<code>STORAGE_CHAT_ID</code> بگذار.",
+        ]), parse_mode="HTML")
+    except TelegramError as exc:
+        log.info("could not tell the owner about the storage channel: %s", exc)
 
 
 # Rendering costs a second or two of CPU, and updates are handled one at a time,
