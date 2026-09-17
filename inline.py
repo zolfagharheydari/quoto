@@ -33,8 +33,11 @@ import render
 
 log = logging.getLogger("quotebot.inline")
 
-# Inline queries arrive on every keystroke; wait for a pause before rendering.
-DEBOUNCE_SECONDS = 0.45
+# Inline queries arrive on every keystroke, and rendering one costs three files
+# uploaded to the storage channel. Half a second was short enough that an
+# ordinary pause between words counted as "done typing", so a sentence became a
+# channel full of half-sentences. This is long enough to mean a real stop.
+DEBOUNCE_SECONDS = 1.3
 MAX_INLINE_CHARS = 700
 
 # Telegram closes an inline query a few seconds after it opens it, and answering
@@ -53,7 +56,7 @@ MAX_INLINE_CHARS = 700
 # animation about three, and it needs closer to four on a slow link. Telegram
 # allows something near ten; this keeps a wide margin under that and is still
 # only ever spent on the animation, never on the answer itself.
-SAFE_TOTAL = 7.5
+SAFE_TOTAL = 8.5
 MIN_WAIT = 0.3      # below this it is not worth the round trip of trying
 
 # The same text typed twice should not be rendered twice. Inline queries repeat
@@ -74,6 +77,19 @@ LEADING_COMMAND_RE = re.compile(f"^/({_VERBS})(@[A-Za-z0-9_]+)?[ ]+", re.IGNOREC
 COMMAND_ONLY_RE = re.compile(
     f"^/?({_VERBS}|کوت|نقل[ ]*قول)(@[A-Za-z0-9_]+)?$", re.IGNORECASE
 )
+
+
+def _abandon(context) -> None:
+    """Drop the animation the previous keystroke started.
+
+    It is halfway through ffmpeg or halfway up to the channel, and nobody will
+    ever ask for it: the text it was drawing no longer exists. Left alone it
+    would finish and file a picture of half a sentence in the storage channel,
+    and every keystroke would leave one behind.
+    """
+    running = context.user_data.pop("inline_gif", None)
+    if running is not None and not running.done():
+        running.cancel()
 
 
 def _cached(context, key: str):
@@ -212,6 +228,7 @@ def make_handler(watermark: str, storage_chat: str | int | None):
 
         # Only the most recent keystroke should reach the renderer.
         context.user_data["inline_seq"] = query.id
+        _abandon(context)
         await asyncio.sleep(DEBOUNCE_SECONDS)
         if context.user_data.get("inline_seq") != query.id:
             return
@@ -244,6 +261,7 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             # stills are even encoded. Nothing waits for it.
             gif = asyncio.ensure_future(_make_animation(
                 context, store, query.from_user.id, scene))
+            context.user_data["inline_gif"] = gif
 
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)
@@ -266,12 +284,17 @@ def make_handler(watermark: str, storage_chat: str | int | None):
                 try:
                     animation_id = await asyncio.wait_for(
                         asyncio.shield(gif), max(0.01, spare))
-                except asyncio.TimeoutError:
-                    pass  # it carries on, and lands in the cache
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass  # it carries on, or was replaced; either way, answer
                 except Exception:  # noqa: BLE001 - the other two are still good
                     log.exception("inline animation failed")
-            _later(context, _finish(context, key,
-                                    (photo_id, sticker_id), gif))
+            if context.user_data.get("inline_seq") != query.id:
+                # Somebody kept typing while this was uploading. What is already
+                # up cannot be unsent, but the animation can still be stopped.
+                _abandon(context)
+            else:
+                _later(context, _finish(context, key,
+                                        (photo_id, sticker_id), gif))
             log.info(
                 "inline ready in %.1fs (avatar %.1f, draw %.1f, upload %.1f, "
                 "animation %.1f)%s",
@@ -318,6 +341,8 @@ async def _finish(context, key: str, ids: tuple, gif) -> None:
     animation_id = None
     try:
         animation_id = await gif
+    except asyncio.CancelledError:
+        return  # a newer keystroke replaced it; there is nothing to remember
     except Exception:  # noqa: BLE001 - nothing to answer any more either way
         log.debug("inline animation never arrived for %s", key)
     _remember(context, key, (*ids, animation_id))

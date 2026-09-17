@@ -572,6 +572,32 @@ def test_inline_results() -> None:
         check("but it is left running, to land in the cache", not gif.done())
         gif.cancel()
 
+        # A sentence typed one word at a time must not leave a file in the
+        # channel per word: each keystroke abandons what the last one started.
+        uploaded = []
+
+        async def slow_upload(tag):
+            try:
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                raise
+            uploaded.append(tag)
+            return "AN"
+
+        ctx2 = types.SimpleNamespace(user_data={}, bot_data={})
+        tasks = []
+        for i in range(4):
+            inline._abandon(ctx2)
+            task = asyncio.ensure_future(slow_upload(i))
+            ctx2.user_data["inline_gif"] = task
+            tasks.append(task)
+            await asyncio.sleep(0.05)     # still typing
+        await asyncio.sleep(0.8)          # the last one finishes
+        check("only the last keystroke reaches the channel",
+              uploaded == [3], str(uploaded))
+        check("the abandoned ones are cancelled",
+              all(t.cancelled() for t in tasks[:-1]))
+
         # The wait is whatever is left of the budget, so a run that was
         # already slow gets none of it.
         spare = inline.SAFE_TOTAL - 0.2
