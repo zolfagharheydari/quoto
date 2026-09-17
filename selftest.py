@@ -736,6 +736,57 @@ def test_reaction_row() -> None:
           len(screenshot._wrap_pills([(None, "9", 10.0, 999.0)], 100, 5)) == 1)
 
 
+def test_badges() -> None:
+    section("name badges")
+
+    from telegram.constants import ChatMemberStatus
+    from telegram.error import TelegramError
+
+    def member(status, title=None, tag=None, fail=False):
+        class B:
+            async def get_chat_member(self, chat_id, user_id):
+                if fail:
+                    raise TelegramError("nope")
+                return types.SimpleNamespace(
+                    status=status, custom_title=title,
+                    api_kwargs={"tag": tag} if tag else {})
+        return B()
+
+    chat = types.SimpleNamespace(id=-100, type="supergroup")
+    who = authors.Author("Ali", "ali", 7, "user", "7")
+
+    def badge(bot_):
+        return asyncio.run(bot._badge(bot_, chat, who, "fa"))
+
+    # The new one: a tag an admin set on an ordinary member.
+    check("a member's tag is shown",
+          badge(member(ChatMemberStatus.MEMBER, tag="تحت تعقیب")) == "تحت تعقیب")
+    check("a plain member with no tag has none",
+          badge(member(ChatMemberStatus.MEMBER)) is None)
+    check("a tag wins over the generic word",
+          badge(member(ChatMemberStatus.ADMINISTRATOR, tag="افراسیاب")) == "افراسیاب")
+    check("an admin's own title is shown",
+          badge(member(ChatMemberStatus.ADMINISTRATOR, title="چیل")) == "چیل")
+    check("an admin with neither gets the generic word",
+          badge(member(ChatMemberStatus.ADMINISTRATOR)) == i18n.t("badge_admin", "fa"))
+    check("the owner gets theirs",
+          badge(member(ChatMemberStatus.OWNER)) == i18n.t("badge_owner", "fa"))
+    check("a blank tag counts as none",
+          badge(member(ChatMemberStatus.MEMBER, tag="   ")) is None)
+    check("a failed lookup is not a badge",
+          badge(member(ChatMemberStatus.ADMINISTRATOR, fail=True)) is None)
+
+    # Not a group, so no badge whatever the member record says.
+    private = types.SimpleNamespace(id=7, type="private")
+    check("private chats have no badges",
+          asyncio.run(bot._badge(member(ChatMemberStatus.OWNER), private, who, "fa"))
+          is None)
+    channel = authors.Author("کانال", "", -100, "chat", "-100")
+    check("a channel has no badge",
+          asyncio.run(bot._badge(member(ChatMemberStatus.OWNER), chat, channel, "fa"))
+          is None)
+
+
 def test_wallpaper() -> None:
     section("screenshot wallpaper")
     paper = screenshot._wallpaper((120, 60))
@@ -1347,6 +1398,7 @@ def main() -> int:
     test_storage_channel()
     test_reactions()
     test_reaction_row()
+    test_badges()
     test_wallpaper()
     test_extract()
     test_pack_removal()

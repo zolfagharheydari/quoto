@@ -658,17 +658,37 @@ def _clock(when) -> str:
 
 
 async def _badge(bot, chat, author: authors.Author, lang: str) -> str | None:
-    """The owner/admin pill Telegram shows beside a name in a group."""
+    """The pill Telegram shows beside a name in a group.
+
+    Three things can put one there, and they are checked in the order the app
+    shows them:
+
+      the member tag   any member can be given one by an admin, whatever their
+                       status. It is a recent addition to the API, and the
+                       version of python-telegram-bot here does not model it -
+                       it arrives in api_kwargs, which is where unknown fields
+                       land - so it has to be read out by name.
+      a custom title   an admin's own rank, set by the group.
+      owner / admin    the generic word, when an admin has no title of their own.
+
+    An ordinary member with no tag gets nothing, which is what the app draws.
+    """
     if chat.type not in ("group", "supergroup") or author.kind != "user":
         return None
     if author.avatar_key is None:
         return None
     try:
         member = await bot.get_chat_member(chat.id, author.avatar_key)
-    except TelegramError:
+    except TelegramError as exc:
+        log.info("no badge for %s in %s: %s", author.avatar_key, chat.id, exc)
         return None
+
+    tag = str((member.api_kwargs or {}).get("tag") or "").strip()
+    if tag:
+        return tag
+
     if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
-        return None  # an ordinary member carries no tag at all
+        return None
     # Whatever this group actually calls them wins; the generic word is the
     # fallback Telegram itself shows when nobody has set a title.
     title = (getattr(member, "custom_title", None) or "").strip()
