@@ -38,12 +38,14 @@ DEBOUNCE_SECONDS = 0.45
 MAX_INLINE_CHARS = 700
 
 # Telegram closes an inline query a few seconds after it opens it, and answering
-# a closed one fails with "query is too old". Everything here has to fit inside
-# that: render three files, upload three files, answer. On a slow link it does
-# not, and the animation is what does not fit - so it is given a deadline of its
-# own and the answer goes out without it rather than going out too late.
-ANSWER_BUDGET = 7.0
-ANIMATION_SHARE = 0.55      # of what is left after the photo and sticker are up
+# a closed one fails with "query is too old". Nothing here waits on the
+# animation any more: it is rendered and uploaded alongside the other two, and
+# it joins the answer only if it happens to be finished by the time the photo
+# and the sticker are up. Otherwise it finishes into the cache, and the next
+# keystroke - the same text again - is answered from there with all three.
+#
+# Waiting even a little for it was the difference between an answer and no
+# answer on a slow link, and no answer is much worse than no animation.
 
 # The same text typed twice should not be rendered twice. Inline queries repeat
 # constantly - every backspace and retype is the same string again - and a
@@ -166,6 +168,7 @@ def build_results(lang: str, photo_id: str, sticker_id: str,
 def make_handler(watermark: str, storage_chat: str | int | None):
     async def on_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.inline_query
+        arrived = asyncio.get_running_loop().time()
         lang = i18n.resolve(update, context.user_data)
         raw = query.query.strip()
 
@@ -181,14 +184,29 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             )
             return
 
+        # The quote is always the sender's own words, under their own name.
+        text = raw[:MAX_INLINE_CHARS]
+        chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
+        # The picture depends on the words, who is credited and which avatar
+        # stands for them, so all three go into the key.
+        key = f"{query.from_user.id}:{chosen or ''}:{text}"
+
+        # Before anything else, including the wait for typing to stop. A repeat
+        # of a text already rendered costs one dictionary lookup, and the whole
+        # point of the cache is that the answer beats the query being closed.
+        remembered = _cached(context, key)
+        if remembered:
+            await _answer(query, build_results(lang, *remembered), arrived)
+            log.info("inline answered from cache in %.1fs",
+                     asyncio.get_running_loop().time() - arrived)
+            return
+
         # Only the most recent keystroke should reach the renderer.
         context.user_data["inline_seq"] = query.id
         await asyncio.sleep(DEBOUNCE_SECONDS)
         if context.user_data.get("inline_seq") != query.id:
             return
 
-        # The quote is always the sender's own words, under their own name.
-        text = raw[:MAX_INLINE_CHARS]
         author = authors.Author(
             name=" ".join(
                 filter(None, [query.from_user.first_name, query.from_user.last_name])
@@ -203,29 +221,22 @@ def make_handler(watermark: str, storage_chat: str | int | None):
         # chosen later, and it is the one they can see.
         store = context.bot_data.get("storage_chat") or storage_chat
 
-        chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
-        # The picture depends on the words, who is credited and which avatar
-        # stands for them, so all three go into the key.
-        key = f"{query.from_user.id}:{chosen or ''}:{text}"
-        remembered = _cached(context, key)
-        if remembered:
-            log.info("inline answered from cache")
-            await _answer(query, build_results(lang, *remembered))
-            return
-
-        started = asyncio.get_running_loop().time()
+        clock = asyncio.get_running_loop().time
+        started = clock()
         try:
             avatar = await authors.fetch_avatar(context.bot, author, chosen)
+            got_avatar = clock()
             scene = await asyncio.to_thread(
                 render.build_scene, avatar, text, author.name, watermark
             )
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)
             webp = await asyncio.to_thread(render.to_sticker_webp, image)
+            drawn = clock()
 
             # The animation is a couple of hundred frames through ffmpeg and
-            # then an upload of its own. It runs alongside the other two rather
-            # than after them, and it has until the budget runs out.
+            # then an upload of its own. It runs alongside the other two, and
+            # nothing waits for it.
             gif = asyncio.ensure_future(_make_animation(
                 context, store, query.from_user.id, scene))
             try:
@@ -235,20 +246,23 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             except BaseException:
                 gif.cancel()
                 raise
+            uploaded = clock()
 
-            left = ANSWER_BUDGET - (asyncio.get_running_loop().time() - started)
+            # Only if it is already done. Even a tenth of a second spent here is
+            # a tenth of a second closer to the query being closed.
             animation_id = None
-            try:
-                animation_id = await asyncio.wait_for(
-                    asyncio.shield(gif), max(0.1, left * ANIMATION_SHARE))
-            except asyncio.TimeoutError:
-                # It is still going, and it will finish and land in the cache,
-                # so the next time this text is typed the animation is there.
-                log.info("inline answered without the animation; %.1fs left", left)
-            except Exception:  # noqa: BLE001 - the other two are still good
-                log.exception("inline animation failed")
+            if gif.done() and not gif.cancelled():
+                try:
+                    animation_id = gif.result()
+                except Exception:  # noqa: BLE001 - the other two are still good
+                    log.exception("inline animation failed")
             _later(context, _finish(context, key,
                                     (photo_id, sticker_id), gif))
+            log.info(
+                "inline ready in %.1fs (avatar %.1f, draw %.1f, upload %.1f)%s",
+                uploaded - started, got_avatar - started, drawn - got_avatar,
+                uploaded - drawn, "" if animation_id else " - without the animation",
+            )
         except (Forbidden, BadRequest) as exc:
             # The user never pressed Start, so the bot cannot use their chat as
             # storage. Telegram says this two different ways: Forbidden once it
@@ -272,7 +286,7 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             return
 
         await _answer(query, build_results(lang, photo_id, sticker_id,
-                                           animation_id))
+                                           animation_id), arrived)
 
     return on_inline
 
@@ -293,7 +307,7 @@ async def _finish(context, key: str, ids: tuple, gif) -> None:
     _remember(context, key, (*ids, animation_id))
 
 
-async def _answer(query, results) -> None:
+async def _answer(query, results, opened: float = 0.0) -> None:
     """Answer the query, unless Telegram has already closed it.
 
     A query that took too long is not a fault worth a traceback: the work is
@@ -303,6 +317,7 @@ async def _answer(query, results) -> None:
         await query.answer(results, cache_time=30, is_personal=True)
     except BadRequest as exc:
         if "too old" in str(exc).lower() or "query id is invalid" in str(exc).lower():
-            log.info("inline query closed before the answer was ready")
+            log.info("inline query was closed %.1fs after it arrived, before the "
+                     "answer went out", asyncio.get_running_loop().time() - opened)
             return
         raise
