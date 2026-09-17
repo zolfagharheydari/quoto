@@ -84,7 +84,12 @@ FALLBACKS = [
 # draw at any size; Noto is a bitmap one it can only draw at 109, which is why
 # every emoji here is rendered large and scaled down afterwards.
 EMOJI_FONTS = [
-    # Bundled first, so every machine draws the same emoji. Run download_fonts.py.
+    # A font dropped into assets/fonts by hand wins: putting one there is a
+    # deliberate act, and the only reason to do it is to be used.
+    FONT_DIR / "Apple Color Emoji.ttc",
+    FONT_DIR / "AppleColorEmoji.ttc",
+    FONT_DIR / "AppleColorEmoji.ttf",
+    # Otherwise the bundled one, so every machine draws the same emoji.
     FONT_DIR / "NotoColorEmoji.ttf",
     Path("C:/Windows/Fonts/seguiemj.ttf"),
     Path("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"),
