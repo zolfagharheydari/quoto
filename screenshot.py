@@ -99,6 +99,27 @@ def _emoji_tile(font, emoji: str, cell: int) -> Image.Image | None:
     return out
 
 
+def _row_width(row, gap: float) -> float:
+    return sum(p[3] for p in row) + gap * max(0, len(row) - 1)
+
+
+def _wrap_pills(pills: list, max_width: float, gap: float) -> list[list]:
+    """Break the pills into rows that fit. A pill never splits, so one wider
+    than the whole bubble simply gets a row to itself."""
+    rows: list[list] = []
+    current: list = []
+    for pill in pills:
+        candidate = current + [pill]
+        if current and _row_width(candidate, gap) > max_width:
+            rows.append(current)
+            current = [pill]
+        else:
+            current = candidate
+    if current:
+        rows.append(current)
+    return rows
+
+
 PAD = 18
 GAP = 9
 BUBBLE_PAD_X = 13
@@ -193,10 +214,18 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
             c_w = count_font.getlength(c_text)
             pills.append((emoji, c_text, c_w,
                           pill_pad * 2 + cell + _px(4) + c_w))
-    pills_w = sum(p[3] for p in pills) + pill_gap * max(0, len(pills) - 1)
-    row_w = pills_w + _px(10) + time_w if pills else 0
 
-    content_w = int(min(max(name_w + badge_w, text_w, time_w, row_w), max_content))
+    # Every reaction is drawn, so a message with a dozen of them wraps onto more
+    # rows instead of quietly losing some. The timestamp shares the last row
+    # when there is room for it, and takes one of its own when there is not.
+    rows = _wrap_pills(pills, max_content, pill_gap)
+    rows_w = max((_row_width(r, pill_gap) for r in rows), default=0)
+    last_w = _row_width(rows[-1], pill_gap) if rows else 0
+    time_shares_row = bool(rows) and last_w + _px(10) + time_w <= max_content
+    if time_shares_row:
+        rows_w = max(rows_w, last_w + _px(10) + time_w)
+
+    content_w = int(min(max(name_w + badge_w, text_w, time_w, rows_w), max_content))
 
     line_h = _px(theme["text_size"] + 6)
     name_h = _px(theme["name_size"] + 5)
@@ -208,9 +237,14 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     tail = _px(13)
 
     bubble_w = content_w + pad_x * 2
-    # With reactions the row takes the place of the timestamp's own line, and
-    # the time moves onto it.
-    tail_h = (pill_h + _px(6)) if pills else time_h
+    # With reactions the rows take the place of the timestamp's own line, unless
+    # the last of them is too full to hold the time as well.
+    if rows:
+        tail_h = _px(3) + len(rows) * (pill_h + _px(4)) + _px(2)
+        if not time_shares_row:
+            tail_h += time_h
+    else:
+        tail_h = time_h
     bubble_h = pad_top + name_h + len(lines) * line_h + tail_h + pad_bottom
 
     avatar_size = _px(theme["avatar"])
@@ -268,7 +302,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
 
     # The timestamp stays in the bottom-right corner whichever way the text runs,
     # as it does on an incoming message in the app.
-    if not pills:
+    if not rows:
         time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y), time_str,
                           fill=theme["time"], anchor="ra")
         return img
@@ -278,19 +312,26 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     y += _px(3)
     pill_fill = tuple(int(b + (a - b) * 0.16)
                       for a, b in zip(accent, theme["bubble"]))
-    x = bubble_x + pad_x
-    for emoji, c_text, c_w, w in pills:
-        draw.rounded_rectangle([x, y, x + w, y + pill_h],
-                               radius=pill_h // 2, fill=pill_fill)
-        middle = y + pill_h // 2
-        tile = _emoji_tile(emoji_font, emoji, cell)
-        if tile is not None:
-            img.paste(tile, (int(x + pill_pad), int(middle - cell // 2)), tile)
-        count_font.draw_on(draw, (x + pill_pad + cell + _px(4), middle), c_text,
-                           fill=accent, anchor="lm")
-        x += w + pill_gap
-    time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y + pill_h // 2),
-                      time_str, fill=theme["time"], anchor="rm")
+    for row in rows:
+        x = bubble_x + pad_x
+        for emoji, c_text, c_w, w in row:
+            draw.rounded_rectangle([x, y, x + w, y + pill_h],
+                                   radius=pill_h // 2, fill=pill_fill)
+            middle = y + pill_h // 2
+            tile = _emoji_tile(emoji_font, emoji, cell)
+            if tile is not None:
+                img.paste(tile, (int(x + pill_pad), int(middle - cell // 2)), tile)
+            count_font.draw_on(draw, (x + pill_pad + cell + _px(4), middle), c_text,
+                               fill=accent, anchor="lm")
+            x += w + pill_gap
+        y += pill_h + _px(4)
+
+    if time_shares_row:
+        time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y - pill_h // 2 - _px(4)),
+                          time_str, fill=theme["time"], anchor="rm")
+    else:
+        time_font.draw_on(draw, (bubble_x + bubble_w - pad_x, y), time_str,
+                          fill=theme["time"], anchor="ra")
 
     return img
 

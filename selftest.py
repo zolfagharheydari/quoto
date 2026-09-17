@@ -637,7 +637,8 @@ def test_reactions() -> None:
     check("the most reacted comes first", shown[0] == (HEART, 7), str(shown))
     check("in descending order",
           [n for _, n in shown] == sorted([n for _, n in shown], reverse=True))
-    check("and no more than fit", len(shown) == reactions.MAX_SHOWN, str(len(shown)))
+    # Nothing is dropped: a message reacted to seven ways shows seven.
+    check("every reaction is kept", len(shown) == 7, str(len(shown)))
 
     # A custom emoji is a file, not a character: nothing to draw, so not counted.
     data4 = {}
@@ -707,6 +708,22 @@ def test_reaction_row() -> None:
     # The count is drawn in the accent colour, so the row must actually have ink.
     row = with_row.crop((0, with_row.height - 120, with_row.width, with_row.height))
     check("the row has something in it", len(set(row.convert("RGB").getdata())) > 20)
+
+    # Wrapping: a dozen reactions go onto more rows rather than losing any.
+    many = [(c, 9) for c in "😂❤️👍🔥😮😢🎉🤯👏🙃😡💯"]
+    tall = screenshot.render(avatar, "Ali", "سلام", "14:17", None, "ali", many)
+    check("many reactions make it taller still", tall.height > with_row.height)
+    check("and no wider than a bubble may be",
+          tall.width <= screenshot._px(screenshot.MAX_BUBBLE_W) + screenshot._px(
+              screenshot.PAD * 2 + screenshot.GAP + screenshot.THEME["avatar"]) + 4,
+          str(tall.width))
+
+    pill = (None, "9", 10.0, 100.0)
+    rows = screenshot._wrap_pills([pill] * 10, 340, 5)
+    check("pills wrap at the width given", len(rows) > 1, str(len(rows)))
+    check("and none are lost", sum(len(r) for r in rows) == 10)
+    check("a single oversized pill still gets a row",
+          len(screenshot._wrap_pills([(None, "9", 10.0, 999.0)], 100, 5)) == 1)
 
 
 def test_wallpaper() -> None:

@@ -29,10 +29,6 @@ log = logging.getLogger("quotebot.reactions")
 # which is what it would have been anyway.
 MAX_MESSAGES_PER_CHAT = 400
 
-# What fits across a bubble before it looks like a toolbar.
-MAX_SHOWN = 4
-
-
 def _store(bot_data: dict) -> dict:
     return bot_data.setdefault("reactions", {})
 
@@ -107,10 +103,14 @@ def record_totals(bot_data: dict, update) -> None:
 
 
 def for_message(bot_data: dict, chat_id: int, message_id: int) -> list[tuple[str, int]]:
-    """What to draw under this message: (emoji, count), most reacted first."""
+    """What to draw under this message: (emoji, count), most reacted first.
+
+    Every reaction is returned. The renderer wraps them onto as many rows as it
+    takes rather than dropping any: a message people reacted to twelve ways is
+    exactly the message worth showing all twelve of.
+    """
     counts = _store(bot_data).get(chat_id, {}).get(message_id, {})
-    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return ordered[:MAX_SHOWN]
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
 def total_tracked(bot_data: dict) -> int:

@@ -9,16 +9,28 @@ BASE = "https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf
 FILES = ["Vazirmatn-Regular.ttf", "Vazirmatn-Medium.ttf", "Vazirmatn-Bold.ttf"]
 DEST = Path(__file__).parent / "assets" / "fonts"
 
+# Reactions need colour emoji, and the ones a machine happens to have differ:
+# Windows draws the flat Segoe set, a bare server draws none at all. Bundling
+# Noto means the same picture comes out of every machine, and it is the closest
+# freely licensed set to the rounded emoji Telegram itself shows. (Apple's, which
+# Telegram uses on iOS, cannot be redistributed.)
+EXTRA = {
+    "NotoColorEmoji.ttf":
+        "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/"
+        "NotoColorEmoji.ttf",
+}
+
 
 def main() -> int:
     DEST.mkdir(parents=True, exist_ok=True)
     failed = []
-    for name in FILES:
+    wanted = {name: f"{BASE}/{name}" for name in FILES}
+    wanted.update(EXTRA)
+    for name, url in wanted.items():
         target = DEST / name
         if target.exists():
             print(f"= {name} (already here)")
             continue
-        url = f"{BASE}/{name}"
         try:
             with urllib.request.urlopen(url, timeout=60) as resp:
                 data = resp.read()
