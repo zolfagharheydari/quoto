@@ -413,8 +413,11 @@ Meanwhile you can type: /quote any text you like""",
         "fa": "استیکرپک فقط برای گروه‌ها ساخته می‌شود.",
         "en": "Sticker packs are made for groups only.",
     },
-    "badge_owner": {"fa": "مالک", "en": "owner"},
-    "badge_admin": {"fa": "ادمین", "en": "admin"},
+    # The pill Telegram itself draws beside a name is in English whatever the
+    # app language is, so these are the same in both. A group that has set a
+    # custom title still wins over them; this is only the generic fallback.
+    "badge_owner": {"fa": "owner", "en": "owner"},
+    "badge_admin": {"fa": "admin", "en": "admin"},
     "inline_gif": {
         "fa": "گیف با افکت تایپ",
         "en": "GIF with the typing effect",
