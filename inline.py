@@ -49,7 +49,11 @@ MAX_INLINE_CHARS = 700
 # wait is not a fixed share of anything: it is whatever is left of this budget
 # once the photo and the sticker are up. A quick link has seconds to spare and
 # gets the animation; a slow one has none left and is answered without it.
-SAFE_TOTAL = 5.0
+# Five seconds proved safe - the query was still open - but left the
+# animation about three, and it needs closer to four on a slow link. Telegram
+# allows something near ten; this keeps a wide margin under that and is still
+# only ever spent on the animation, never on the answer itself.
+SAFE_TOTAL = 7.5
 MIN_WAIT = 0.3      # below this it is not worth the round trip of trying
 
 # The same text typed twice should not be rendered twice. Inline queries repeat
@@ -234,16 +238,17 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             scene = await asyncio.to_thread(
                 render.build_scene, avatar, text, author.name, watermark
             )
+            # The animation is a couple of hundred frames through ffmpeg and
+            # then an upload of its own - the longest job here by far, so it is
+            # started the moment there is a scene to render, before the two
+            # stills are even encoded. Nothing waits for it.
+            gif = asyncio.ensure_future(_make_animation(
+                context, store, query.from_user.id, scene))
+
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)
             webp = await asyncio.to_thread(render.to_sticker_webp, image)
             drawn = clock()
-
-            # The animation is a couple of hundred frames through ffmpeg and
-            # then an upload of its own. It runs alongside the other two, and
-            # nothing waits for it.
-            gif = asyncio.ensure_future(_make_animation(
-                context, store, query.from_user.id, scene))
             try:
                 photo_id, sticker_id = await _upload(
                     context, store, query.from_user.id, png, webp
