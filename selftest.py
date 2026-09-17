@@ -51,9 +51,26 @@ def section(title: str) -> None:
 # --------------------------------------------------------------------------- text
 def test_text() -> None:
     section("text handling")
-    check("fancy letters folded", textkit.normalize_display("\U0001D4D9\U0001D4FE\U0001D4FC\U0001D4FD") == "Just")
-    check("fullwidth folded", textkit.normalize_display("ＪＵＳＴ") == "JUST")
-    check("small caps folded", textkit.normalize_display("ᴊᴜsᴛ") == "just")
+    # A display name written in a decorative alphabet is how that person writes
+    # their name, so it is kept whenever a font here has the glyphs, and folded
+    # back to plain letters only when nothing can draw it.
+    script = "\U0001D4D9\U0001D4FE\U0001D4FC\U0001D4FD"
+    if fonts.can_draw(script[0]):
+        check("fancy letters kept", textkit.normalize_display(script) == script)
+    else:
+        check("fancy letters folded when nothing draws them",
+              textkit.normalize_display(script) == "Just")
+    small = "ᴊᴜsᴛ"
+    if fonts.can_draw(small[0]):
+        check("small caps kept", textkit.normalize_display(small) == small)
+    else:
+        check("small caps folded", textkit.normalize_display(small) == "just")
+    wide = "ＪＵＳＴ"
+    check("fullwidth kept or folded to letters",
+          textkit.normalize_display(wide) in (wide, "JUST"))
+    # Nothing draws an unassigned plane-16 character, and it has no plain form.
+    check("what nothing can draw is dropped",
+          textkit.normalize_display("a\U0010FFFDb") == "ab")
     check("emoji stripped", textkit.normalize_display("سلام 🌹 دنیا") == "سلام دنیا")
     check("emoji gap closed", "  " not in textkit.normalize_display("a 🌹 b"))
     check("emoji-only becomes empty", textkit.normalize_display("😂😂😂") == "")
@@ -1370,7 +1387,8 @@ def test_fallback_fonts() -> None:
         check("and loses nothing", "".join(part for part, _ in mixed) == "سلام 你好 ok")
 
     # Nothing on earth draws a private-use character; it must not raise.
-    lonely = font.runs("")
+    # Plane 16 is unassigned, so no font claims it and the primary draws the box.
+    lonely = font.runs("\U0010FFFD")
     check("an undrawable character falls back to the primary",
           len(lonely) == 1 and lonely[0][1] is font.primary)
 

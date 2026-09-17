@@ -75,6 +75,15 @@ FALLBACKS = [
     # Thai
     Path("C:/Windows/Fonts/leelawui.ttf"),
     Path("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf"),
+    # The decorative alphabets people write their display names in - 𝙅𝙪𝙨𝙩,
+    # 𝓙𝓾𝓼𝓽, 𝕵𝖚𝖘𝖙 - all live in the Mathematical Alphanumeric Symbols block, and
+    # almost no text font carries it. Without one of these they cannot be drawn
+    # at all and get folded back to plain letters instead.
+    FONT_DIR / "NotoSansMath-Regular.ttf",
+    Path("C:/Windows/Fonts/seguisym.ttf"),
+    Path("C:/Windows/Fonts/cambria.ttc"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf"),
     # A last resort that carries a little of everything
     Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
 ]
@@ -145,6 +154,30 @@ def emoji_font(size: int) -> ImageFont.FreeTypeFont | None:
         log.warning("%s has no size this build of Pillow will open", path.name)
     log.info("no colour emoji font found; reactions will not be drawn")
     return None
+
+
+@lru_cache(maxsize=None)
+def _drawable() -> frozenset:
+    """Every code point some font on this machine can draw.
+
+    The union of the fonts that set the look and the fallbacks behind them. It
+    answers one question: is it worth keeping this character as it was written,
+    or would it come out as an empty box?
+    """
+    covered: set = set()
+    for weight in CANDIDATES:
+        path = _resolve(weight)
+        if path is not None:
+            covered |= _coverage(path)
+    for path in _available_fallbacks():
+        covered |= _coverage(path)
+    log.info("%s characters drawable across the available fonts", len(covered))
+    return frozenset(covered)
+
+
+def can_draw(ch: str) -> bool:
+    """Whether this character has a glyph anywhere, rather than a box."""
+    return ord(ch) in _drawable()
 
 
 @lru_cache(maxsize=None)

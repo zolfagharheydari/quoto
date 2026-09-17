@@ -15,6 +15,8 @@ import unicodedata
 import arabic_reshaper
 from bidi.algorithm import get_display
 
+import fonts
+
 RTL_RE = re.compile(r"[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 def is_rtl(text: str) -> bool:
@@ -110,23 +112,46 @@ _INVISIBLE = str.maketrans({
 })
 
 
-def normalize_display(text: str) -> str:
-    """Fold decorative Unicode back to letters, and drop what cannot be drawn.
+_UNPRINTABLE = ("Cn", "Co", "Cs", "Cf", "So", "Sk")
 
-    Emoji go with it. No font here carries them, and leaving them in left a
-    hole in the line the width of the missing glyph; taking them out closes
-    that gap too, because the spaces around them collapse.
+
+def normalize_display(text: str) -> str:
+    """Keep what can be drawn, fold what cannot, drop what is left.
+
+    A display name written in 𝙎𝙢𝙖𝙡𝙡 𝘾𝙖𝙥𝙨 or 𝓼𝓬𝓻𝓲𝓹𝓽 is how that person writes
+    their name, so it is kept as they wrote it whenever a font here has the
+    glyphs. Only when nothing can draw a character is it folded back to the
+    plain letter it stands for - NFKC does most of that, and small capitals are
+    real letters NFKC leaves alone, so they need a map of their own.
+
+    Emoji go regardless. They would be drawn from a different font at a
+    different size, and leaving them in left a hole in the line the width of the
+    missing glyph; taking them out closes the gap, because the spaces around
+    them collapse.
     """
     if not text:
         return text
-    text = unicodedata.normalize("NFKC", text)
-    text = text.translate(_SMALL_CAPS).translate(_INVISIBLE)
+    text = text.translate(_INVISIBLE)
     keep = ZWNJ + chr(10)
-    cleaned = "".join(
-        ch for ch in text
-        if ch in keep
-        or unicodedata.category(ch) not in ("Cn", "Co", "Cs", "Cf", "So", "Sk")
-    )
+    out = []
+    for ch in text:
+        if ch in keep:
+            out.append(ch)
+            continue
+        if unicodedata.category(ch) in _UNPRINTABLE:
+            continue
+        if fonts.can_draw(ch):
+            out.append(ch)
+            continue
+        # Nothing on this machine has a glyph for it, so fall back to whatever
+        # plain letters it decomposes to - and drop even those if they are no
+        # more drawable than the original.
+        folded = unicodedata.normalize("NFKC", ch).translate(_SMALL_CAPS)
+        out.extend(
+            c for c in folded
+            if unicodedata.category(c) not in _UNPRINTABLE and fonts.can_draw(c)
+        )
+    cleaned = "".join(out)
     # Collapse the run of spaces an omitted emoji leaves, line by line.
     return chr(10).join(
         " ".join(line.split()) for line in cleaned.split(chr(10))

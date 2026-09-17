@@ -15,6 +15,11 @@ DEST = Path(__file__).parent / "assets" / "fonts"
 # freely licensed set to the rounded emoji Telegram itself shows. (Apple's, which
 # Telegram uses on iOS, cannot be redistributed.)
 EXTRA = {
+    # The decorative alphabets display names are written in. Without it they
+    # cannot be drawn and get folded back to plain letters.
+    "NotoSansMath-Regular.ttf":
+        "https://github.com/google/fonts/raw/main/ofl/notosansmath/"
+        "NotoSansMath-Regular.ttf",
     "NotoColorEmoji.ttf":
         "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/"
         "NotoColorEmoji.ttf",
