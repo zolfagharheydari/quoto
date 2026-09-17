@@ -18,7 +18,12 @@ from PIL import Image, ImageDraw, ImageFilter
 import fonts
 import textkit
 
-SCALE = 3
+# Everything is drawn at this multiple of the layout's own units and kept at
+# that size. It is not a detail: a two-word message makes a small bubble, and
+# a small bubble is a small picture, which Telegram then stretches across the
+# chat and blurs. Five puts enough pixels in it to survive that, and costs a
+# tenth of a second on the longest message anyone sends.
+SCALE = 5
 
 # Telegram picks a sender's name colour from a fixed palette, by account id.
 # These are the darker variants, which hold up against a white bubble.
