@@ -572,6 +572,14 @@ def test_inline_results() -> None:
         check("but it is left running, to land in the cache", not gif.done())
         gif.cancel()
 
+        # The wait is whatever is left of the budget, so a run that was
+        # already slow gets none of it.
+        spare = inline.SAFE_TOTAL - 0.2
+        check("a quick run has time for the animation",
+              spare >= inline.MIN_WAIT, f"{spare:.1f}s")
+        spare = inline.SAFE_TOTAL - (inline.SAFE_TOTAL + 1)
+        check("a slow one has none", spare < inline.MIN_WAIT, f"{spare:.1f}s")
+
     asyncio.run(uploading())
     asyncio.run(not_blocking())
 

@@ -45,7 +45,12 @@ MAX_INLINE_CHARS = 700
 # keystroke - the same text again - is answered from there with all three.
 #
 # Waiting even a little for it was the difference between an answer and no
-# answer on a slow link, and no answer is much worse than no animation.
+# answer on a slow link, and no answer is much worse than no animation. So the
+# wait is not a fixed share of anything: it is whatever is left of this budget
+# once the photo and the sticker are up. A quick link has seconds to spare and
+# gets the animation; a slow one has none left and is answered without it.
+SAFE_TOTAL = 5.0
+MIN_WAIT = 0.3      # below this it is not worth the round trip of trying
 
 # The same text typed twice should not be rendered twice. Inline queries repeat
 # constantly - every backspace and retype is the same string again - and a
@@ -248,20 +253,26 @@ def make_handler(watermark: str, storage_chat: str | int | None):
                 raise
             uploaded = clock()
 
-            # Only if it is already done. Even a tenth of a second spent here is
-            # a tenth of a second closer to the query being closed.
+            # Whatever is left of the budget goes to the animation, and if
+            # that is nothing, the answer goes out without it.
             animation_id = None
-            if gif.done() and not gif.cancelled():
+            spare = SAFE_TOTAL - (uploaded - arrived)
+            if spare >= MIN_WAIT or gif.done():
                 try:
-                    animation_id = gif.result()
+                    animation_id = await asyncio.wait_for(
+                        asyncio.shield(gif), max(0.01, spare))
+                except asyncio.TimeoutError:
+                    pass  # it carries on, and lands in the cache
                 except Exception:  # noqa: BLE001 - the other two are still good
                     log.exception("inline animation failed")
             _later(context, _finish(context, key,
                                     (photo_id, sticker_id), gif))
             log.info(
-                "inline ready in %.1fs (avatar %.1f, draw %.1f, upload %.1f)%s",
-                uploaded - started, got_avatar - started, drawn - got_avatar,
-                uploaded - drawn, "" if animation_id else " - without the animation",
+                "inline ready in %.1fs (avatar %.1f, draw %.1f, upload %.1f, "
+                "animation %.1f)%s",
+                clock() - arrived, got_avatar - started, drawn - got_avatar,
+                uploaded - drawn, clock() - uploaded,
+                "" if animation_id else " - without the animation",
             )
         except (Forbidden, BadRequest) as exc:
             # The user never pressed Start, so the bot cannot use their chat as
