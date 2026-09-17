@@ -52,6 +52,30 @@ COMMAND_ONLY_RE = re.compile(
 )
 
 
+async def _discard(messages) -> None:
+    """Delete the uploads we do not want to keep.
+
+    A file_id outlives the message that carried it - the file stays on
+    Telegram's servers - so the results handed back still work. This runs after
+    the query has been answered, off the path the user waits on.
+    """
+    for msg in messages:
+        try:
+            await msg.delete()
+        except TelegramError:
+            log.debug("could not delete upload %s", msg.message_id)
+
+
+def _later(context: ContextTypes.DEFAULT_TYPE, coro) -> None:
+    """Run something without making the caller wait for it."""
+    app = getattr(context, "application", None)
+    if app is not None:
+        # Application tracks it, so a shutdown waits for it instead of cancelling.
+        app.create_task(coro)
+    else:
+        asyncio.get_running_loop().create_task(coro)
+
+
 async def _upload(context: ContextTypes.DEFAULT_TYPE, storage_chat: str | int | None,
                   user_id: int, png, webp, animation) -> tuple[str, str, str | None]:
     """Send the card somewhere Telegram will keep it, and return its file_ids.
@@ -59,6 +83,12 @@ async def _upload(context: ContextTypes.DEFAULT_TYPE, storage_chat: str | int | 
     The three go up together. They are independent uploads over the same
     connection pool, and doing them one after another would add the animation's
     whole round trip to how long the user waits with their keyboard open.
+
+    What is left behind afterwards differs. With a storage channel the animation
+    stays, because it is the one worth having a record of, and the photo and the
+    sticker are cleared away. With no channel configured the user's own chat was
+    the scratch space, so all three go. Either way the deleting happens after
+    this returns and costs the user nothing.
     """
     bot = context.bot
     target = storage_chat or user_id
@@ -69,13 +99,10 @@ async def _upload(context: ContextTypes.DEFAULT_TYPE, storage_chat: str | int | 
         bot.send_animation(target, buf, filename=f"quote.{ext}",
                            disable_notification=True),
     )
+    throwaway = [photo_msg, sticker_msg]
     if not storage_chat:
-        # Nothing configured, so the user's own chat was the scratch space: clean it up.
-        for msg in (photo_msg, sticker_msg, anim_msg):
-            try:
-                await msg.delete()
-            except TelegramError:
-                log.debug("could not delete scratch message %s", msg.message_id)
+        throwaway.append(anim_msg)
+    _later(context, _discard(throwaway))
     # Telegram stores every animation as MP4, whichever way it arrived, but it
     # can still come back as a plain document if it declined to convert one.
     animation_id = anim_msg.animation.file_id if anim_msg.animation else None

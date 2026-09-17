@@ -478,18 +478,47 @@ def test_inline_results() -> None:
               "animation" in [kind for kind, _ in bot_.sent])
         check("the user's own chat is the scratch space",
               all(chat == 77 for _, chat in bot_.sent))
+        await asyncio.sleep(0)  # the deleting is scheduled, not awaited
         check("scratch copies are deleted", all(m.deleted for m in bot_.messages))
         check("the three file ids come back", ids == ("PH", "ST", "AN"), str(ids))
 
-        # With a storage chat, nothing is deleted and nothing touches the user.
+        # With a storage chat the animation stays and the other two are cleared.
         bot_ = FakeBot()
         ctx = types.SimpleNamespace(bot=bot_)
         await inline._upload(ctx, -100999, 77, b"png", b"webp", (b"mp4", "mp4"))
         check("a storage chat is used when set",
               all(chat == -100999 for _, chat in bot_.sent))
-        check("and its copies are kept", not any(m.deleted for m in bot_.messages))
+        await asyncio.sleep(0)
+        kept = [m for m in bot_.messages if not m.deleted]
+        check("only the animation is kept",
+              len(kept) == 1 and kept[0].animation is not None)
+        check("the photo and sticker are cleared",
+              all(m.deleted for m in bot_.messages if m.animation is None))
+
+    async def not_blocking():
+        # The deleting must not be awaited inside _upload: an inline query is
+        # answered on this path and every round trip is felt.
+        class SlowMsg(Msg):
+            async def delete(self):
+                await asyncio.sleep(0.2)
+                self.deleted = True
+
+        class SlowBot(FakeBot):
+            def _make(self, kind, chat_id):
+                self.sent.append((kind, chat_id))
+                msg = SlowMsg(kind)
+                self.messages.append(msg)
+                return msg
+
+        ctx = types.SimpleNamespace(bot=SlowBot())
+        started = time.monotonic()
+        await inline._upload(ctx, -100999, 77, b"png", b"webp", (b"mp4", "mp4"))
+        check("cleanup does not hold up the answer",
+              time.monotonic() - started < 0.1,
+              f"{time.monotonic() - started:.2f}s")
 
     asyncio.run(uploading())
+    asyncio.run(not_blocking())
 
     # The setting people actually get wrong: pasting an invite link, which a bot
     # cannot follow, and which used to break every inline query with no clue why.
