@@ -190,7 +190,14 @@ def build_results(lang: str, photo_id: str, sticker_id: str,
     return results
 
 
-def make_handler(watermark: str, storage_chat: str | int | None):
+def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
+    """`gate` says what stands between this person and a result, or None.
+
+    Inline mode asked for nothing at all, which made it the way round every
+    rule the rest of the bot applies. The check itself lives in bot.py, since
+    it is the same one the commands use, and is handed in rather than imported
+    so this module still knows nothing about that one.
+    """
     async def on_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.inline_query
         arrived = asyncio.get_running_loop().time()
@@ -208,6 +215,17 @@ def make_handler(watermark: str, storage_chat: str | int | None):
                 ),
             )
             return
+
+        if gate is not None:
+            refused = await gate(context, query.from_user)
+            if refused:
+                await query.answer(
+                    [], cache_time=5, is_personal=True,
+                    button=InlineQueryResultsButton(
+                        text=i18n.t(refused, lang), start_parameter="inline"
+                    ),
+                )
+                return
 
         # The quote is always the sender's own words, under their own name.
         text = raw[:MAX_INLINE_CHARS]

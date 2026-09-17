@@ -359,6 +359,17 @@ or send the photo, then reply to it with <code>/avatar</code>.
 Tap the button below, press Start in the private chat, then try again here.""",
     },
     "btn_start": {"fa": "شروع ربات", "en": "Start the bot"},
+    "need_channel": {
+        "fa": """برای استفاده از من اول در کانالم عضو شو 👇
+همهٔ خبرها و تغییرها آنجا اعلام می‌شود.
+
+بعد از عضو شدن، دوباره همین دستور را بفرست.""",
+        "en": """Join my channel to use me 👇
+Everything new is announced there.
+
+Once you have joined, send the same command again.""",
+    },
+    "btn_channel": {"fa": "عضو شدن در کانال", "en": "Join the channel"},
     "need_reply": {
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
         "en": "Reply to the message you want me to turn into a card, then send the command again.",

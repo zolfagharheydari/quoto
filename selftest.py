@@ -900,6 +900,110 @@ def test_badges() -> None:
           is None)
 
 
+def test_gates() -> None:
+    section("who may use the bot")
+
+    from telegram.constants import ChatMemberStatus
+    from telegram.error import TelegramError
+
+    class ChannelBot:
+        def __init__(self, status=ChatMemberStatus.MEMBER, error=None):
+            self.status, self.error, self.asked = status, error, 0
+
+        async def get_chat_member(self, chat_id, user_id):
+            self.asked += 1
+            if self.error:
+                raise TelegramError(self.error)
+            return types.SimpleNamespace(status=self.status)
+
+    def inside(status=None, error=None, cache=None, channel="@chan"):
+        was, bot.REQUIRED_CHANNEL = bot.REQUIRED_CHANNEL, channel
+        try:
+            bot_ = ChannelBot(status or ChatMemberStatus.MEMBER, error)
+            got = asyncio.run(bot._in_channel(bot_, 7, cache if cache is not None else {}))
+            return got, bot_
+        finally:
+            bot.REQUIRED_CHANNEL = was
+
+    check("a member is let in", inside(ChatMemberStatus.MEMBER)[0])
+    check("an admin of it too", inside(ChatMemberStatus.ADMINISTRATOR)[0])
+    check("someone who left is not", not inside(ChatMemberStatus.LEFT)[0])
+    check("someone banned is not", not inside(ChatMemberStatus.BANNED)[0])
+
+    # The one that matters: a bot that is not an admin of the channel cannot see
+    # who is in it, and must not answer "nobody" - that would lock out everyone.
+    check("an unreadable channel lets everyone through",
+          inside(error="Member list is inaccessible")[0])
+    check("so does one that does not exist",
+          inside(error="Chat not found")[0])
+    check("no channel set means no gate", inside(channel="")[0])
+
+    # A yes is remembered; asking Telegram per command would be a round trip
+    # per command.
+    cache = {}
+    first, bot_ = inside(ChatMemberStatus.MEMBER, cache=cache)
+    check("a yes is cached", cache and first)
+    was, bot.REQUIRED_CHANNEL = bot.REQUIRED_CHANNEL, "@chan"
+    try:
+        again = ChannelBot(ChatMemberStatus.MEMBER)
+        asyncio.run(bot._in_channel(again, 7, cache))
+        check("and not asked again", again.asked == 0)
+    finally:
+        bot.REQUIRED_CHANNEL = was
+
+    # The announcements channel must never be adopted as the file store.
+    chan = types.SimpleNamespace(id=-100, type="channel", title="Quoto",
+                                 username="getQuoto")
+    check("matched by @name", bot._same_chat(chan, "@getquoto"))
+    check("matched by id", bot._same_chat(chan, "-100"))
+    check("and nothing else is", not bot._same_chat(chan, "@other"))
+
+    async def adopting():
+        was_owner, bot.OWNER_ID = bot.OWNER_ID, 4242
+        was_chan, bot.REQUIRED_CHANNEL = bot.REQUIRED_CHANNEL, "@getQuoto"
+        try:
+            class Bot_:
+                async def send_message(self, *a, **k):
+                    pass
+
+            store = {}
+            ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=Bot_())
+            event = types.SimpleNamespace(my_chat_member=types.SimpleNamespace(
+                chat=chan, from_user=types.SimpleNamespace(id=4242),
+                old_chat_member=types.SimpleNamespace(status=ChatMemberStatus.LEFT),
+                new_chat_member=types.SimpleNamespace(
+                    status=ChatMemberStatus.ADMINISTRATOR)))
+            await bot._adopt_storage(event, ctx)
+            check("the announcements channel is not taken as the store",
+                  "storage_chat" not in store)
+
+            other = types.SimpleNamespace(id=-200, type="channel", title="Store",
+                                          username="somewhere")
+            event.my_chat_member.chat = other
+            await bot._adopt_storage(event, ctx)
+            check("but another channel still is", store.get("storage_chat") == -200)
+        finally:
+            bot.OWNER_ID, bot.REQUIRED_CHANNEL = was_owner, was_chan
+
+    asyncio.run(adopting())
+
+    # Users: those who started and were not turned away, not everyone seen.
+    class App:
+        def __init__(self, user_data):
+            self.user_data = user_data
+
+    ctx = types.SimpleNamespace(
+        bot_data={"blocked": {3}},
+        application=App({1: {"started": True}, 2: {"started": True},
+                         3: {"started": True}, 4: {}, 5: {"lang": "fa"}}))
+    check("only those who started count", sorted(admin.members(ctx)) == [1, 2])
+    admin.lost(ctx, 1)
+    check("and one who blocked the bot stops counting",
+          admin.members(ctx) == [2])
+    check("no application means no guessing",
+          admin.members(types.SimpleNamespace(bot_data={})) == [])
+
+
 def test_handler_groups() -> None:
     section("handler registration")
 
@@ -1543,6 +1647,7 @@ def main() -> int:
     test_reactions()
     test_reaction_row()
     test_badges()
+    test_gates()
     test_handler_groups()
     test_wallpaper()
     test_extract()

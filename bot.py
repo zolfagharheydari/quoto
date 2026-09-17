@@ -89,6 +89,11 @@ except (ZoneInfoNotFoundError, ValueError):
     TZ = None
 _owner = os.getenv("OWNER_ID", "").strip()
 OWNER_ID: int | None = int(_owner) if _owner.lstrip("-").isdigit() else None
+# People must be in this channel to use the bot. It is where anything new is
+# announced, and it is checked by asking Telegram - which means the bot has to
+# be an administrator of it, or it cannot see who is in it.
+REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "").strip()
+
 def _storage_chat(raw: str) -> str | int | None:
     """The chat inline uploads go to, or None when the setting is unusable.
 
@@ -178,6 +183,63 @@ async def _has_started(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     return True
 
 
+# Asking Telegram on every command would be a round trip per command, and
+# membership rarely changes. A "yes" is trusted for a while; a "no" is asked
+# again almost immediately, because somebody refused is about to go and join.
+_MEMBER_TTL = 10 * 60
+_MEMBER_MISS_TTL = 20
+_IN_CHANNEL = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR,
+               ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED)
+
+
+async def _in_channel(bot, user_id: int, cache: dict) -> bool:
+    """Whether this person is in the channel. True when there is no channel set.
+
+    It fails open on purpose. If the bot is not an administrator of the channel
+    Telegram answers "member list is inaccessible", and treating that as "not a
+    member" would lock every user out of the bot over a misconfiguration the
+    users cannot see or fix.
+    """
+    if not REQUIRED_CHANNEL:
+        return True
+    hit = cache.get(user_id)
+    if hit is not None:
+        answered, inside = hit
+        if time.monotonic() - answered < (_MEMBER_TTL if inside else _MEMBER_MISS_TTL):
+            return inside
+    try:
+        member = await bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        inside = member.status in _IN_CHANNEL
+    except TelegramError as exc:
+        if "inaccessible" in str(exc).lower() or "not found" in str(exc).lower():
+            log.warning(
+                "cannot check %s: %s. Make the bot an administrator of it, or "
+                "clear REQUIRED_CHANNEL. Letting everyone through meanwhile.",
+                REQUIRED_CHANNEL, exc)
+            return True
+        log.info("membership check failed for %s: %s", user_id, exc)
+        return True
+    cache[user_id] = (time.monotonic(), inside)
+    return inside
+
+
+async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    user = update.effective_user
+    if user is None:
+        return True
+    cache = context.bot_data.setdefault("channel_members", {})
+    if await _in_channel(context.bot, user.id, cache):
+        return True
+    lang = i18n.resolve(update, context.user_data)
+    link = f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}"
+    await update.effective_message.reply_text(
+        i18n.t("need_channel", lang),
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(i18n.t("btn_channel", lang), url=link)]]),
+    )
+    return False
+
+
 async def _require_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if await _has_started(update, context):
         return True
@@ -246,6 +308,18 @@ async def on_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         log.info("could not greet %s: %s", member.chat.id, exc)
 
 
+def _same_chat(chat, named: str) -> bool:
+    """Whether this chat is the one that setting names, by @name or by id."""
+    named = named.strip()
+    if not named:
+        return False
+    if named.lstrip("-").isdigit():
+        return chat.id == int(named)
+    # A private channel has no username at all, so this has to be asked for
+    # rather than read.
+    return (getattr(chat, "username", None) or "").lower() == named.lstrip("@").lower()
+
+
 async def _adopt_storage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Take a channel the owner made the bot an admin of as the inline store.
 
@@ -262,6 +336,14 @@ async def _adopt_storage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     member = update.my_chat_member
     if member.new_chat_member.status != ChatMemberStatus.ADMINISTRATOR:
         return
+
+    # The announcements channel is made an admin channel for a different reason
+    # entirely - so the bot can see who is in it - and it must never become the
+    # store. Quotes would be posted into the channel every user is looking at.
+    if REQUIRED_CHANNEL and _same_chat(member.chat, REQUIRED_CHANNEL):
+        log.info("%s is the announcements channel, not a store", REQUIRED_CHANNEL)
+        return
+
     who = member.from_user
     if OWNER_ID is None or who is None or who.id != OWNER_ID:
         log.info("ignoring channel %s: added by %s, not the owner",
@@ -486,6 +568,8 @@ async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     and what we reply under, so "/q some words" quotes the sender themselves.
     """
     if not await _require_start(update, context):
+        return None
+    if not await _require_channel(update, context):
         return None
     if _too_soon(context):
         log.info("ignoring a burst from %s", update.effective_user.id)
@@ -802,6 +886,24 @@ async def post_init(app: Application) -> None:
     await publish("en", language_code="en")
 
 
+async def _inline_gate(context: ContextTypes.DEFAULT_TYPE, user) -> str | None:
+    """What stands between this person and an inline result, if anything.
+
+    Inline mode used to be the one way in that asked for nothing. That was not
+    a decision, it was an oversight: the same two rules apply here as anywhere.
+    """
+    if not context.user_data.get("started"):
+        try:
+            await context.bot.send_chat_action(user.id, ChatAction.TYPING)
+        except (Forbidden, BadRequest):
+            return "inline_need_start"
+        context.user_data["started"] = True
+    cache = context.bot_data.setdefault("channel_members", {})
+    if not await _in_channel(context.bot, user.id, cache):
+        return "need_channel"
+    return None
+
+
 def register(app: Application) -> None:
     """Attach every handler to the application.
 
@@ -873,7 +975,8 @@ def register(app: Application) -> None:
     # Reactions are only delivered while the bot is an administrator of the
     # group, and only from the moment it became one.
     app.add_handler(MessageReactionHandler(on_reaction))
-    app.add_handler(InlineQueryHandler(inline.make_handler(WATERMARK, STORAGE_CHAT)))
+    app.add_handler(InlineQueryHandler(
+        inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate)))
     app.add_error_handler(on_error)
 
 

@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import TelegramError
+from telegram.error import Forbidden, TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 import reactions
@@ -52,6 +52,37 @@ def _blocked(context) -> set:
         blocked = set(blocked or ())
         context.bot_data["blocked"] = blocked
     return blocked
+
+
+def _everyone(context) -> dict:
+    """Every person the bot keeps anything about, by id.
+
+    Not bot_data["users"], which is only who has been seen since the tracker
+    started running. This is python-telegram-bot's own per-user store, which
+    has an entry for anyone who has ever reached a handler.
+    """
+    app = getattr(context, "application", None)
+    return getattr(app, "user_data", None) or {}
+
+
+def members(context) -> list:
+    """The users who have the bot: started it, and have not been turned away.
+
+    Someone who blocked or deleted the bot is not a user of it any more, and
+    neither is someone the owner blocked. The first is discovered by sending -
+    Telegram says Forbidden - and recorded then, so this stays a plain count of
+    what is already known rather than a few hundred requests.
+    """
+    blocked = _blocked(context)
+    return [uid for uid, data in _everyone(context).items()
+            if data.get("started") and uid not in blocked]
+
+
+def lost(context, user_id: int) -> None:
+    """Mark that this person is gone: they blocked the bot, or deleted it."""
+    data = _everyone(context).get(user_id)
+    if data is not None:
+        data["started"] = False
 
 
 def note(context: ContextTypes.DEFAULT_TYPE, kind: str) -> None:
@@ -170,7 +201,7 @@ def _since(stamp: float) -> str:
 
 
 def _home_text(context) -> str:
-    users, groups = _users(context), _groups(context)
+    users, groups = members(context), _groups(context)
     counts = context.bot_data.get("counts", {})
     total = sum(counts.values())
     state = "⏸ خاموش" if context.bot_data.get("paused") else "✅ فعال"
@@ -185,12 +216,17 @@ def _home_text(context) -> str:
 
 
 def _stats_text(context) -> str:
-    users, groups = _users(context), _groups(context)
+    users, groups = members(context), _groups(context)
     counts = context.bot_data.get("counts", {})
     now = time.time()
-    day = sum(1 for u in users.values() if now - u.get("seen", 0) < 86400)
-    week = sum(1 for u in users.values() if now - u.get("seen", 0) < 7 * 86400)
-    fresh = sum(1 for u in users.values() if now - u.get("first", 0) < 86400)
+    # When they were last around is what the tracker knows, and it only knows
+    # about people it has seen since it started running.
+    seen = _users(context)
+    day = sum(1 for uid in users if now - seen.get(uid, {}).get("seen", 0) < 86400)
+    week = sum(1 for uid in users
+               if now - seen.get(uid, {}).get("seen", 0) < 7 * 86400)
+    fresh = sum(1 for uid in users
+                if now - seen.get(uid, {}).get("first", 0) < 86400)
 
     lines = [
         "<b>📊 آمار</b>", "",
@@ -414,7 +450,7 @@ def make_panel(owner_id: int | None):
             await _show(query, "چیزی برای فرستادن نمانده.", _menu(context))
             return
         chat_id, message_id = source
-        targets = [uid for uid in _users(context) if uid not in _blocked(context)]
+        targets = members(context)
         sent = failed = 0
         await _show(query, f"در حال فرستادن به {len(targets)} کاربر…", _BACK)
 
@@ -422,9 +458,14 @@ def make_panel(owner_id: int | None):
             try:
                 await context.bot.copy_message(uid, chat_id, message_id)
                 sent += 1
+            except Forbidden:
+                # They blocked the bot or deleted their account. This is the
+                # only moment anyone finds out, so it is written down here and
+                # they stop being counted as a user.
+                lost(context, uid)
+                failed += 1
             except TelegramError:
-                # Someone who blocked the bot or deleted their account: expected,
-                # and no reason to stop the rest of the run.
+                # Something else went wrong for this one; no reason to stop.
                 failed += 1
             if i % 25 == 0:
                 await _show(query, f"فرستاده شد: {sent} از {len(targets)}…", _BACK)
