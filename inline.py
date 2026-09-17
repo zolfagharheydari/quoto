@@ -23,7 +23,7 @@ from telegram import (
     InlineQueryResultsButton,
     Update,
 )
-from telegram.error import Forbidden, TelegramError
+from telegram.error import BadRequest, Forbidden, TelegramError
 from telegram.ext import ContextTypes
 
 import animate
@@ -163,8 +163,16 @@ def make_handler(watermark: str, storage_chat: str | int | None):
             photo_id, sticker_id, animation_id = await _upload(
                 context, store, query.from_user.id, png, webp, animation
             )
-        except Forbidden:
-            # The user never pressed Start, so the bot cannot use their chat as storage.
+        except (Forbidden, BadRequest) as exc:
+            # The user never pressed Start, so the bot cannot use their chat as
+            # storage. Telegram says this two different ways: Forbidden once it
+            # knows the user, and "chat not found" when it has never seen them
+            # at all. Anything else that is merely a BadRequest is a real fault
+            # and belongs in the log below.
+            if isinstance(exc, BadRequest) and "chat not found" not in str(exc).lower():
+                log.exception("inline upload failed")
+                await query.answer([], cache_time=1, is_personal=True)
+                return
             await query.answer(
                 [], cache_time=5, is_personal=True,
                 button=InlineQueryResultsButton(

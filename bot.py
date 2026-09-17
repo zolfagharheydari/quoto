@@ -87,11 +87,35 @@ except (ZoneInfoNotFoundError, ValueError):
     TZ = None
 _owner = os.getenv("OWNER_ID", "").strip()
 OWNER_ID: int | None = int(_owner) if _owner.lstrip("-").isdigit() else None
-_storage = os.getenv("STORAGE_CHAT_ID", "").strip()
+def _storage_chat(raw: str) -> str | int | None:
+    """The chat inline uploads go to, or None when the setting is unusable.
+
+    Telegram addresses a chat by numeric id or by @name and by nothing else. An
+    invite link is the obvious thing to paste here and the one thing that cannot
+    work - a bot cannot follow one, and passing it through turns every inline
+    query into "Chat not found" with nothing to say why. It is refused here, at
+    startup, where the reason can still be printed.
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    if raw.lstrip("-").isdigit():
+        return int(raw)
+    if raw.startswith("@") and len(raw) > 1:
+        return raw
+    if "t.me/" in raw or "telegram.me/" in raw or raw.startswith("+"):
+        log.warning(
+            "STORAGE_CHAT_ID is an invite link (%s). A bot cannot join by link: "
+            "add it to the channel as an admin instead, and it will keep the id "
+            "itself. Ignoring the setting for now.", raw)
+        return None
+    log.warning("STORAGE_CHAT_ID=%r is neither a numeric id nor an @name; ignoring it.",
+                raw)
+    return None
+
+
 # Inline results must reference stored files; this chat is where they get uploaded.
-STORAGE_CHAT: str | int | None = (
-    int(_storage) if _storage.lstrip("-").isdigit() else (_storage or None)
-)
+STORAGE_CHAT: str | int | None = _storage_chat(os.getenv("STORAGE_CHAT_ID", ""))
 
 
 # Telegram keeps undelivered updates for 24 hours, so a bot that was down all

@@ -491,6 +491,15 @@ def test_inline_results() -> None:
 
     asyncio.run(uploading())
 
+    # The setting people actually get wrong: pasting an invite link, which a bot
+    # cannot follow, and which used to break every inline query with no clue why.
+    check("a numeric id is kept", bot._storage_chat("-1001234567890") == -1001234567890)
+    check("an @name is kept", bot._storage_chat("@store") == "@store")
+    check("an empty setting is nothing", bot._storage_chat("  ") is None)
+    for link in ("t.me/+ztLZKbb", "https://t.me/joinchat/xx", "+ztLZKbb"):
+        check(f"an invite link is refused ({link[:12]})", bot._storage_chat(link) is None)
+    check("gibberish is refused", bot._storage_chat("my channel") is None)
+
 
 def test_storage_channel() -> None:
     section("storage channel")
