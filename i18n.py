@@ -510,6 +510,8 @@ DESCRIPTIONS: dict[str, str] = {
 
 در گروه‌ها هم کار می‌کنم.
 
+کانال خبرها: @getQuoto
+
 برای شروع Start را بزن 👇""",
     "en": """Hi! 👋
 I turn messages into quote cards.
@@ -518,12 +520,16 @@ Any message becomes a card carrying its text, the sender's name and their profil
 
 I work in groups too.
 
+News and updates: @getQuoto
+
 Press Start to begin 👇""",
 }
 
 SHORT_DESCRIPTIONS: dict[str, str] = {
-    "fa": "از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم، با اسم و عکس پروفایلِ گوینده.",
-    "en": "I turn Telegram messages into quote cards with the sender's name and photo.",
+    "fa": """از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم، با اسم و عکس پروفایلِ گوینده.
+کانال: @getQuoto""",
+    "en": """I turn Telegram messages into quote cards with the sender's name and photo.
+Channel: @getQuoto""",
 }
 
 
