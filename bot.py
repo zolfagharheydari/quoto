@@ -238,6 +238,11 @@ async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = update.effective_user
     if user is None:
         return True
+    # Excused by the owner: either this person, or the whole chat they are in.
+    allowed = admin.exempt(context)
+    chat = getattr(update, "effective_chat", None)
+    if user.id in allowed or (chat is not None and chat.id in allowed):
+        return True
     cache = context.bot_data.setdefault("channel_members", {})
     if await _in_channel(context.bot, user.id, cache):
         return True
@@ -918,6 +923,8 @@ async def _inline_gate(context: ContextTypes.DEFAULT_TYPE, user) -> str | None:
         except (Forbidden, BadRequest):
             return "inline_need_start"
         context.user_data["started"] = True
+    if user.id in admin.exempt(context):
+        return None
     cache = context.bot_data.setdefault("channel_members", {})
     if not await _in_channel(context.bot, user.id, cache):
         return "need_channel"

@@ -997,6 +997,35 @@ def test_gates() -> None:
     check("a member gets the welcome instead",
           "کانال" not in message.out[0], message.out[0][:40])
 
+    # The owner can excuse a person, or a whole group, from the channel.
+    async def excused(ident, in_chat=None):
+        was, bot.REQUIRED_CHANNEL = bot.REQUIRED_CHANNEL, "@chan"
+        try:
+            message = Msg_()
+            ctx = types.SimpleNamespace(
+                bot=ChannelBot(ChatMemberStatus.LEFT),
+                bot_data={"exempt": {ident}}, user_data={})
+            update = types.SimpleNamespace(
+                effective_message=message,
+                effective_chat=types.SimpleNamespace(id=in_chat or 7),
+                effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+            return await bot._require_channel(update, ctx)
+        finally:
+            bot.REQUIRED_CHANNEL = was
+
+    check("an excused person is let through", asyncio.run(excused(7)))
+    check("an excused group lets its members through",
+          asyncio.run(excused(-100, in_chat=-100)))
+    check("and excusing one group does not excuse another",
+          not asyncio.run(excused(-100, in_chat=-200)))
+    check("somebody with no excuse is still asked",
+          not asyncio.run(excused(999)))
+
+    # The excuse covers the channel and nothing else: Start is still required.
+    ctx = types.SimpleNamespace(bot_data={"exempt": {7}})
+    check("the excuse is only about the channel",
+          7 in admin.exempt(ctx) and "started" not in str(admin.exempt(ctx)))
+
     # The announcements channel must never be adopted as the file store.
     chan = types.SimpleNamespace(id=-100, type="channel", title="Quoto",
                                  username="getQuoto")

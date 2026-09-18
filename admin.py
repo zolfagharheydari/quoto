@@ -85,6 +85,21 @@ def lost(context, user_id: int) -> None:
         data["started"] = False
 
 
+def exempt(context) -> set:
+    """Who does not have to be in the channel: people and whole groups.
+
+    Starting the bot is still required of them - this excuses one rule, not
+    both. A group in here excuses everyone using the bot inside it, which is the
+    point: the owner of a group should not have to send their members somewhere
+    else to use a bot they already invited.
+    """
+    allowed = context.bot_data.get("exempt")
+    if not isinstance(allowed, set):
+        allowed = set(allowed or ())
+        context.bot_data["exempt"] = allowed
+    return allowed
+
+
 def note(context: ContextTypes.DEFAULT_TYPE, kind: str) -> None:
     """Record that one card of this kind was made. Called by the render handlers."""
     counts = context.bot_data.setdefault("counts", {})
@@ -170,6 +185,7 @@ def _menu(context) -> InlineKeyboardMarkup:
          InlineKeyboardButton("👥 گروه‌ها", callback_data="adm:groups:0")],
         [InlineKeyboardButton("📣 پیام همگانی", callback_data="adm:cast"),
          InlineKeyboardButton("🚫 مسدودها", callback_data="adm:blocked")],
+        [InlineKeyboardButton("✅ معاف از کانال", callback_data="adm:exempt")],
         [InlineKeyboardButton("🖼 سهمیه آواتار", callback_data="adm:quota"),
          InlineKeyboardButton("📄 لاگ", callback_data="adm:logs")],
         [InlineKeyboardButton("🧹 پاک کردن صف", callback_data="adm:flush")],
@@ -244,6 +260,7 @@ def _stats_text(context) -> str:
         f"🖼 آواتار دلخواه: {len(context.bot_data.get('avatars', {}))}",
         f"📦 کانال انبار: {context.bot_data.get('storage_chat') or 'تنظیم نشده'}",
         f"🚫 مسدود: {len(_blocked(context))}",
+        f"✅ معاف از کانال: {len(exempt(context))}",
         f"👍 ریکشن دنبال‌شده: {reactions.total_tracked(context.bot_data)} پیام",
         f"⏱ روشن از: {_uptime()} پیش",
     ]
@@ -294,6 +311,30 @@ def _blocked_text(context) -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton("« بازگشت", callback_data="adm:home")],
     ]
     return f"<b>🚫 مسدودها</b> ({len(blocked)})\n\n{body}", InlineKeyboardMarkup(keyboard)
+
+
+def _exempt_text(context) -> tuple[str, InlineKeyboardMarkup]:
+    allowed = exempt(context)
+    users, groups = _users(context), _groups(context)
+    rows = []
+    for ident in sorted(allowed):
+        if ident in groups:
+            name = html.escape(groups[ident].get("title") or "")
+            what = f"👥 {name}" if name else "👥 گروه"
+        else:
+            name = html.escape(users.get(ident, {}).get("name") or "")
+            what = f"👤 {name}" if name else "👤 کاربر"
+        rows.append(f"• {what} — <code>{ident}</code>")
+    body = "\n".join(rows) if rows else "کسی معاف نیست."
+    keyboard = [
+        [InlineKeyboardButton("➕ معاف کردن", callback_data="adm:allow"),
+         InlineKeyboardButton("➖ برداشتن", callback_data="adm:disallow")],
+        [InlineKeyboardButton("« بازگشت", callback_data="adm:home")],
+    ]
+    return (f"<b>✅ معاف از عضویت کانال</b> ({len(allowed)})\n\n{body}\n\n"
+            f"<i>اینها لازم نیست عضو کانال باشند، ولی باید ربات را استارت "
+            f"کرده باشند. شناسهٔ گروه، همه را داخل آن گروه معاف می‌کند.</i>",
+            InlineKeyboardMarkup(keyboard))
 
 
 def _log_text() -> str:
@@ -362,6 +403,9 @@ def make_panel(owner_id: int | None):
         elif action == "blocked":
             text, markup = _blocked_text(context)
             await _show(query, text, markup)
+        elif action == "exempt":
+            text, markup = _exempt_text(context)
+            await _show(query, text, markup)
         elif action == "logs":
             await _show(query, _log_text(), _BACK)
         elif action == "pause":
@@ -369,7 +413,7 @@ def make_panel(owner_id: int | None):
             log.info("bot %s by the owner",
                      "paused" if context.bot_data["paused"] else "resumed")
             await _show(query, _home_text(context), _menu(context))
-        elif action in ("cast", "block", "unblock", "quota"):
+        elif action in ("cast", "block", "unblock", "quota", "allow", "disallow"):
             context.user_data["admin_await"] = action
             await _show(query, _PROMPTS[action], _BACK)
         elif action == "flush":
@@ -442,6 +486,17 @@ def make_panel(owner_id: int | None):
         elif waiting == "quota":
             context.bot_data.setdefault("avatar_uses", {}).pop(user_id, None)
             await message.reply_text(f"سهمیهٔ آواتار کاربر {user_id} صفر شد.")
+        elif waiting == "allow":
+            exempt(context).add(user_id)
+            what = "گروه" if user_id < 0 else "کاربر"
+            await message.reply_text(
+                f"{what} {user_id} دیگر لازم نیست عضو کانال باشد.")
+        elif waiting == "disallow":
+            if user_id in exempt(context):
+                exempt(context).discard(user_id)
+                await message.reply_text(f"معافیت {user_id} برداشته شد.")
+            else:
+                await message.reply_text("این شناسه معاف نبود.")
 
         log.info("owner %s for %s", waiting, user_id)
         await message.reply_html(_home_text(context), reply_markup=_menu(context))
@@ -491,6 +546,11 @@ _PROMPTS = {
              "عیناً همان‌طور کپی می‌شود.\nقبل از فرستادن یک بار تأیید می‌گیرم."),
     "block": "<b>🚫 مسدود کردن</b>\n\nشناسهٔ عددی کاربر را بفرست.",
     "unblock": "<b>➖ آزاد کردن</b>\n\nشناسهٔ عددی کاربر را بفرست.",
+    "allow": ("<b>✅ معاف کردن</b>\n\n"
+              "شناسهٔ عددی کاربر یا گروه را بفرست.\n"
+              "شناسهٔ گروه‌ها منفی است و در صفحهٔ گروه‌ها دیده می‌شود."),
+    "disallow": ("<b>➖ برداشتن معافیت</b>\n\n"
+                 "شناسهٔ عددی را بفرست."),
     "quota": ("<b>🖼 سهمیهٔ آواتار</b>\n\n"
               "شناسهٔ عددی کاربر را بفرست تا سهمیه‌اش دوباره از صفر شروع شود."),
 }
