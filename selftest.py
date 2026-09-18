@@ -641,8 +641,8 @@ def test_storage_channel() -> None:
         ))
 
     async def run():
-        owner = bot.OWNER_ID
-        bot.OWNER_ID = 4242
+        owner, store_was = bot.OWNER_ID, bot.STORAGE_CHAT
+        bot.OWNER_ID, bot.STORAGE_CHAT = 4242, None
         try:
             store, fake = {}, Bot_()
             ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
@@ -670,8 +670,14 @@ def test_storage_channel() -> None:
             ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
             await bot._adopt_storage(event(-4004, 4242), ctx)
             check("without an owner nothing is adopted", "storage_chat" not in store)
+            # A store named in .env is not overruled by adoption.
+            bot.STORAGE_CHAT = -1009999
+            store, fake = {}, Bot_()
+            ctx = types.SimpleNamespace(bot_data=store, user_data={}, bot=fake)
+            await bot._adopt_storage(event(-5005, 4242), ctx)
+            check("a configured store is left alone", "storage_chat" not in store)
         finally:
-            bot.OWNER_ID = owner
+            bot.OWNER_ID, bot.STORAGE_CHAT = owner, store_was
 
     asyncio.run(run())
 
@@ -961,6 +967,7 @@ def test_gates() -> None:
     async def adopting():
         was_owner, bot.OWNER_ID = bot.OWNER_ID, 4242
         was_chan, bot.REQUIRED_CHANNEL = bot.REQUIRED_CHANNEL, "@getQuoto"
+        was_store, bot.STORAGE_CHAT = bot.STORAGE_CHAT, None
         try:
             class Bot_:
                 async def send_message(self, *a, **k):
@@ -984,6 +991,7 @@ def test_gates() -> None:
             check("but another channel still is", store.get("storage_chat") == -200)
         finally:
             bot.OWNER_ID, bot.REQUIRED_CHANNEL = was_owner, was_chan
+            bot.STORAGE_CHAT = was_store
 
     asyncio.run(adopting())
 

@@ -337,9 +337,18 @@ async def _adopt_storage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if member.new_chat_member.status != ChatMemberStatus.ADMINISTRATOR:
         return
 
-    # The announcements channel is made an admin channel for a different reason
-    # entirely - so the bot can see who is in it - and it must never become the
-    # store. Quotes would be posted into the channel every user is looking at.
+    # A store named in .env is a decision someone made on purpose, and being
+    # given admin rights somewhere else is not a reason to overrule it. Without
+    # this, making the bot an admin of any channel - the announcements one, for
+    # instance - silently moved every upload there.
+    if STORAGE_CHAT:
+        log.info("storage is set to %s in .env; leaving %s alone",
+                 STORAGE_CHAT, member.chat.id)
+        return
+
+    # And the announcements channel is made an admin channel for the opposite
+    # reason - so the bot can read its member list - so it is never the store,
+    # whatever else is configured.
     if REQUIRED_CHANNEL and _same_chat(member.chat, REQUIRED_CHANNEL):
         log.info("%s is the announcements channel, not a store", REQUIRED_CHANNEL)
         return

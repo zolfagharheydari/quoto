@@ -261,9 +261,10 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
             seed=str(query.from_user.id),
         )
 
-        # A channel the owner handed the bot wins over the one in .env: it was
-        # chosen later, and it is the one they can see.
-        store = context.bot_data.get("storage_chat") or storage_chat
+        # .env wins. A channel the bot adopted by being made an admin of it is
+        # a convenience for when nothing is configured; it must not quietly
+        # replace a store that was chosen deliberately.
+        store = storage_chat or context.bot_data.get("storage_chat")
 
         clock = asyncio.get_running_loop().time
         started = clock()
