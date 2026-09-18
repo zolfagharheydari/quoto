@@ -159,7 +159,12 @@ async def _send(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str) ->
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Pressing Start is what makes someone reachable, so it is recorded even
+    # when the channel turns them away: they are a user of the bot from this
+    # moment, they just cannot use it yet.
     context.user_data["started"] = True
+    if not await _require_channel(update, context, "need_channel_start"):
+        return
     await _send(update, context, "welcome")
 
 
@@ -223,7 +228,13 @@ async def _in_channel(bot, user_id: int, cache: dict) -> bool:
     return inside
 
 
-async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                           key: str = "need_channel") -> bool:
+    """Whether this person may go on, and the asking if they may not.
+
+    `key` is which way of asking: the greeting at Start, or the plain one
+    everywhere else.
+    """
     user = update.effective_user
     if user is None:
         return True
@@ -233,7 +244,7 @@ async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lang = i18n.resolve(update, context.user_data)
     link = f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}"
     await update.effective_message.reply_text(
-        i18n.t("need_channel", lang),
+        i18n.t(key, lang),
         reply_markup=InlineKeyboardMarkup(
             [[InlineKeyboardButton(i18n.t("btn_channel", lang), url=link)]]),
     )

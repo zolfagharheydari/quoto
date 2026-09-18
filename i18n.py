@@ -370,6 +370,24 @@ Everything new is announced there.
 Once you have joined, send the same command again.""",
     },
     "btn_channel": {"fa": "عضو شدن در کانال", "en": "Join the channel"},
+    # The first thing anyone sees. It is a greeting that happens to ask for
+    # something, not a refusal - nobody has done anything wrong yet.
+    "need_channel_start": {
+        "fa": """سلام! 👋
+من از پیام‌ها عکسِ نقل‌قول می‌سازم — کارتی با متن پیام، اسم گوینده و عکس پروفایلش.
+
+یک قدم مانده: عضو کانالم شو 👇
+همهٔ خبرها و تغییرها آنجا اعلام می‌شود.
+
+بعد از عضو شدن، دوباره /start را بزن تا راهنما را برایت بفرستم.""",
+        "en": """Hi! 👋
+I turn messages into quote cards carrying the text, the sender's name and their profile photo.
+
+One step first: join my channel 👇
+Everything new is announced there.
+
+Once you have joined, send /start again and I'll show you around.""",
+    },
     "need_reply": {
         "fa": "روی پیامی که می‌خوای ازش عکس بسازم ریپلای کن و دوباره دستور رو بفرست.",
         "en": "Reply to the message you want me to turn into a card, then send the command again.",

@@ -913,6 +913,8 @@ def test_gates() -> None:
     from telegram.error import TelegramError
 
     class ChannelBot:
+        username = "getquoto_bot"
+
         def __init__(self, status=ChatMemberStatus.MEMBER, error=None):
             self.status, self.error, self.asked = status, error, 0
 
@@ -956,6 +958,44 @@ def test_gates() -> None:
         check("and not asked again", again.asked == 0)
     finally:
         bot.REQUIRED_CHANNEL = was
+
+    # Start is the first thing anyone does, so it asks for the channel itself
+    # rather than handing over a guide to a bot they cannot use yet.
+    class Msg_:
+        def __init__(self):
+            self.out = []
+            self.markup = None
+
+        async def reply_text(self, text, reply_markup=None, **kwargs):
+            self.out.append(text)
+            self.markup = reply_markup
+
+        async def reply_html(self, text, **kwargs):
+            self.out.append(text)
+
+    async def starting(status):
+        was, bot.REQUIRED_CHANNEL = bot.REQUIRED_CHANNEL, "@chan"
+        try:
+            message = Msg_()
+            ctx = types.SimpleNamespace(
+                bot=ChannelBot(status), bot_data={}, user_data={})
+            update = types.SimpleNamespace(
+                effective_message=message,
+                effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+            await bot.cmd_start(update, ctx)
+            return message, ctx
+        finally:
+            bot.REQUIRED_CHANNEL = was
+
+    message, ctx = asyncio.run(starting(ChatMemberStatus.LEFT))
+    check("someone outside is asked to join at Start",
+          "کانال" in message.out[0], message.out[0][:40])
+    check("and gets a button to do it", message.markup is not None)
+    check("but is still recorded as having started", ctx.user_data["started"])
+
+    message, _ = asyncio.run(starting(ChatMemberStatus.MEMBER))
+    check("a member gets the welcome instead",
+          "کانال" not in message.out[0], message.out[0][:40])
 
     # The announcements channel must never be adopted as the file store.
     chan = types.SimpleNamespace(id=-100, type="channel", title="Quoto",
