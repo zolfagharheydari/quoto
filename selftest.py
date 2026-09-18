@@ -1011,6 +1011,15 @@ def test_gates() -> None:
     check("no application means no guessing",
           admin.members(types.SimpleNamespace(bot_data={})) == [])
 
+    # The number shown before sending has to be the number that will be sent to.
+    # It was counting the tracker's list, which is a different population and a
+    # smaller one, so the confirmation described somebody else's broadcast.
+    source = (ROOT / "admin.py").read_text(encoding="utf-8")
+    confirm = next(line for line in source.splitlines()
+                   if "کاربر فرستاده می‌شود" in line)
+    check("the confirmation counts the people who will get it",
+          "members(context)" in confirm, confirm.strip())
+
 
 def test_handler_groups() -> None:
     section("handler registration")

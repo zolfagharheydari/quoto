@@ -409,8 +409,10 @@ def make_panel(owner_id: int | None):
             # reaches everyone exactly as it was written here.
             context.user_data["cast_from"] = (message.chat_id, message.message_id)
             context.user_data.pop("admin_await", None)
+            # The same list the sending walks. Counting a different one here
+            # made the confirmation a guess about somebody else.
             await message.reply_html(
-                f"این پیام برای <b>{len(_users(context))}</b> کاربر فرستاده می‌شود.",
+                f"این پیام برای <b>{len(members(context))}</b> کاربر فرستاده می‌شود.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("✅ بفرست", callback_data="adm:castgo"),
                      InlineKeyboardButton("✖️ بی‌خیال", callback_data="adm:home")],
