@@ -534,32 +534,39 @@ def _template_keyboard(lang: str, current: str) -> InlineKeyboardMarkup:
 
 async def _send_templates(message: Message, context: ContextTypes.DEFAULT_TYPE,
                           lang: str) -> None:
-    """The three cards as one picture, with a button under each number.
+    """The cards as one picture, with a button under each number.
 
-    The picture is the same every time, so it is uploaded once and then sent by
-    the file_id Telegram hands back - after the first person asks, this costs
-    nothing to send.
+    The picture is the same for everyone, so it is uploaded once and then sent
+    by the file_id Telegram hands back. The file it was made from is stamped
+    beside it: a template added or changed means a new sheet on disk, and the
+    file_id from the old one has to be thrown away with it - otherwise the
+    buttons offer four cards under a picture of three.
     """
     markup = _template_keyboard(lang, _template(context))
     caption = i18n.t("template_prompt", lang)
 
-    cached = context.bot_data.get("template_sheet_id")
-    if cached:
+    if not TEMPLATE_SHEET.exists():
+        await message.reply_text(caption, reply_markup=markup)
+        return
+
+    stat = TEMPLATE_SHEET.stat()
+    stamp = f"{stat.st_size}:{int(stat.st_mtime)}"
+    cached = context.bot_data.get("template_sheet") or {}
+    if cached.get("stamp") == stamp and cached.get("id"):
         try:
-            await message.reply_photo(cached, caption=caption, reply_markup=markup)
+            await message.reply_photo(cached["id"], caption=caption,
+                                      reply_markup=markup)
             return
         except TelegramError as exc:
             # A file_id can stop working; the file on disk cannot.
             log.info("the template sheet file_id no longer works: %s", exc)
-            context.bot_data.pop("template_sheet_id", None)
+            context.bot_data.pop("template_sheet", None)
 
-    if not TEMPLATE_SHEET.exists():
-        await message.reply_text(caption, reply_markup=markup)
-        return
     with TEMPLATE_SHEET.open("rb") as fh:
         sent = await message.reply_photo(fh, caption=caption, reply_markup=markup)
     if sent.photo:
-        context.bot_data["template_sheet_id"] = sent.photo[-1].file_id
+        context.bot_data["template_sheet"] = {
+            "id": sent.photo[-1].file_id, "stamp": stamp}
 
 
 async def cmd_template(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

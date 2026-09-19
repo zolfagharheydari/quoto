@@ -242,6 +242,34 @@ def test_templates() -> None:
         check(f"the tinted side stays dark for a {label} picture", lum < 90,
               f"{lum:.0f}")
 
+    # The sheet is cached by file_id, and a new template means a new sheet.
+    class SheetMessage:
+        def __init__(self) -> None:
+            self.sent = []
+
+        async def reply_photo(self, what, caption=None, reply_markup=None):
+            self.sent.append(what)
+            return types.SimpleNamespace(
+                photo=[types.SimpleNamespace(file_id="SHEET1")])
+
+    async def sheets():
+        msg = SheetMessage()
+        ctx = types.SimpleNamespace(bot_data={}, user_data={})
+        await bot._send_templates(msg, ctx, "fa")
+        check("the sheet is uploaded the first time",
+              not isinstance(msg.sent[-1], str))
+        await bot._send_templates(msg, ctx, "fa")
+        check("and sent by file_id after that", msg.sent[-1] == "SHEET1")
+
+        # A regenerated sheet is a different file; the old file_id must go.
+        stamped = ctx.bot_data["template_sheet"]["stamp"]
+        ctx.bot_data["template_sheet"]["stamp"] = stamped + "-old"
+        await bot._send_templates(msg, ctx, "fa")
+        check("a changed sheet is uploaded again, not served from the old id",
+              not isinstance(msg.sent[-1], str))
+
+    asyncio.run(sheets())
+
     unknown = render.build_scene(avatar, "x", "y", "@bot", "no-such-template")
     check("an unknown template falls back rather than raising",
           unknown.center_x == render.build_scene(avatar, "x", "y", "@bot").center_x)
