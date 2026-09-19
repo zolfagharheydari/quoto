@@ -426,6 +426,16 @@ def _avatar_choice(context: ContextTypes.DEFAULT_TYPE,
     return file_id, source
 
 
+def _template(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Which card the person asking for the quote has chosen.
+
+    It follows the person, not the chat: user_data is per user everywhere, so a
+    template picked in private is the one they get in every group too.
+    """
+    chosen = (context.user_data or {}).get("template")
+    return chosen if chosen in render.TEMPLATES else render.DEFAULT_TEMPLATE
+
+
 def _photo_file_id(message: Message | None) -> str | None:
     """The best-resolution photo on a message, if it carries one."""
     if message is None:
@@ -496,6 +506,9 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         rows.append([InlineKeyboardButton(
             mark + i18n.t(f"src_{source}", lang), callback_data=f"src:{source}"
         )])
+    rows.append([InlineKeyboardButton(
+        i18n.t("btn_template", lang), callback_data="tpl:menu"
+    )])
     # Switching source only turns the picture off; this is how it goes away for
     # good. It is offered last, and only to someone who has one to delete.
     if has_custom:
@@ -505,6 +518,85 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await message.reply_html(
         i18n.t("settings_prompt", lang), reply_markup=InlineKeyboardMarkup(rows)
     )
+
+
+TEMPLATE_SHEET = Path(__file__).with_name("assets") / "templates.png"
+
+
+def _template_keyboard(lang: str, current: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            ("✅ " if name == current else "") + i18n.t(f"tpl_{name}", lang),
+            callback_data=f"tpl:{name}")]
+        for name in render.TEMPLATE_ORDER
+    ])
+
+
+async def _send_templates(message: Message, context: ContextTypes.DEFAULT_TYPE,
+                          lang: str) -> None:
+    """The three cards as one picture, with a button under each number.
+
+    The picture is the same every time, so it is uploaded once and then sent by
+    the file_id Telegram hands back - after the first person asks, this costs
+    nothing to send.
+    """
+    markup = _template_keyboard(lang, _template(context))
+    caption = i18n.t("template_prompt", lang)
+
+    cached = context.bot_data.get("template_sheet_id")
+    if cached:
+        try:
+            await message.reply_photo(cached, caption=caption, reply_markup=markup)
+            return
+        except TelegramError as exc:
+            # A file_id can stop working; the file on disk cannot.
+            log.info("the template sheet file_id no longer works: %s", exc)
+            context.bot_data.pop("template_sheet_id", None)
+
+    if not TEMPLATE_SHEET.exists():
+        await message.reply_text(caption, reply_markup=markup)
+        return
+    with TEMPLATE_SHEET.open("rb") as fh:
+        sent = await message.reply_photo(fh, caption=caption, reply_markup=markup)
+    if sent.photo:
+        context.bot_data["template_sheet_id"] = sent.photo[-1].file_id
+
+
+async def cmd_template(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Choose which card the quotes are drawn on."""
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    if message.chat.type != "private":
+        await message.reply_text(i18n.t("avatar_private_only", lang))
+        return
+    await _send_templates(message, context, lang)
+
+
+async def on_template_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The template row of /settings: the picture comes as a message of its own."""
+    query = update.callback_query
+    await query.answer()
+    await _send_templates(query.message, context,
+                          i18n.resolve(update, context.user_data))
+
+
+async def on_template_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    name = query.data.split(":", 1)[1]
+    lang = i18n.resolve(update, context.user_data)
+    if name not in render.TEMPLATES:
+        await query.answer()
+        return
+    context.user_data["template"] = name
+    await query.answer()
+    # The picture stays; only the caption and the ticks change, so the three
+    # cards are still there to compare against after choosing.
+    said = i18n.t("template_set", lang).format(choice=i18n.t(f"tpl_{name}", lang))
+    markup = _template_keyboard(lang, name)
+    if query.message and query.message.photo:
+        await query.edit_message_caption(caption=said, reply_markup=markup)
+    else:
+        await query.edit_message_text(said, reply_markup=markup)
 
 
 async def on_source_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -583,7 +675,8 @@ async def _build_scene(update: Update, context: ContextTypes.DEFAULT_TYPE,
         context.bot, author, *_avatar_choice(context, author)
     )
     return await asyncio.to_thread(
-        render.build_scene, avatar, text, author.name, WATERMARK
+        render.build_scene, avatar, text, author.name, WATERMARK,
+        _template(context),
     )
 
 
@@ -1048,9 +1141,15 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["unpack", "unpak", "delsticker"], cmd_unpack))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
+    app.add_handler(CommandHandler(
+        ["template", "templates", "tpl", "style"], cmd_template))
     app.add_handler(CallbackQueryHandler(on_source_choice, pattern=r"^src:"))
     app.add_handler(CallbackQueryHandler(on_avatar_delete, pattern=r"^avatar:delete$"))
     app.add_handler(CallbackQueryHandler(on_pack_rename, pattern=r"^mypack:rename$"))
+    # The menu button first: "tpl:menu" would otherwise be read as a template
+    # named "menu", and only the first matching handler in a group runs.
+    app.add_handler(CallbackQueryHandler(on_template_menu, pattern=r"^tpl:menu$"))
+    app.add_handler(CallbackQueryHandler(on_template_choice, pattern=r"^tpl:"))
     # The operator's own panel: unlisted, and silent for everybody else.
     cmd_admin, on_admin_button, on_admin_input = admin.make_panel(OWNER_ID)
     app.add_handler(CommandHandler(["admin", "panel"], cmd_admin))

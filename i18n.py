@@ -179,6 +179,7 @@ Full guide: /help""",
 <code>/mypack</code> — پک شخصی خودت؛ در همین چت می‌توانی اسمش را عوض کنی، یا روی یک استیکر ریپلای کنی و <code>/unpack</code> بزنی تا حذف شود
 <code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
 <code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
+<code>/template</code> — انتخاب قالب کوت‌ها: کلاسیک، تمام‌قاب یا کارت
 <code>/lang</code> — تغییر زبان ربات
 <code>/help</code> — همین راهنما
 
@@ -254,6 +255,7 @@ Change it whenever you like; this one has no limit.
 <code>/unpack</code> — remove one sticker from the pack (admins)
 <code>/avatar</code> — your own picture for your quotes (private chat, twice)
 <code>/settings</code> — choose which picture stands for you
+<code>/template</code> — choose the template: classic, full frame or card
 <code>/lang</code> — change the bot's language
 <code>/help</code> — this guide
 
@@ -295,6 +297,23 @@ Choosing anything other than your own picture only <b>turns it off</b> — it is
         "fa": "انجام شد ✅ از این به بعد: {choice}",
         "en": "Done ✅ From now on: {choice}",
     },
+    "btn_template": {"fa": "🎨 قالب کوت", "en": "🎨 Quote template"},
+    "template_prompt": {
+        "fa": """کوت‌هایت با کدام قالب ساخته شود؟
+
+شماره‌اش را از روی تصویر بالا انتخاب کن. هر وقت خواستی عوضش کن — روی کوت‌هایی که قبلاً ساخته‌ای اثری ندارد.""",
+        "en": """Which template should your quotes be made with?
+
+Pick a number from the picture above. Change it whenever you like — it does not touch quotes you have already made.""",
+    },
+    "template_set": {
+        "fa": "قالب کوت‌هایت شد: {choice} ✅",
+        "en": "Your quotes now use: {choice} ✅",
+    },
+    "template_current": {"fa": "الان: {choice}", "en": "Currently: {choice}"},
+    "tpl_classic": {"fa": "1 — کلاسیک", "en": "1 — Classic"},
+    "tpl_portrait": {"fa": "2 — تمام‌قاب", "en": "2 — Full frame"},
+    "tpl_card": {"fa": "3 — کارت", "en": "3 — Card"},
     "src_custom": {"fa": "عکسی که خودم فرستادم", "en": "The picture I sent"},
     "src_profile": {"fa": "عکس پروفایل تلگرامم", "en": "My Telegram profile photo"},
     "src_public": {"fa": "عکس پابلیک پروفایلم", "en": "My public profile photo"},
@@ -525,6 +544,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("mypack", "استیکرپک شخصی خودت"),
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
+        ("template", "انتخاب قالب کوت‌ها"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
@@ -532,6 +552,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("mypack", "Your own sticker pack"),
         ("avatar", "Pick your own picture for your quotes"),
         ("settings", "Choose which picture stands for you"),
+        ("template", "Choose the template your quotes use"),
         ("lang", "Change language"),
         ("help", "Help"),
     ],

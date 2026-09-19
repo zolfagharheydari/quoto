@@ -92,6 +92,16 @@ def _abandon(context) -> None:
         running.cancel()
 
 
+def cache_key(user_id: int, avatar: str | None, template: str, text: str) -> str:
+    """What makes two inline queries the same picture.
+
+    The words, who is credited, which avatar stands for them and which card they
+    picked. Leaving the template out would answer a switched template with the
+    picture drawn before the switch.
+    """
+    return f"{user_id}:{avatar or ''}:{template}:{text}"
+
+
 def _cached(context, key: str):
     return context.bot_data.get("inline_cache", {}).get(key)
 
@@ -250,9 +260,10 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         # The quote is always the sender's own words, under their own name.
         text = raw[:MAX_INLINE_CHARS]
         chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
-        # The picture depends on the words, who is credited and which avatar
-        # stands for them, so all three go into the key.
-        key = f"{query.from_user.id}:{chosen or ''}:{text}"
+        template = context.user_data.get("template")
+        if template not in render.TEMPLATES:
+            template = render.DEFAULT_TEMPLATE
+        key = cache_key(query.from_user.id, chosen, template, text)
 
         # Before anything else, including the wait for typing to stop. A repeat
         # of a text already rendered costs one dictionary lookup, and the whole
@@ -294,7 +305,8 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
             avatar = await authors.fetch_avatar(context.bot, author, chosen)
             got_avatar = clock()
             scene = await asyncio.to_thread(
-                render.build_scene, avatar, text, author.name, watermark
+                render.build_scene, avatar, text, author.name, watermark,
+                template,
             )
             # The animation is a couple of hundred frames through ffmpeg and
             # then an upload of its own - the longest job here by far, so it is

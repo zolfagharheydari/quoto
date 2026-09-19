@@ -190,6 +190,69 @@ def test_render() -> None:
     check("screenshot latin produced", shot_en.width > 100)
 
 
+def test_templates() -> None:
+    section("templates")
+    avatar = _avatar()
+
+    check("the default is the card the bot has always drawn",
+          render.DEFAULT_TEMPLATE == "classic")
+    check("every template offered is one that exists",
+          all(n in render.TEMPLATES for n in render.TEMPLATE_ORDER))
+    check("every template has a name to show",
+          all(f"tpl_{n}" in i18n.STRINGS for n in render.TEMPLATE_ORDER))
+    check("the picture of the three is there",
+          bot.TEMPLATE_SHEET.exists(), str(bot.TEMPLATE_SHEET))
+
+    for name in render.TEMPLATE_ORDER:
+        for label, quote, who in [("persian", "سلام دنیا", "علی"),
+                                  ("latin", "hello there, a quote", "Sam"),
+                                  ("long", "طولانی " * 60, "علی")]:
+            scene = render.build_scene(avatar, quote, who, "@bot", name)
+            img = scene.render()
+            check(f"{name} draws a {label} quote",
+                  img.size == (render.WIDTH, render.HEIGHT))
+            # Everything is centred on a block whose height depends on the
+            # quote, so a long one is where a layout runs off the card.
+            check(f"{name} keeps the {label} name on the card",
+                  0 < scene.name_y < render.HEIGHT - 40, str(scene.name_y))
+            # Two of them hang a round portrait 150px above the words; that is
+            # the part a long quote pushes off the top edge.
+            head = 150 if name in ("portrait", "card") else 0
+            check(f"{name} keeps the {label} quote on the card",
+                  scene.quote_top - head >= 0, str(scene.quote_top))
+
+    # Half the photos in the world are a person against a white wall, and the
+    # other half are taken at night. Neither may produce a frame that swallows
+    # the card or one that is just the black template again.
+    for label, colour in [("white", (252, 252, 252)), ("black", (3, 3, 4)),
+                          ("grey", (128, 128, 128))]:
+        r, g, b = render._dominant(Image.new("RGB", (80, 80), colour))
+        light = (max(r, g, b) + min(r, g, b)) / 510
+        check(f"a {label} picture still gives a usable frame",
+              0.30 <= light <= 0.64, f"{light:.2f}")
+
+    unknown = render.build_scene(avatar, "x", "y", "@bot", "no-such-template")
+    check("an unknown template falls back rather than raising",
+          unknown.center_x == render.build_scene(avatar, "x", "y", "@bot").center_x)
+
+    same = inline.cache_key(7, "A", "classic", "hi")
+    check("the same query is the same picture",
+          inline.cache_key(7, "A", "classic", "hi") == same)
+    check("a different template is a different picture",
+          inline.cache_key(7, "A", "card", "hi") != same)
+    check("a different avatar is a different picture",
+          inline.cache_key(7, "B", "classic", "hi") != same)
+    check("somebody else is a different picture",
+          inline.cache_key(8, "A", "classic", "hi") != same)
+
+    ctx = types.SimpleNamespace(user_data={})
+    check("nothing chosen means the default", bot._template(ctx) == "classic")
+    ctx.user_data["template"] = "card"
+    check("a choice is honoured", bot._template(ctx) == "card")
+    ctx.user_data["template"] = "; drop table"
+    check("a made-up choice is ignored", bot._template(ctx) == "classic")
+
+
 def test_animation() -> None:
     section("animation")
     scene = render.build_scene(_avatar(), "یک جمله‌ی نمونه برای تست", "علی", "@bot")
@@ -1924,6 +1987,7 @@ def main() -> int:
     test_text()
     test_i18n()
     test_render()
+    test_templates()
     test_animation()
     test_avatars()
     test_bot_logic()
