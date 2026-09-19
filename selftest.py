@@ -987,15 +987,19 @@ def test_gates() -> None:
         finally:
             bot.REQUIRED_CHANNEL = was
 
+    # The welcome mentions the channel too, so the two are told apart by what
+    # only one of them says: the prompt asks, the welcome hands over the guide.
+    asking = "یک قدم مانده"
     message, ctx = asyncio.run(starting(ChatMemberStatus.LEFT))
     check("someone outside is asked to join at Start",
-          "کانال" in message.out[0], message.out[0][:40])
+          asking in message.out[0], message.out[0][:40])
     check("and gets a button to do it", message.markup is not None)
     check("but is still recorded as having started", ctx.user_data["started"])
 
     message, _ = asyncio.run(starting(ChatMemberStatus.MEMBER))
     check("a member gets the welcome instead",
-          "کانال" not in message.out[0], message.out[0][:40])
+          asking not in message.out[0] and "/help" in message.out[0],
+          message.out[0][:40])
 
     # The owner can excuse a person, or a whole group, from the channel.
     async def excused(ident, in_chat=None):

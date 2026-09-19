@@ -21,7 +21,10 @@ STRINGS: dict[str, dict[str, str]] = {
 <b>کار اصلی‌ام:</b>
 روی هر پیامی ریپلای کن و <code>/quote</code> بفرست.
 
-راهنمای کامل: /help""",
+راهنمای کامل: /help
+
+<b>کانال من:</b> @getQuoto
+هر قابلیت تازه‌ای که اضافه شود، هر چیزی که درست شود، آنجا می‌گویم. عضو شدن اختیاری است — فقط اگر دوست داری در جریان باشی.""",
         "en": """Hi! 👋
 I turn messages into quote cards carrying the text, the sender's name and their profile photo.
 
@@ -31,7 +34,10 @@ Send <code>/quote hello world</code> right now
 <b>What I'm really for:</b>
 Reply to any message and send <code>/quote</code>.
 
-Full guide: /help""",
+Full guide: /help
+
+<b>My channel:</b> @getQuoto
+Anything new, anything fixed, I say it there. Joining is up to you - only if you would like to know.""",
     },
     "lang_prompt": {
         "fa": "زبان ربات را انتخاب کن:",
