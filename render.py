@@ -145,8 +145,8 @@ def _fade_mask(width: int, height: int) -> Image.Image:
     return strip.resize((width, height))
 
 
-def build_background(avatar: Image.Image) -> Image.Image:
-    canvas = Image.new("RGB", (WIDTH, HEIGHT), BG)
+def build_background(avatar: Image.Image, bg: tuple = BG) -> Image.Image:
+    canvas = Image.new("RGB", (WIDTH, HEIGHT), bg)
     photo = _cover(avatar.convert("RGB"), (PHOTO_W, HEIGHT))
     photo = ImageEnhance.Contrast(photo).enhance(1.06)
     photo = ImageEnhance.Brightness(photo).enhance(0.95)
@@ -216,8 +216,12 @@ def _fit(body: str, rtl: bool, width: int, height: int, sizes: range):
     return lines, font, line_height
 
 
-def _classic(avatar, quote, name, watermark, rtl) -> Scene:
-    """The original: the portrait fading into black, the words to its right."""
+def _classic(avatar, quote, name, watermark, rtl, tinted: bool = False) -> Scene:
+    """The original: the portrait fading into black, the words to its right.
+
+    `tinted` keeps every line of it and changes one thing - the side the words
+    sit on is a dark shade of the photo's own colour instead of flat black.
+    """
     # A straight quote for Persian: it is symmetric, so it needs none of the
     # mirroring the guillemets did, and it reads the same at both ends.
     open_q, close_q = ('"', '"') if rtl else ("“", "”")
@@ -232,8 +236,10 @@ def _classic(avatar, quote, name, watermark, rtl) -> Scene:
     # Only the name sits under the quote now, so the text block gets the rest.
     top = (HEIGHT - (quote_h + 56 + 36)) // 2
 
+    base = _dominant(avatar) if tinted else None
+    side = _shade(base, 0.28) if tinted else BG
     return Scene(
-        background=build_background(avatar),
+        background=build_background(avatar, side),
         lines=lines,
         quote_font=quote_font,
         line_height=line_height,
@@ -244,7 +250,17 @@ def _classic(avatar, quote, name, watermark, rtl) -> Scene:
         name_y=top + quote_h + 56,
         watermark=watermark,
         watermark_font=fonts.load("regular", 19),
+        quote_color=(247, 246, 242) if tinted else QUOTE_COLOR,
+        # The watermark has to lift off a coloured side, not off black, so it
+        # is a lighter shade of that side rather than the fixed grey.
+        mark_color=_shade(base, 0.75) if tinted else MARK_COLOR,
+        fade_to=side,
     )
+
+
+def _tinted(avatar, quote, name, watermark, rtl) -> Scene:
+    """The original card, with the side beside the portrait taking the photo's colour."""
+    return _classic(avatar, quote, name, watermark, rtl, tinted=True)
 
 
 def _portrait(avatar, quote, name, watermark, rtl) -> Scene:
@@ -340,11 +356,12 @@ def _card(avatar, quote, name, watermark, rtl) -> Scene:
 
 TEMPLATES = {
     "classic": _classic,
+    "tinted": _tinted,
     "portrait": _portrait,
     "card": _card,
 }
 # The order they are offered in, and the numbers people see beside them.
-TEMPLATE_ORDER = ["classic", "portrait", "card"]
+TEMPLATE_ORDER = ["classic", "tinted", "portrait", "card"]
 DEFAULT_TEMPLATE = "classic"
 
 

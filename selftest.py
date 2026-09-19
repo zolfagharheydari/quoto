@@ -231,6 +231,17 @@ def test_templates() -> None:
         check(f"a {label} picture still gives a usable frame",
               0.30 <= light <= 0.64, f"{light:.2f}")
 
+    # The tinted side carries the same near-white type the black one does, so
+    # whatever the photo is, it has to stay dark enough to read off.
+    for label, colour in [("white", (252, 252, 252)), ("yellow", (250, 220, 40)),
+                          ("black", (3, 3, 4))]:
+        side = render.render_quote(
+            Image.new("RGB", (80, 80), colour), "x", "y", "", "tinted"
+        ).getpixel((render.WIDTH - 40, 40))
+        lum = 0.2126 * side[0] + 0.7152 * side[1] + 0.0722 * side[2]
+        check(f"the tinted side stays dark for a {label} picture", lum < 90,
+              f"{lum:.0f}")
+
     unknown = render.build_scene(avatar, "x", "y", "@bot", "no-such-template")
     check("an unknown template falls back rather than raising",
           unknown.center_x == render.build_scene(avatar, "x", "y", "@bot").center_x)

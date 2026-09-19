@@ -179,7 +179,7 @@ Full guide: /help""",
 <code>/mypack</code> — پک شخصی خودت؛ در همین چت می‌توانی اسمش را عوض کنی، یا روی یک استیکر ریپلای کنی و <code>/unpack</code> بزنی تا حذف شود
 <code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
 <code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
-<code>/template</code> — انتخاب قالب کوت‌ها: کلاسیک، تمام‌قاب یا کارت
+<code>/template</code> — انتخاب قالب کوت‌ها: کلاسیک، کلاسیکِ رنگی، تمام‌قاب یا کارت
 <code>/lang</code> — تغییر زبان ربات
 <code>/help</code> — همین راهنما
 
@@ -255,7 +255,7 @@ Change it whenever you like; this one has no limit.
 <code>/unpack</code> — remove one sticker from the pack (admins)
 <code>/avatar</code> — your own picture for your quotes (private chat, twice)
 <code>/settings</code> — choose which picture stands for you
-<code>/template</code> — choose the template: classic, full frame or card
+<code>/template</code> — choose the template: classic, tinted, full frame or card
 <code>/lang</code> — change the bot's language
 <code>/help</code> — this guide
 
@@ -312,8 +312,9 @@ Pick a number from the picture above. Change it whenever you like — it does no
     },
     "template_current": {"fa": "الان: {choice}", "en": "Currently: {choice}"},
     "tpl_classic": {"fa": "1 — کلاسیک", "en": "1 — Classic"},
-    "tpl_portrait": {"fa": "2 — تمام‌قاب", "en": "2 — Full frame"},
-    "tpl_card": {"fa": "3 — کارت", "en": "3 — Card"},
+    "tpl_tinted": {"fa": "2 — کلاسیکِ رنگی", "en": "2 — Classic, tinted"},
+    "tpl_portrait": {"fa": "3 — تمام‌قاب", "en": "3 — Full frame"},
+    "tpl_card": {"fa": "4 — کارت", "en": "4 — Card"},
     "src_custom": {"fa": "عکسی که خودم فرستادم", "en": "The picture I sent"},
     "src_profile": {"fa": "عکس پروفایل تلگرامم", "en": "My Telegram profile photo"},
     "src_public": {"fa": "عکس پابلیک پروفایلم", "en": "My public profile photo"},
