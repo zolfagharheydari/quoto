@@ -36,6 +36,7 @@ from telegram.ext import (
     ApplicationHandlerStop,
     CallbackQueryHandler,
     ChatMemberHandler,
+    ChosenInlineResultHandler,
     CommandHandler,
     ContextTypes,
     InlineQueryHandler,
@@ -701,10 +702,35 @@ async def cmd_mypack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if link is None:
         await message.reply_html(_t("mypack_none", update, context))
         return
+    lang = i18n.resolve(update, context.user_data)
     await message.reply_text(
         _t("mypack_link", update, context).format(link=link),
         disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+            i18n.t("btn_pack_rename", lang), callback_data="mypack:rename")]]),
     )
+
+
+async def on_pack_rename(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ask for the new title. The next thing they type is it."""
+    query = update.callback_query
+    context.user_data["await_pack_title"] = True
+    await query.answer()
+    await query.edit_message_text(_t("mypack_rename_ask", update, context))
+
+
+async def on_pack_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Whatever they typed while the bot was waiting for a pack title."""
+    if not context.user_data.pop("await_pack_title", False):
+        return
+    title = (update.effective_message.text or "").strip()
+    if not title:
+        return
+    ok = await stickerpack.rename_personal(
+        context.bot, update.effective_user.id, title)
+    key = "mypack_renamed" if ok else "mypack_rename_failed"
+    await update.effective_message.reply_text(
+        _t(key, update, context).format(title=title[:stickerpack.MAX_TITLE]))
 
 
 async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -742,6 +768,17 @@ async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     sticker can be pointed at without listing the pack out in a message.
     """
     message = update.effective_message
+    if message.chat.type == "private":
+        target = message.reply_to_message
+        outcome = await stickerpack.remove_personal(
+            context.bot, update.effective_user.id,
+            target.sticker if target else None)
+        await message.reply_text(_t({
+            "ok": "mypack_removed",
+            "not_ours": "mypack_not_yours",
+            "no_sticker": "mypack_need_reply",
+        }.get(outcome, "unpack_failed"), update, context))
+        return
     if message.chat.type not in stickerpack.GROUP_TYPES:
         await message.reply_text(_t("pack_groups_only", update, context))
         return
@@ -938,18 +975,32 @@ async def post_init(app: Application) -> None:
     await publish("en", language_code="en")
 
 
-async def _file_personal(context: ContextTypes.DEFAULT_TYPE, user,
-                         webp: bytes) -> None:
-    """Put an inline result in this person's own pack, quietly.
+async def on_chosen_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """File an inline quote in its maker's pack, once they have actually sent it.
 
-    Nothing is said about it: an inline query is answered with results, not with
-    messages, and there is nowhere to put a remark. /mypack is where they find
-    the link when they want it.
+    Offering three results is not the same as sending one. Filing at the moment
+    they were offered put a sticker in someone's pack for every phrase they
+    typed and thought better of.
+
+    Telegram only sends this update when inline feedback is switched on for the
+    bot (BotFather, /setinlinefeedback). Without it nothing arrives here and
+    nothing is filed - which is the safe way round.
     """
+    chosen = update.chosen_inline_result
+    if chosen is None:
+        return
+    sticker_id = inline.sticker_for(context, chosen.result_id)
+    if sticker_id is None:
+        log.debug("chosen result %s is not one we remember", chosen.result_id)
+        return
     try:
-        await stickerpack.add_personal(context.bot, user, webp, OWNER_ID)
+        # A file_id already on Telegram's servers is a sticker they will accept,
+        # so nothing has to be rendered or uploaded a second time.
+        await stickerpack.add_personal(
+            context.bot, chosen.from_user, sticker_id, OWNER_ID)
     except TelegramError as exc:
-        log.info("could not file an inline sticker for %s: %s", user.id, exc)
+        log.info("could not file a sent inline sticker for %s: %s",
+                 chosen.from_user.id, exc)
 
 
 async def _inline_gate(context: ContextTypes.DEFAULT_TYPE, user) -> str | None:
@@ -999,6 +1050,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CallbackQueryHandler(on_source_choice, pattern=r"^src:"))
     app.add_handler(CallbackQueryHandler(on_avatar_delete, pattern=r"^avatar:delete$"))
+    app.add_handler(CallbackQueryHandler(on_pack_rename, pattern=r"^mypack:rename$"))
     # The operator's own panel: unlisted, and silent for everybody else.
     cmd_admin, on_admin_button, on_admin_input = admin.make_panel(OWNER_ID)
     app.add_handler(CommandHandler(["admin", "panel"], cmd_admin))
@@ -1040,12 +1092,19 @@ def register(app: Application) -> None:
         app.add_handler(MessageHandler(
             filters.REPLY & filters.Regex(re.compile(pattern, re.IGNORECASE)), handler
         ))
+    # A group of its own: the owner's panel already takes private text in group
+    # 0, and only the first matching handler in a group runs, so sharing one
+    # would mean the owner could never rename their own pack.
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & ~filters.COMMAND & ~filters.REPLY,
+        on_pack_title), group=1)
     app.add_handler(ChatMemberHandler(on_added_to_group, ChatMemberHandler.MY_CHAT_MEMBER))
     # Reactions are only delivered while the bot is an administrator of the
     # group, and only from the moment it became one.
     app.add_handler(MessageReactionHandler(on_reaction))
     app.add_handler(InlineQueryHandler(
-        inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate, _file_personal)))
+        inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate)))
+    app.add_handler(ChosenInlineResultHandler(on_chosen_inline))
     app.add_error_handler(on_error)
 
 

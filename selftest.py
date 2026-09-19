@@ -1394,6 +1394,84 @@ def test_personal_pack() -> None:
     asyncio.run(filing())
 
 
+def test_pack_editing() -> None:
+    section("editing your own pack")
+
+    from telegram.error import TelegramError
+
+    class PackBot:
+        username = "getquoto_bot"
+
+        def __init__(self, fail=False):
+            self.fail = fail
+            self.titled, self.deleted = [], []
+
+        async def set_sticker_set_title(self, name, title):
+            if self.fail:
+                raise TelegramError("nope")
+            self.titled.append((name, title))
+
+        async def delete_sticker_from_set(self, file_id):
+            if self.fail:
+                raise TelegramError("nope")
+            self.deleted.append(file_id)
+
+    mine = stickerpack.personal_name(7, "getquoto_bot")
+
+    def sticker(set_name=mine, file_id="S1"):
+        return types.SimpleNamespace(set_name=set_name, file_id=file_id)
+
+    async def run():
+        bot_ = PackBot()
+        check("a pack can be renamed",
+              await stickerpack.rename_personal(bot_, 7, "پک من"))
+        check("under its own name", bot_.titled and bot_.titled[0][0] == mine)
+
+        long_title = "ط" * 200
+        bot_ = PackBot()
+        await stickerpack.rename_personal(bot_, 7, long_title)
+        check("a long title is cut to what Telegram takes",
+              len(bot_.titled[0][1]) <= stickerpack.MAX_TITLE)
+
+        check("a refusal is reported, not raised",
+              not await stickerpack.rename_personal(PackBot(fail=True), 7, "x"))
+
+        # The check that matters: every pack the bot made is one it may delete
+        # from, so the set name is what keeps one person out of another's.
+        bot_ = PackBot()
+        check("a sticker of mine is removed",
+              await stickerpack.remove_personal(bot_, 7, sticker()) == "ok")
+        check("and it is the one pointed at", bot_.deleted == ["S1"])
+
+        bot_ = PackBot()
+        check("somebody else's pack is refused",
+              await stickerpack.remove_personal(
+                  bot_, 7, sticker(set_name="u999_by_getquoto_bot")) == "not_ours")
+        check("and nothing is deleted", not bot_.deleted)
+        check("another person's own pack is refused too",
+              await stickerpack.remove_personal(
+                  bot_, 8, sticker()) == "not_ours")
+        check("nothing to remove is said so",
+              await stickerpack.remove_personal(bot_, 7, None) == "no_sticker")
+
+    asyncio.run(run())
+
+    # Inline: offering is not sending.
+    ctx = types.SimpleNamespace(user_data={})
+    results = inline.build_results("fa", "PH", "ST", "AN")
+    inline.remember_offer(ctx, results, "ST")
+    check("each offered result points at its sticker",
+          all(inline.sticker_for(ctx, r.id) == "ST" for r in results))
+    check("something never offered is unknown",
+          inline.sticker_for(ctx, "made-up") is None)
+
+    for i in range(inline.OFFERED_LIMIT + 10):
+        inline.remember_offer(ctx, [types.SimpleNamespace(id=f"r{i}")], "S")
+    check("the note of what was offered is bounded",
+          len(ctx.user_data["inline_offered"]) <= inline.OFFERED_LIMIT,
+          str(len(ctx.user_data["inline_offered"])))
+
+
 def test_pack_names() -> None:
     section("sticker pack naming")
     name = stickerpack.pack_name(-1001234567890, "getquoto_bot")
@@ -1862,6 +1940,7 @@ def main() -> int:
     test_extract()
     test_pack_removal()
     test_personal_pack()
+    test_pack_editing()
     test_pack_names()
     test_fonts()
     test_fallback_fonts()

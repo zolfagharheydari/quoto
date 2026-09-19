@@ -165,6 +165,25 @@ async def _upload_animation(context: ContextTypes.DEFAULT_TYPE,
     return message.animation.file_id if message.animation else None
 
 
+# What was offered, so that what gets sent can be recognised later. Telegram
+# reports a chosen result by its id and nothing else, so the id has to have been
+# written down beside the sticker it stands for.
+OFFERED_LIMIT = 40
+
+
+def remember_offer(context, results, sticker_id: str) -> None:
+    """Note which sticker each offered result stands for."""
+    offered = context.user_data.setdefault("inline_offered", {})
+    for result in results:
+        offered[result.id] = sticker_id
+    while len(offered) > OFFERED_LIMIT:
+        offered.pop(next(iter(offered)))
+
+
+def sticker_for(context, result_id: str) -> str | None:
+    return context.user_data.get("inline_offered", {}).get(result_id)
+
+
 def build_results(lang: str, photo_id: str, sticker_id: str,
                   animation_id: str | None) -> list:
     """What the user sees in the inline list, in the order they see it.
@@ -190,8 +209,7 @@ def build_results(lang: str, photo_id: str, sticker_id: str,
     return results
 
 
-def make_handler(watermark: str, storage_chat: str | int | None, gate=None,
-                 keep=None):
+def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
     """`gate` says what stands between this person and a result, or None.
 
     Inline mode asked for nothing at all, which made it the way round every
@@ -199,9 +217,6 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None,
     it is the same one the commands use, and is handed in rather than imported
     so this module still knows nothing about that one.
 
-    `keep` is handed the sticker so it can be filed in the person's own pack.
-    It runs after the answer has gone out: nothing about it is worth a second
-    of the query's short life.
     """
     async def on_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.inline_query
@@ -244,7 +259,9 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None,
         # point of the cache is that the answer beats the query being closed.
         remembered = _cached(context, key)
         if remembered:
-            await _answer(query, build_results(lang, *remembered), arrived)
+            results = build_results(lang, *remembered)
+            remember_offer(context, results, remembered[1])
+            await _answer(query, results, arrived)
             log.info("inline answered from cache in %.1fs",
                      asyncio.get_running_loop().time() - arrived)
             return
@@ -348,10 +365,11 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None,
             await _answer(query, [])
             return
 
-        await _answer(query, build_results(lang, photo_id, sticker_id,
-                                           animation_id), arrived)
-        if keep is not None:
-            _later(context, keep(context, query.from_user, webp.getvalue()))
+        results = build_results(lang, photo_id, sticker_id, animation_id)
+        # Offering something is not sending it. The pack is filled when one of
+        # these is actually chosen, which arrives as a separate update.
+        remember_offer(context, results, sticker_id)
+        await _answer(query, results, arrived)
 
     return on_inline
 

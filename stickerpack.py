@@ -95,11 +95,16 @@ async def _exists(bot: Bot, name: str) -> bool:
         return False
 
 
-async def _put(bot: Bot, name: str, title: str, webp: bytes,
+async def _put(bot: Bot, name: str, title: str, webp: bytes | str,
                owner_id: int) -> tuple[str, bool] | None:
-    """Append to the pack, creating it if this is the first sticker in it."""
-    sticker = InputSticker(sticker=io.BytesIO(webp), emoji_list=[EMOJI],
-                           format="static")
+    """Append to the pack, creating it if this is the first sticker in it.
+
+    `webp` is either the picture itself or the file_id of one Telegram already
+    holds - an inline result has been uploaded once already, and sending the
+    same bytes a second time would be paying twice for the same thing.
+    """
+    payload = webp if isinstance(webp, str) else io.BytesIO(webp)
+    sticker = InputSticker(sticker=payload, emoji_list=[EMOJI], format="static")
     try:
         if await _exists(bot, name):
             await bot.add_sticker_to_set(user_id=owner_id, name=name,
@@ -114,7 +119,7 @@ async def _put(bot: Bot, name: str, title: str, webp: bytes,
         return None
 
 
-async def add_personal(bot: Bot, user, webp: bytes,
+async def add_personal(bot: Bot, user, webp: bytes | str,
                        owner_id: int | None) -> tuple[str, bool] | None:
     """Put this sticker in the pack belonging to `user`."""
     if owner_id is None or user is None:
@@ -122,6 +127,36 @@ async def add_personal(bot: Bot, user, webp: bytes,
     name = personal_name(user.id, bot.username)
     return await _put(bot, name, personal_title(getattr(user, "full_name", None)),
                       webp, owner_id)
+
+
+async def rename_personal(bot: Bot, user_id: int, title: str) -> bool:
+    """Give this person's pack a new title. False if there is nothing to rename."""
+    name = personal_name(user_id, bot.username)
+    try:
+        await bot.set_sticker_set_title(name=name, title=title[:MAX_TITLE])
+        return True
+    except TelegramError as exc:
+        log.info("could not rename %s: %s", name, exc)
+        return False
+
+
+async def remove_personal(bot: Bot, user_id: int, sticker) -> str:
+    """Take one sticker out of this person's own pack. Returns what happened.
+
+    The set name is checked, not just the fact that they asked. Every pack the
+    bot made is a pack it may delete from, so without this anyone could point
+    at a sticker from someone else's pack and have it removed.
+    """
+    if sticker is None:
+        return "no_sticker"
+    if sticker.set_name != personal_name(user_id, bot.username):
+        return "not_ours"
+    try:
+        await bot.delete_sticker_from_set(sticker.file_id)
+    except TelegramError as exc:
+        log.warning("could not remove a sticker from %s: %s", sticker.set_name, exc)
+        return "failed"
+    return "ok"
 
 
 async def personal_link(bot: Bot, user_id: int) -> str | None:

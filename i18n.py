@@ -176,6 +176,7 @@ Full guide: /help""",
 <code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
 <code>/pack</code> — لینک استیکرپک این گروه
 <code>/unpack</code> — حذف یک استیکر از پک گروه (ادمین)
+<code>/mypack</code> — پک شخصی خودت؛ در همین چت می‌توانی اسمش را عوض کنی، یا روی یک استیکر ریپلای کنی و <code>/unpack</code> بزنی تا حذف شود
 <code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
 <code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
 <code>/lang</code> — تغییر زبان ربات
@@ -351,6 +352,37 @@ Everything you make in my private chat or with inline mode is added to it.""",
         "en": """You do not have a pack yet.
 
 Make a quote - send <code>/quote hello world</code> here - and yours will be created.""",
+    },
+    "btn_pack_rename": {"fa": "✏️ تغییر نام پک", "en": "✏️ Rename the pack"},
+    "mypack_rename_ask": {
+        "fa": """اسم تازهٔ پکت را بفرست.
+
+تا ۶۴ حرف. برای بی‌خیال شدن، هر دستور دیگری بزن.""",
+        "en": """Send the new title for your pack.
+
+Up to 64 characters. To drop it, just send any other command.""",
+    },
+    "mypack_renamed": {
+        "fa": "اسم پکت شد: {title} ✅",
+        "en": "Your pack is now called: {title} ✅",
+    },
+    "mypack_rename_failed": {
+        "fa": "نشد اسمش را عوض کنم. اگر تازه پک ساخته‌ای، چند لحظه بعد دوباره امتحان کن.",
+        "en": "I could not rename it. If the pack is brand new, try again in a moment.",
+    },
+    "mypack_removed": {
+        "fa": """استیکر از پک شخصی‌ات حذف شد ✅
+(ممکن است تا چند دقیقه در تلگرام تو کش‌شده بماند.)""",
+        "en": """Removed from your pack ✅
+(Telegram may keep showing it to you for a few minutes.)""",
+    },
+    "mypack_not_yours": {
+        "fa": "این استیکر مال پک شخصی تو نیست، پس کاری با آن ندارم.",
+        "en": "That sticker is not from your own pack, so I will not touch it.",
+    },
+    "mypack_need_reply": {
+        "fa": "روی همان استیکری که می‌خواهی از پکت حذف شود ریپلای کن و دوباره /unpack بفرست.",
+        "en": "Reply to the sticker you want out of your pack and send /unpack again.",
     },
     "avatar_private_only": {
         "fa": "این دستور فقط در چت خصوصی من کار می‌کند.",
