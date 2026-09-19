@@ -334,6 +334,24 @@ Note: the change you spent is not given back.""",
         "fa": "نشد حذفش کنم. کمی بعد دوباره امتحان کن.",
         "en": "I could not remove it. Try again in a moment.",
     },
+    "mypack_link": {
+        "fa": """استیکرپک شخصی‌ات:
+{link}
+
+هر کوت یا اسکرین‌شاتی که در چت خصوصی من یا با حالت inline بسازی، خودکار به آن اضافه می‌شود.""",
+        "en": """Your own sticker pack:
+{link}
+
+Everything you make in my private chat or with inline mode is added to it.""",
+    },
+    "mypack_none": {
+        "fa": """هنوز پکی نداری.
+
+یک کوت بساز — در همین چت <code>/quote سلام دنیا</code> بفرست — و پک خودت ساخته می‌شود.""",
+        "en": """You do not have a pack yet.
+
+Make a quote - send <code>/quote hello world</code> here - and yours will be created.""",
+    },
     "avatar_private_only": {
         "fa": "این دستور فقط در چت خصوصی من کار می‌کند.",
         "en": "This command only works in my private chat.",
@@ -472,12 +490,14 @@ Meanwhile you can type: /quote any text you like""",
 # offered in private chats only.
 PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     "fa": [
+        ("mypack", "استیکرپک شخصی خودت"),
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
     "en": [
+        ("mypack", "Your own sticker pack"),
         ("avatar", "Pick your own picture for your quotes"),
         ("settings", "Choose which picture stands for you"),
         ("lang", "Change language"),

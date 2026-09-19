@@ -190,13 +190,18 @@ def build_results(lang: str, photo_id: str, sticker_id: str,
     return results
 
 
-def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
+def make_handler(watermark: str, storage_chat: str | int | None, gate=None,
+                 keep=None):
     """`gate` says what stands between this person and a result, or None.
 
     Inline mode asked for nothing at all, which made it the way round every
     rule the rest of the bot applies. The check itself lives in bot.py, since
     it is the same one the commands use, and is handed in rather than imported
     so this module still knows nothing about that one.
+
+    `keep` is handed the sticker so it can be filed in the person's own pack.
+    It runs after the answer has gone out: nothing about it is worth a second
+    of the query's short life.
     """
     async def on_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.inline_query
@@ -345,6 +350,8 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
 
         await _answer(query, build_results(lang, photo_id, sticker_id,
                                            animation_id), arrived)
+        if keep is not None:
+            _later(context, keep(context, query.from_user, webp.getvalue()))
 
     return on_inline
 

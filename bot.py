@@ -644,12 +644,23 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _announce_pack(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           webp: bytes) -> None:
-    """Add a rendered sticker to the group's pack; say so only when it is new."""
+    """File the sticker where it belongs, and say so only when the pack is new.
+
+    A group's stickers go to that group's pack; anything made in private goes to
+    the person's own. The two are different collections on purpose - a group's
+    pack is a record of that room, and nobody's private quotes belong in it.
+    """
     message = update.effective_message
-    result = await stickerpack.add_quote(context.bot, message.chat, webp, OWNER_ID)
+    if message.chat.type in stickerpack.GROUP_TYPES:
+        result = await stickerpack.add_quote(context.bot, message.chat, webp, OWNER_ID)
+        created_key = "pack_created"
+    else:
+        result = await stickerpack.add_personal(
+            context.bot, update.effective_user, webp, OWNER_ID)
+        created_key = "mypack_created"
     if result and result[1]:
         await message.reply_text(
-            _t("pack_created", update, context).format(link=result[0]),
+            _t(created_key, update, context).format(link=result[0]),
             disable_web_page_preview=True,
         )
 
@@ -678,6 +689,22 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     # The sticker is already delivered; the pack is a bonus that may quietly fail.
     await _announce_pack(update, context, webp)
+
+
+async def cmd_mypack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Hand back the link to this person's own pack."""
+    message = update.effective_message
+    if message.chat.type != "private":
+        await message.reply_text(_t("avatar_private_only", update, context))
+        return
+    link = await stickerpack.personal_link(context.bot, update.effective_user.id)
+    if link is None:
+        await message.reply_html(_t("mypack_none", update, context))
+        return
+    await message.reply_text(
+        _t("mypack_link", update, context).format(link=link),
+        disable_web_page_preview=True,
+    )
 
 
 async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -911,6 +938,20 @@ async def post_init(app: Application) -> None:
     await publish("en", language_code="en")
 
 
+async def _file_personal(context: ContextTypes.DEFAULT_TYPE, user,
+                         webp: bytes) -> None:
+    """Put an inline result in this person's own pack, quietly.
+
+    Nothing is said about it: an inline query is answered with results, not with
+    messages, and there is nowhere to put a remark. /mypack is where they find
+    the link when they want it.
+    """
+    try:
+        await stickerpack.add_personal(context.bot, user, webp, OWNER_ID)
+    except TelegramError as exc:
+        log.info("could not file an inline sticker for %s: %s", user.id, exc)
+
+
 async def _inline_gate(context: ContextTypes.DEFAULT_TYPE, user) -> str | None:
     """What stands between this person and an inline result, if anything.
 
@@ -952,6 +993,7 @@ def register(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))
     app.add_handler(CommandHandler("pack", cmd_pack))
+    app.add_handler(CommandHandler(["mypack", "my_pack", "mypak"], cmd_mypack))
     app.add_handler(CommandHandler(["unpack", "unpak", "delsticker"], cmd_unpack))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
@@ -1003,7 +1045,7 @@ def register(app: Application) -> None:
     # group, and only from the moment it became one.
     app.add_handler(MessageReactionHandler(on_reaction))
     app.add_handler(InlineQueryHandler(
-        inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate)))
+        inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate, _file_personal)))
     app.add_error_handler(on_error)
 
 

@@ -1278,6 +1278,122 @@ def test_pack_removal() -> None:
     asyncio.run(command())
 
 
+def test_personal_pack() -> None:
+    section("personal sticker pack")
+
+    from telegram.error import TelegramError
+
+    name = stickerpack.personal_name(5345287543, "getquoto_bot")
+    check("the name ends with the bot", name.endswith("_by_getquoto_bot"))
+    check("allowed characters only", re.fullmatch(r"[A-Za-z0-9_]+", name), name)
+    check("within 64", len(name) <= stickerpack.MAX_NAME, str(len(name)))
+
+    # A user id and a group id must never produce the same pack name: group ids
+    # are negative and lose their sign, so only the prefix keeps them apart.
+    clash = stickerpack.pack_name(-5345287543, "getquoto_bot")
+    check("a person and a group never collide", name != clash, f"{name} vs {clash}")
+
+    check("the title carries the name",
+          "SEP" in stickerpack.personal_title("SEP"))
+    check("and survives having none", stickerpack.personal_title(None))
+    check("a very long name is cut to fit",
+          len(stickerpack.personal_title("ط" * 200)) <= stickerpack.MAX_TITLE)
+
+    class PackBot:
+        username = "getquoto_bot"
+
+        def __init__(self, exists=False, fail=False):
+            self.exists, self.fail = exists, fail
+            self.created, self.added = [], []
+
+        async def get_sticker_set(self, name):
+            if not self.exists:
+                raise TelegramError("not found")
+            return types.SimpleNamespace(name=name)
+
+        async def create_new_sticker_set(self, user_id, name, title, stickers):
+            if self.fail:
+                raise TelegramError("nope")
+            self.created.append((user_id, name, title))
+
+        async def add_sticker_to_set(self, user_id, name, sticker):
+            if self.fail:
+                raise TelegramError("nope")
+            self.added.append((user_id, name))
+
+    person = types.SimpleNamespace(id=7, full_name="SEP")
+
+    async def run():
+        bot_ = PackBot(exists=False)
+        got = await stickerpack.add_personal(bot_, person, b"webp", 4242)
+        check("the first sticker creates the pack",
+              got is not None and got[1] and bot_.created)
+        check("and it is created under the owner's account",
+              bot_.created[0][0] == 4242)
+
+        bot_ = PackBot(exists=True)
+        got = await stickerpack.add_personal(bot_, person, b"webp", 4242)
+        check("later ones are appended", got is not None and not got[1])
+        check("to the same pack", bot_.added and bot_.added[0][1] == name.replace(
+            "5345287543", "7").replace("u7", "u7"))
+
+        bot_ = PackBot(exists=True, fail=True)
+        check("a refusal from Telegram costs nothing",
+              await stickerpack.add_personal(bot_, person, b"webp", 4242) is None)
+
+        check("without an owner there is no pack",
+              await stickerpack.add_personal(PackBot(), person, b"webp", None) is None)
+
+        check("a pack that exists has a link",
+              await stickerpack.personal_link(PackBot(exists=True), 7) is not None)
+        check("and one that does not, does not",
+              await stickerpack.personal_link(PackBot(exists=False), 7) is None)
+
+    asyncio.run(run())
+
+    # Where a sticker is filed depends on where it was made.
+    class Msg:
+        def __init__(self, kind):
+            self.chat = types.SimpleNamespace(id=-100 if kind != "private" else 7,
+                                              type=kind, title="گروه")
+            self.chat_id = self.chat.id
+            self.out = []
+
+        async def reply_text(self, text, **kwargs):
+            self.out.append(text)
+
+        async def reply_html(self, text, **kwargs):
+            self.out.append(text)
+
+    async def filing():
+        filed = []
+
+        async def fake_group(bot_, chat, webp, owner):
+            filed.append(("group", chat.id))
+            return "link", False
+
+        async def fake_personal(bot_, user, webp, owner):
+            filed.append(("personal", user.id))
+            return "link", False
+
+        was = stickerpack.add_quote, stickerpack.add_personal
+        stickerpack.add_quote, stickerpack.add_personal = fake_group, fake_personal
+        try:
+            for kind, expect in (("supergroup", "group"), ("private", "personal")):
+                message = Msg(kind)
+                update = types.SimpleNamespace(
+                    effective_message=message,
+                    effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+                await bot._announce_pack(
+                    update, types.SimpleNamespace(bot=None, user_data={}), b"webp")
+                check(f"a sticker made in a {kind} goes to the {expect} pack",
+                      filed[-1][0] == expect, str(filed[-1]))
+        finally:
+            stickerpack.add_quote, stickerpack.add_personal = was
+
+    asyncio.run(filing())
+
+
 def test_pack_names() -> None:
     section("sticker pack naming")
     name = stickerpack.pack_name(-1001234567890, "getquoto_bot")
@@ -1349,8 +1465,11 @@ def test_security() -> None:
 
     # Only static catalogue strings may be parsed as HTML.
     html_calls = re.findall(r"reply_html\(([^)]*)\)|parse_mode=\"HTML\"", source)
+    # _t is the same lookup with the language already resolved: it takes a key
+    # out of the catalogue and nothing else, so it is as safe as i18n.t.
     check("html is only sent for catalogue text",
-          all("i18n.t" in c or "text" == c.strip() for c in html_calls if c),
+          all("i18n.t" in c or c.strip().startswith("_t(")
+              or "text" == c.strip() for c in html_calls if c),
           str(html_calls))
 
     class Msg:
@@ -1742,6 +1861,7 @@ def main() -> int:
     test_wallpaper()
     test_extract()
     test_pack_removal()
+    test_personal_pack()
     test_pack_names()
     test_fonts()
     test_fallback_fonts()

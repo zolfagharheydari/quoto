@@ -36,6 +36,21 @@ def pack_title(chat_title: str | None) -> str:
     return (chat_title or "Quotes").strip()[:MAX_TITLE] or "Quotes"
 
 
+def personal_name(user_id: int, bot_username: str) -> str:
+    """The pack that belongs to one person.
+
+    A different prefix from a group's, so a user id and a chat id can never
+    land on the same name - group ids are negative and lose their sign here.
+    """
+    suffix = f"_by_{bot_username}"
+    return f"u{abs(user_id)}"[: MAX_NAME - len(suffix)] + suffix
+
+
+def personal_title(name: str | None) -> str:
+    who = (name or "").strip()
+    return (f"{who} — Quoto"[:MAX_TITLE] if who else "Quoto")[:MAX_TITLE]
+
+
 def pack_link(name: str) -> str:
     return f"https://t.me/addstickers/{name}"
 
@@ -78,6 +93,41 @@ async def _exists(bot: Bot, name: str) -> bool:
     except TelegramError:
         # Telegram answers a missing set with an error rather than an empty result.
         return False
+
+
+async def _put(bot: Bot, name: str, title: str, webp: bytes,
+               owner_id: int) -> tuple[str, bool] | None:
+    """Append to the pack, creating it if this is the first sticker in it."""
+    sticker = InputSticker(sticker=io.BytesIO(webp), emoji_list=[EMOJI],
+                           format="static")
+    try:
+        if await _exists(bot, name):
+            await bot.add_sticker_to_set(user_id=owner_id, name=name,
+                                         sticker=sticker)
+            return pack_link(name), False
+        await bot.create_new_sticker_set(user_id=owner_id, name=name,
+                                         title=title, stickers=[sticker])
+        return pack_link(name), True
+    except TelegramError as exc:
+        # Most often the pack is full, or OWNER_ID never started the bot.
+        log.warning("sticker pack update failed for %s: %s", name, exc)
+        return None
+
+
+async def add_personal(bot: Bot, user, webp: bytes,
+                       owner_id: int | None) -> tuple[str, bool] | None:
+    """Put this sticker in the pack belonging to `user`."""
+    if owner_id is None or user is None:
+        return None
+    name = personal_name(user.id, bot.username)
+    return await _put(bot, name, personal_title(getattr(user, "full_name", None)),
+                      webp, owner_id)
+
+
+async def personal_link(bot: Bot, user_id: int) -> str | None:
+    """This person's pack link, if they have one yet."""
+    name = personal_name(user_id, bot.username)
+    return pack_link(name) if await _exists(bot, name) else None
 
 
 async def add_quote(bot: Bot, chat: Chat, webp: bytes,
