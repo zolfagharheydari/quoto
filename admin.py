@@ -178,6 +178,61 @@ def make_tracker(owner_id: int | None):
 
 # -------------------------------------------------------------------- the panel
 
+# The avatar quota: how many pictures one person may ever upload. The base
+# number lives with the command that spends it; what the owner grants from here
+# is kept beside it, per person and for everyone, so the count of what somebody
+# has already used stays honest instead of being wound backwards.
+def extra_quota(context, user_id: int) -> int:
+    """Uploads granted on top of the base allowance, for this person."""
+    each = context.bot_data.get("avatar_extra_all", 0)
+    mine = (context.bot_data.get("avatar_extra") or {}).get(user_id, 0)
+    return each + mine
+
+
+def grant_quota(context, user_id, count: int) -> None:
+    """Give one person, or everyone when user_id is None, `count` more uploads."""
+    if user_id is None:
+        context.bot_data["avatar_extra_all"] = (
+            context.bot_data.get("avatar_extra_all", 0) + count)
+        return
+    extra = context.bot_data.setdefault("avatar_extra", {})
+    extra[user_id] = extra.get(user_id, 0) + count
+
+
+def reset_quota(context, user_id) -> int:
+    """Forget what has been used. Returns how many people that touched."""
+    used = context.bot_data.setdefault("avatar_uses", {})
+    if user_id is None:
+        touched = len(used)
+        used.clear()
+        return touched
+    return 1 if used.pop(user_id, None) is not None else 0
+
+
+def _quota_text(context):
+    used = context.bot_data.get("avatar_uses") or {}
+    each = context.bot_data.get("avatar_extra_all", 0)
+    extra = context.bot_data.get("avatar_extra") or {}
+    spent = sum(1 for n in used.values() if n)
+    lines = [
+        "<b>🖼 سهمیهٔ آواتار</b>",
+        "",
+        "کسانی که عکس فرستاده‌اند: <b>{}</b>".format(spent),
+        "سهمیهٔ اضافهٔ همگانی: <b>{}</b>".format(each),
+        "کسانی که سهمیهٔ اضافهٔ شخصی دارند: <b>{}</b>".format(len(extra)),
+        "",
+        "«ریست» یعنی مصرفشان صفر می‌شود و دوباره از اول سهمیه دارند.",
+        "«افزودن» یعنی سقفشان بالاتر می‌رود و مصرف قبلی سر جایش می‌ماند.",
+    ]
+    return (chr(10).join(lines), InlineKeyboardMarkup([
+        [InlineKeyboardButton("♻️ ریست یک نفر", callback_data="adm:qreset"),
+         InlineKeyboardButton("➕ افزودن به یک نفر", callback_data="adm:qgive")],
+        [InlineKeyboardButton("♻️ ریست همه", callback_data="adm:qresetall"),
+         InlineKeyboardButton("➕ افزودن به همه", callback_data="adm:qgiveall")],
+        [InlineKeyboardButton("⬅️ برگشت", callback_data="adm:home")],
+    ]))
+
+
 def _menu(context) -> InlineKeyboardMarkup:
     paused = context.bot_data.get("paused")
     return InlineKeyboardMarkup([
@@ -413,7 +468,33 @@ def make_panel(owner_id: int | None):
             log.info("bot %s by the owner",
                      "paused" if context.bot_data["paused"] else "resumed")
             await _show(query, _home_text(context), _menu(context))
-        elif action in ("cast", "block", "unblock", "quota", "allow", "disallow"):
+        elif action == "quota":
+            text, markup = _quota_text(context)
+            await _show(query, text, markup)
+        elif action in ("qresetall", "qgiveall"):
+            # Everyone at once is worth a second look: one press moves the
+            # allowance for every person the bot has.
+            giving = action == "qgiveall"
+            await _show(query, (
+                "<b>⚠️ برای همه</b>" + chr(10) + chr(10) +
+                ("به سهمیهٔ همهٔ کاربران یکی اضافه می‌شود. مصرف قبلی‌شان سر جایش می‌ماند." if giving else "مصرف همه صفر می‌شود و هر کسی دوباره از اول سهمیهٔ کامل دارد. این کار برگشت ندارد.")
+            ), InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ انجام بده",
+                                      callback_data="adm:qgo:" + action[1:]),
+                 InlineKeyboardButton("✖️ بی‌خیال", callback_data="adm:quota")],
+            ]))
+        elif action == "qgo":
+            what = parts[2] if len(parts) > 2 else ""
+            if what == "giveall":
+                grant_quota(context, None, 1)
+                said = "به سهمیهٔ همه یکی اضافه شد."
+            else:
+                said = "مصرف {} کاربر صفر شد.".format(reset_quota(context, None))
+            log.info("owner changed everyone's avatar quota: %s", what)
+            text, markup = _quota_text(context)
+            await _show(query, said + chr(10) + chr(10) + text, markup)
+        elif action in ("cast", "block", "unblock", "qreset", "qgive",
+                        "allow", "disallow"):
             context.user_data["admin_await"] = action
             await _show(query, _PROMPTS[action], _BACK)
         elif action == "flush":
@@ -464,7 +545,11 @@ def make_panel(owner_id: int | None):
             )
             return
 
-        target = (message.text or "").strip()
+        said = (message.text or "").split()
+        target = said[0] if said else ""
+        count = 1
+        if len(said) > 1 and said[1].lstrip("-").isdigit():
+            count = max(1, min(50, int(said[1])))
         if not target.lstrip("-").isdigit():
             await message.reply_text("یک شناسهٔ عددی بفرست.")
             return
@@ -483,9 +568,12 @@ def make_panel(owner_id: int | None):
                 await message.reply_text(f"کاربر {user_id} آزاد شد.")
             else:
                 await message.reply_text("این شناسه مسدود نبود.")
-        elif waiting == "quota":
-            context.bot_data.setdefault("avatar_uses", {}).pop(user_id, None)
-            await message.reply_text(f"سهمیهٔ آواتار کاربر {user_id} صفر شد.")
+        elif waiting == "qreset":
+            reset_quota(context, user_id)
+            await message.reply_text("سهمیهٔ آواتار کاربر {} از نو شروع شد.".format(user_id))
+        elif waiting == "qgive":
+            grant_quota(context, user_id, count)
+            await message.reply_text("{} سهمیهٔ تازه به کاربر {} داده شد.".format(count, user_id))
         elif waiting == "allow":
             exempt(context).add(user_id)
             what = "گروه" if user_id < 0 else "کاربر"
@@ -551,8 +639,8 @@ _PROMPTS = {
               "شناسهٔ گروه‌ها منفی است و در صفحهٔ گروه‌ها دیده می‌شود."),
     "disallow": ("<b>➖ برداشتن معافیت</b>\n\n"
                  "شناسهٔ عددی را بفرست."),
-    "quota": ("<b>🖼 سهمیهٔ آواتار</b>\n\n"
-              "شناسهٔ عددی کاربر را بفرست تا سهمیه‌اش دوباره از صفر شروع شود."),
+    "qreset": ("<b>♻️ ریست سهمیهٔ یک نفر</b>" + chr(10) + chr(10) + "شناسهٔ عددی کاربر را بفرست تا مصرفش صفر شود."),
+    "qgive": ("<b>➕ افزودن سهمیه به یک نفر</b>" + chr(10) + chr(10) + "شناسهٔ عددی کاربر را بفرست تا یک سهمیهٔ تازه بگیرد. برای بیشتر، تعداد را بعد از شناسه بنویس، مثل <code>123456789 3</code>"),
 }
 
 _FLUSH_PROMPT = (

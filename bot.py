@@ -483,10 +483,13 @@ async def cmd_avatar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await message.reply_html(i18n.t("avatar_how", lang))
         return
 
+    # The base allowance plus whatever the owner has handed out from the panel,
+    # to this person or to everyone.
+    allowed = AVATAR_QUOTA + admin.extra_quota(context, user_id)
     used = context.bot_data.setdefault("avatar_uses", {}).get(user_id, 0)
-    if used >= AVATAR_QUOTA:
+    if used >= allowed:
         await message.reply_text(
-            i18n.t("avatar_quota_spent", lang).format(quota=AVATAR_QUOTA)
+            i18n.t("avatar_quota_spent", lang).format(quota=allowed)
         )
         return
 
@@ -494,8 +497,8 @@ async def cmd_avatar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     used += 1
     context.bot_data["avatar_uses"][user_id] = used
     context.bot_data.setdefault("avatar_source", {})[user_id] = "custom"
-    key = "avatar_saved_last" if used >= AVATAR_QUOTA else "avatar_saved"
-    await message.reply_text(i18n.t(key, lang).format(used=used, quota=AVATAR_QUOTA))
+    key = "avatar_saved_last" if used >= allowed else "avatar_saved"
+    await message.reply_text(i18n.t(key, lang).format(used=used, quota=allowed))
 
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

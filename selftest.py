@@ -2073,9 +2073,40 @@ def test_admin() -> None:
         check("and the panel keeps waiting", ctx.user_data.get("admin_await") == "block")
 
         ctx = _admin_ctx({"avatar_uses": {77: 2}})
-        ctx.user_data["admin_await"] = "quota"
+        ctx.user_data["admin_await"] = "qreset"
         await on_input(_admin_update(OWNER, text="77"), ctx)
         check("a quota can be reset", 77 not in ctx.bot_data["avatar_uses"])
+
+        # Granting is not resetting: the allowance goes up and what they have
+        # already spent is left alone, so the count they are shown stays true.
+        ctx = _admin_ctx({"avatar_uses": {77: 2}})
+        ctx.user_data["admin_await"] = "qgive"
+        await on_input(_admin_update(OWNER, text="77 3"), ctx)
+        check("a number after the id grants that many",
+              admin.extra_quota(ctx, 77) == 3)
+        check("and what they spent is untouched", ctx.bot_data["avatar_uses"][77] == 2)
+        check("nobody else is given anything", admin.extra_quota(ctx, 78) == 0)
+
+        ctx = _admin_ctx()
+        ctx.user_data["admin_await"] = "qgive"
+        await on_input(_admin_update(OWNER, text="77"), ctx)
+        check("an id on its own grants one", admin.extra_quota(ctx, 77) == 1)
+
+        ctx = _admin_ctx()
+        ctx.user_data["admin_await"] = "qgive"
+        await on_input(_admin_update(OWNER, text="77 999999"), ctx)
+        check("a silly number is capped", admin.extra_quota(ctx, 77) <= 50,
+              str(admin.extra_quota(ctx, 77)))
+
+        # Everyone at once, and it reaches people the bot has never seen.
+        ctx = _admin_ctx({"avatar_uses": {77: 2, 78: 1}})
+        admin.grant_quota(ctx, None, 2)
+        check("everyone gets it", admin.extra_quota(ctx, 12345) == 2)
+        check("and it stacks with a personal grant",
+              (admin.grant_quota(ctx, 77, 1), admin.extra_quota(ctx, 77))[1] == 3)
+        check("resetting everyone clears every count",
+              admin.reset_quota(ctx, None) == 2 and not ctx.bot_data["avatar_uses"])
+        check("but not what was granted", admin.extra_quota(ctx, 77) == 3)
 
         # Nothing typed while the panel is idle is ever acted on.
         ctx = _admin_ctx()
