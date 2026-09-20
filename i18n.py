@@ -355,6 +355,16 @@ Note: the change you spent is not given back.""",
         "fa": "نشد حذفش کنم. کمی بعد دوباره امتحان کن.",
         "en": "I could not remove it. Try again in a moment.",
     },
+    "mypack_created": {
+        "fa": """استیکرپک شخصی‌ات ساخته شد 🎉
+{link}
+
+از این به بعد هر کوت و اسکرین‌شاتی که اینجا یا با حالت inline بسازی به همین اضافه می‌شود. با /mypack هر وقت خواستی لینکش را بگیر.""",
+        "en": """Your own sticker pack is ready 🎉
+{link}
+
+Everything you make here or with inline mode joins it from now on. /mypack gives you the link whenever you want it.""",
+    },
     "mypack_link": {
         "fa": """استیکرپک شخصی‌ات:
 {link}

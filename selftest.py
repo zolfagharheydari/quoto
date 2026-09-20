@@ -93,6 +93,31 @@ def test_i18n() -> None:
     gaps = [(k, l) for k, v in i18n.STRINGS.items() for l in ("fa", "en") if l not in v]
     check("every string in both languages", not gaps, str(gaps))
 
+    # A key that is asked for but never written raises KeyError at the moment
+    # somebody uses the feature, in the middle of a handler, and they are told
+    # the render failed when it did not. mypack_created shipped that way.
+    asked = set()
+    for module in ("bot.py", "inline.py", "admin.py"):
+        source = (ROOT / module).read_text(encoding="utf-8")
+        asked |= set(re.findall(r'_t\(\s*"([a-z0-9_]+)"', source))
+        asked |= set(re.findall(r'i18n\.t\(\s*"([a-z0-9_]+)"', source))
+        # Not every key is written at the call. Some are chosen first and
+        # handed over in a variable, and mypack_created - the one that got
+        # through - was exactly that, so scanning only the calls would have
+        # missed it.
+        asked |= set(re.findall(r'_key = "([a-z0-9_]+)"', source))
+        for block in re.findall(r"_t\(\{(.*?)\}", source, re.DOTALL):
+            asked |= set(re.findall(r':\s*"([a-z0-9_]+)"', block))
+        # ... and the fallback of a lookup that picks one.
+        asked |= set(re.findall(r'\.get\([^,()]+,\s*"([a-z0-9_]+)"\)', source))
+    missing = sorted(k for k in asked if k not in i18n.STRINGS)
+    check("every string the code asks for exists", not missing, str(missing))
+    check("the scan reaches a key handed over in a variable",
+          "mypack_created" in asked)
+    check("and one chosen by a lookup", "mypack_removed" in asked
+          and "unpack_failed" in asked)
+    check("the scan found the strings to check", len(asked) >= 40, str(len(asked)))
+
     allowed = {"b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "span",
                "tg-spoiler", "a", "code", "pre", "blockquote"}
 
