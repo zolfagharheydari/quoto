@@ -1,7 +1,11 @@
 python-telegram-bot[rate-limiter,socks]==21.9
-Pillow==11.0.0
+# Pillow and python-bidi are the two that carry compiled code. These are the
+# oldest versions with wheels built for Python 3.14, which is what Ubuntu 26.04
+# ships; the previous pins had none, so pip tried to build them from source and
+# wanted a C toolchain, zlib headers and a Rust compiler on the server.
+Pillow==12.3.0
+python-bidi==0.6.11
 arabic-reshaper==3.0.0
-python-bidi==0.6.3
 imageio-ffmpeg==0.5.1
 python-dotenv==1.0.1
 tzdata==2024.2

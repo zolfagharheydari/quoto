@@ -1237,6 +1237,21 @@ def register(app: Application) -> None:
     app.add_error_handler(on_error)
 
 
+def _ensure_event_loop() -> None:
+    """Give run_polling a loop to find on Python 3.14.
+
+    3.14 stopped having asyncio.get_event_loop() create one when the thread has
+    none, and python-telegram-bot 21.9 calls it on the way into run_polling - so
+    the bot died at startup with "There is no current event loop in thread
+    'MainThread'". This is what PTB 22.8 does about it upstream; when we move to
+    that version, this can go.
+    """
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
 def main() -> None:
     if not TOKEN:
         raise SystemExit(
@@ -1270,6 +1285,7 @@ def main() -> None:
 
     register(app)
 
+    _ensure_event_loop()
     log.info("bot is up")
     try:
         app.run_polling(allowed_updates=Update.ALL_TYPES)
