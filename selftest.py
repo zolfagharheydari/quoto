@@ -2037,6 +2037,37 @@ def _ink(img: Image.Image, box) -> int:
     return sum(1 for pixel in crop.getdata() if pixel != background)
 
 
+def test_no_double_shaping() -> None:
+    section("layout engine")
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    font = fonts.load("medium", 40)
+    engine = font.primary.layout_engine
+    check("fonts are opened with the basic layout engine",
+          engine == ImageFont.Layout.BASIC, str(engine))
+
+    # The real check, and the one that fails on a Pillow built with libraqm if
+    # the engine is ever let go. Text arrives here already reshaped: in
+    # presentation forms, in visual order. A layout engine that shapes it again
+    # turns every letter back into its isolated form, so an initial seen and an
+    # isolated seen - two different shapes - come out as the same pixels. That
+    # is exactly how Persian ended up reversed and unjoined on the server.
+    def ink(ch: str) -> bytes:
+        img = Image.new("L", (90, 90), 0)
+        fonts.load("medium", 48).draw_on(
+            ImageDraw.Draw(img), (45, 45), ch, fill=255, anchor="mm")
+        return img.tobytes()
+
+    initial, isolated = "ﺳ", "ﺱ"   # SEEN, joined on the left vs alone
+    check("a joined letter is not drawn as a lone one", ink(initial) != ink(isolated))
+
+    # And the shaped sentence keeps the first word on the right, where Persian
+    # puts it.
+    shaped = textkit.shape("تست سرور", True)
+    check("the shaped line is in visual order", shaped[0] == "ﺭ", hex(ord(shaped[0])))
+
+
 def test_fallback_fonts() -> None:
     section("other scripts")
 
@@ -2123,6 +2154,7 @@ def main() -> int:
     test_pack_editing()
     test_pack_names()
     test_fonts()
+    test_no_double_shaping()
     test_fallback_fonts()
     test_security()
     if "--api" in sys.argv:

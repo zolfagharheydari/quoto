@@ -146,7 +146,7 @@ def emoji_font(size: int) -> ImageFont.FreeTypeFont | None:
             continue
         for attempt in (size, *_strikes(path)):
             try:
-                font = ImageFont.truetype(str(path), attempt)
+                font = _open(path, attempt)
             except OSError:
                 continue
             log.info("emoji font: %s at %s", path.name, attempt)
@@ -219,10 +219,25 @@ def _coverage(path: Path) -> frozenset:
         return frozenset()
 
 
+# Every string reaching a font here has already been through arabic_reshaper
+# and python-bidi: it is in visual order, in presentation forms, ready to be
+# drawn straight out. Pillow builds that carry libraqm do that work themselves,
+# and handed text that is already done they do it a second time - Persian came
+# out reversed and unjoined on the server, and correct on Windows, purely
+# because one build had raqm and the other did not. BASIC draws what it is
+# given, which is what this code has always assumed.
+LAYOUT = getattr(ImageFont, "Layout", None)
+BASIC_LAYOUT = LAYOUT.BASIC if LAYOUT is not None else None
+
+
+def _open(path: Path, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(path), size, layout_engine=BASIC_LAYOUT)
+
+
 @lru_cache(maxsize=256)
 def _truetype(path: Path, size: int) -> ImageFont.FreeTypeFont | None:
     try:
-        return ImageFont.truetype(str(path), size)
+        return _open(path, size)
     except OSError:
         log.warning("could not open font %s", path)
         return None
