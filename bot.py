@@ -1167,6 +1167,13 @@ async def post_init(app: Application) -> None:
     # Persian is the default here for the same reason it is in i18n: English goes
     # only to clients that ask for it, everyone else gets Persian.
     await publish("fa")
+    # And again, tagged. Telegram keeps a per-language menu separately from the
+    # default and serves it to that language in preference, so a Persian menu
+    # published by an older version of this code went on being served long
+    # after the default had moved on - Persian clients were missing half the
+    # commands while everyone else saw them. Writing the tag keeps the two from
+    # drifting apart again.
+    await publish("fa", language_code="fa")
     await publish("en", language_code="en")
 
 
