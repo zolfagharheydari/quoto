@@ -1801,6 +1801,26 @@ def test_security() -> None:
     check("first render allowed", not first)
     check("burst suppressed", second)
 
+    # The cooldown is written to disk and read back after a restart. It used to
+    # hold time.monotonic(), which counts from a boot; once the machine
+    # rebooted, every stored value was far in the future of the new clock, so
+    # everyone who had ever made a quote was refused - silently, and until the
+    # uptime climbed past the old reading. Two dozen people were, for a
+    # fortnight. A stamp ahead of the clock is never treated as recent.
+    ctx = types.SimpleNamespace(user_data={"last_render": time.time() + 1_000_000})
+    check("a timestamp from the future does not lock anyone out",
+          not bot._too_soon(ctx))
+    check("and it is replaced with a real one",
+          abs(ctx.user_data["last_render"] - time.time()) < 5)
+
+    ctx = types.SimpleNamespace(user_data={"last_render": 1_398_774.0})
+    check("a leftover monotonic reading does not either", not bot._too_soon(ctx))
+
+    check("a stamp within the window is fresh",
+          bot._fresh(100.0, 101.0, 2.0))
+    check("an old stamp is not", not bot._fresh(100.0, 200.0, 2.0))
+    check("a future stamp is not", not bot._fresh(200.0, 100.0, 2.0))
+
     # The token must not be written anywhere the repository tracks.
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
     check(".env is ignored", ".env" in ignored)

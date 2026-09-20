@@ -220,7 +220,8 @@ async def _in_channel(bot, user_id: int, cache: dict) -> bool:
     hit = cache.get(user_id)
     if hit is not None:
         answered, inside = hit
-        if time.monotonic() - answered < (_MEMBER_TTL if inside else _MEMBER_MISS_TTL):
+        if _fresh(answered, time.time(),
+                  _MEMBER_TTL if inside else _MEMBER_MISS_TTL):
             return inside
     try:
         member = await bot.get_chat_member(REQUIRED_CHANNEL, user_id)
@@ -234,7 +235,7 @@ async def _in_channel(bot, user_id: int, cache: dict) -> bool:
             return True
         log.info("membership check failed for %s: %s", user_id, exc)
         return True
-    cache[user_id] = (time.monotonic(), inside)
+    cache[user_id] = (time.time(), inside)
     return inside
 
 
@@ -407,10 +408,23 @@ async def _adopt_storage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 RENDER_COOLDOWN = 2.0
 
 
+def _fresh(stamp: float, now: float, ttl: float) -> bool:
+    """Whether `stamp` is within `ttl` of now, and is a time that can be trusted.
+
+    Anything ahead of the clock is not: it is either a timestamp from before the
+    clock was set, or - the way this was found - a monotonic() reading that was
+    persisted and then outlived the boot it was counted from. Treating it as
+    recent is what made the bot ignore two dozen people for a fortnight.
+    """
+    return 0 <= now - stamp < ttl
+
+
 def _too_soon(context: ContextTypes.DEFAULT_TYPE) -> bool:
     last = context.user_data.get("last_render", 0.0)
-    now = time.monotonic()
-    if now - last < RENDER_COOLDOWN:
+    # Wall clock, not monotonic: this is written to disk and read back after a
+    # restart, and monotonic counts from a boot that no longer exists by then.
+    now = time.time()
+    if _fresh(last, now, RENDER_COOLDOWN):
         return True
     context.user_data["last_render"] = now
     return False
