@@ -95,6 +95,15 @@ OWNER_ID: int | None = int(_owner) if _owner.lstrip("-").isdigit() else None
 # be an administrator of it, or it cannot see who is in it.
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "").strip()
 
+# Personal pack names are derived from this, so that a link people share says
+# nothing about who made it. The token is a reasonable fallback - it is secret
+# and it does not change - but it ties the names to it: regenerate the token
+# through BotFather without setting PACK_SALT first and every personal pack is
+# orphaned, because the bot will start looking for packs under new names.
+PACK_SALT = os.getenv("PACK_SALT", "").strip() or TOKEN
+stickerpack.set_salt(PACK_SALT)
+
+
 def _storage_chat(raw: str) -> str | int | None:
     """The chat inline uploads go to, or None when the setting is unusable.
 

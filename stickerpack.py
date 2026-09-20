@@ -10,6 +10,7 @@ is logged and swallowed, and the caller still sends what it rendered.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 
@@ -36,14 +37,42 @@ def pack_title(chat_title: str | None) -> str:
     return (chat_title or "Quotes").strip()[:MAX_TITLE] or "Quotes"
 
 
-def personal_name(user_id: int, bot_username: str) -> str:
-    """The pack that belongs to one person.
+# A pack name is public: it is the link people share, and it sits in the title
+# bar of every sticker from that pack. Built out of the user id, it published
+# the id of everyone who ever made a sticker. It is a digest now - and a salted
+# one, because a Telegram id is a ten-digit number and an unsalted digest of one
+# can be brute-forced back to the id in seconds. The salt is what makes the name
+# say nothing.
+_salt = ""
 
-    A different prefix from a group's, so a user id and a chat id can never
-    land on the same name - group ids are negative and lose their sign here.
+
+def set_salt(salt: str) -> None:
+    """The secret pack names are derived with. Set once, at startup.
+
+    It has to stay the same for the life of the bot: change it and every pack
+    name changes with it, which leaves everyone's stickers behind in a pack
+    nothing points at any more.
+    """
+    global _salt
+    _salt = salt or ""
+    if not _salt:
+        log.warning("no pack salt is set, so personal pack names can be "
+                    "traced back to the user ids they were made from")
+
+
+def _digest(value: int) -> str:
+    return hashlib.blake2b(f"{_salt}:{value}".encode(),
+                           digest_size=8).hexdigest()
+
+
+def personal_name(user_id: int, bot_username: str) -> str:
+    """The pack that belongs to one person, named after nothing about them.
+
+    A different prefix from a group's, so a user and a chat can never land on
+    the same name.
     """
     suffix = f"_by_{bot_username}"
-    return f"u{abs(user_id)}"[: MAX_NAME - len(suffix)] + suffix
+    return f"u{_digest(user_id)}"[: MAX_NAME - len(suffix)] + suffix
 
 
 def personal_title(name: str | None) -> str:

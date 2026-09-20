@@ -1390,8 +1390,8 @@ def test_personal_pack() -> None:
     check("allowed characters only", re.fullmatch(r"[A-Za-z0-9_]+", name), name)
     check("within 64", len(name) <= stickerpack.MAX_NAME, str(len(name)))
 
-    # A user id and a group id must never produce the same pack name: group ids
-    # are negative and lose their sign, so only the prefix keeps them apart.
+    # A user and a group must never produce the same pack name: only the prefix
+    # keeps them apart.
     clash = stickerpack.pack_name(-5345287543, "getquoto_bot")
     check("a person and a group never collide", name != clash, f"{name} vs {clash}")
 
@@ -1436,8 +1436,8 @@ def test_personal_pack() -> None:
         bot_ = PackBot(exists=True)
         got = await stickerpack.add_personal(bot_, person, b"webp", 4242)
         check("later ones are appended", got is not None and not got[1])
-        check("to the same pack", bot_.added and bot_.added[0][1] == name.replace(
-            "5345287543", "7").replace("u7", "u7"))
+        check("to the same pack", bot_.added and bot_.added[0][1] ==
+              stickerpack.personal_name(person.id, "getquoto_bot"))
 
         bot_ = PackBot(exists=True, fail=True)
         check("a refusal from Telegram costs nothing",
@@ -1584,6 +1584,38 @@ def test_pack_names() -> None:
     check("title within 64", len(long_title) <= stickerpack.MAX_TITLE)
     check("empty title falls back", stickerpack.pack_title("   ") == "Quotes")
     check("link shape", stickerpack.pack_link("x").startswith("https://t.me/addstickers/"))
+
+    # A personal pack name is a public link. It must not carry the id it was
+    # made from, and it must not be reachable by guessing ids either, which is
+    # why the digest is salted.
+    stickerpack.set_salt("a-salt")
+    uid = 123456789
+    mine = stickerpack.personal_name(uid, "getquoto_bot")
+    check("personal name is allowed characters",
+          re.fullmatch(r"[A-Za-z0-9_]+", mine), mine)
+    check("personal name within 64", len(mine) <= stickerpack.MAX_NAME, str(len(mine)))
+    check("personal name ends with the bot", mine.endswith("_by_getquoto_bot"))
+    check("the user id is nowhere in the name", str(uid) not in mine, mine)
+    check("the same person always gets the same pack",
+          stickerpack.personal_name(uid, "getquoto_bot") == mine)
+    check("two people get different packs",
+          stickerpack.personal_name(uid + 1, "getquoto_bot") != mine)
+
+    # Without this an id is ten digits and a digest of one is brute-forced in
+    # seconds, so the name would hide nothing at all.
+    stickerpack.set_salt("another-salt")
+    check("a different salt gives a different name",
+          stickerpack.personal_name(uid, "getquoto_bot") != mine)
+    stickerpack.set_salt("a-salt")
+    check("and the first salt gives the first name back",
+          stickerpack.personal_name(uid, "getquoto_bot") == mine)
+
+    # The old scheme was the id itself; every link made under it is meant to
+    # stop being found.
+    check("the old id-shaped name is not what is looked up now",
+          mine != f"u{uid}_by_getquoto_bot")
+    check("a user and a group can never collide",
+          mine != stickerpack.pack_name(uid, "getquoto_bot"))
 
 
 def test_fonts() -> None:
