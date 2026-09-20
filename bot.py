@@ -436,17 +436,7 @@ AVATAR_QUOTA = 2   # how many times one person may choose a picture, ever
 def _avatar_choice(context: ContextTypes.DEFAULT_TYPE,
                    author: authors.Author) -> tuple[str | None, str]:
     """(their chosen file, the source they asked to be shown)."""
-    if author.kind != "user" or author.avatar_key is None:
-        return None, authors.DEFAULT_SOURCE
-    uid = author.avatar_key
-    file_id = context.bot_data.get("avatars", {}).get(uid)
-    source = context.bot_data.get("avatar_source", {}).get(uid)
-    if source not in authors.SOURCES:
-        # Someone who uploaded a picture meant it to be used.
-        source = "custom" if file_id else authors.DEFAULT_SOURCE
-    if source == "custom" and not file_id:
-        source = authors.DEFAULT_SOURCE
-    return file_id, source
+    return authors.choice_for(context.bot_data, author)
 
 
 def _template(context: ContextTypes.DEFAULT_TYPE) -> str:

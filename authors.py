@@ -66,6 +66,28 @@ SOURCES = ("custom", "profile", "public", "letter")
 DEFAULT_SOURCE = "profile"
 
 
+def choice_for(bot_data, author: Author) -> tuple[str | None, str]:
+    """(the picture they uploaded, the source they asked for) for this author.
+
+    It lives here rather than beside the commands because every path that draws
+    an author needs it. Inline had its own half of this - it passed the uploaded
+    file but not the source, and the source is what decides whether the file is
+    used at all, so anyone who had chosen their own picture got their Telegram
+    one instead the moment they used inline mode.
+    """
+    if author.kind != "user" or author.avatar_key is None:
+        return None, DEFAULT_SOURCE
+    uid = author.avatar_key
+    file_id = (bot_data.get("avatars") or {}).get(uid)
+    source = (bot_data.get("avatar_source") or {}).get(uid)
+    if source not in SOURCES:
+        # Someone who uploaded a picture meant it to be used.
+        source = "custom" if file_id else DEFAULT_SOURCE
+    if source == "custom" and not file_id:
+        source = DEFAULT_SOURCE
+    return file_id, source
+
+
 async def fetch_avatar(bot: Bot, author: Author, custom_file_id: str | None = None,
                        source: str = DEFAULT_SOURCE) -> Image.Image:
     """Profile photo as a PIL image, or a generated fallback tile.

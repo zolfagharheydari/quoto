@@ -259,11 +259,23 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
 
         # The quote is always the sender's own words, under their own name.
         text = raw[:MAX_INLINE_CHARS]
-        chosen = context.bot_data.get("avatars", {}).get(query.from_user.id)
+        author = authors.Author(
+            name=" ".join(
+                filter(None, [query.from_user.first_name, query.from_user.last_name])
+            ),
+            handle=query.from_user.username or "",
+            avatar_key=query.from_user.id,
+            kind="user",
+            seed=str(query.from_user.id),
+        )
+        # The same rule the commands use. Passing the uploaded file without the
+        # source is what made inline ignore a picture somebody had chosen.
+        chosen, avatar_source = authors.choice_for(context.bot_data, author)
         template = context.user_data.get("template")
         if template not in render.TEMPLATES:
             template = render.DEFAULT_TEMPLATE
-        key = cache_key(query.from_user.id, chosen, template, text)
+        key = cache_key(query.from_user.id, f"{avatar_source}:{chosen or ''}",
+                        template, text)
 
         # Before anything else, including the wait for typing to stop. A repeat
         # of a text already rendered costs one dictionary lookup, and the whole
@@ -284,16 +296,6 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         if context.user_data.get("inline_seq") != query.id:
             return
 
-        author = authors.Author(
-            name=" ".join(
-                filter(None, [query.from_user.first_name, query.from_user.last_name])
-            ),
-            handle=query.from_user.username or "",
-            avatar_key=query.from_user.id,
-            kind="user",
-            seed=str(query.from_user.id),
-        )
-
         # .env wins. A channel the bot adopted by being made an admin of it is
         # a convenience for when nothing is configured; it must not quietly
         # replace a store that was chosen deliberately.
@@ -302,7 +304,8 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         clock = asyncio.get_running_loop().time
         started = clock()
         try:
-            avatar = await authors.fetch_avatar(context.bot, author, chosen)
+            avatar = await authors.fetch_avatar(
+                context.bot, author, chosen, avatar_source)
             got_avatar = clock()
             scene = await asyncio.to_thread(
                 render.build_scene, avatar, text, author.name, watermark,

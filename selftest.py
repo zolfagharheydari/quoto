@@ -1885,6 +1885,37 @@ def test_security() -> None:
     check("oversized picture falls back", asyncio.run(bomb_run()) == (640, 640))
 
     # One person cannot monopolise the renderer.
+    # Inline and the commands must decide a picture the same way. They did not:
+    # inline handed the uploaded file to fetch_avatar without the source, and
+    # the source is what decides whether that file is used at all - so anyone
+    # who had chosen their own picture got their Telegram one in inline mode.
+    person = authors.Author("SEP", "sep", 7, "user", "7")
+    cases = [
+        ("an uploaded picture", {"avatars": {7: "F"}}, ("F", "custom")),
+        ("one that was turned off",
+         {"avatars": {7: "F"}, "avatar_source": {7: "profile"}}, ("F", "profile")),
+        ("the public one", {"avatar_source": {7: "public"}}, (None, "public")),
+        ("just the initial", {"avatar_source": {7: "letter"}}, (None, "letter")),
+        ("nothing chosen", {}, (None, authors.DEFAULT_SOURCE)),
+        ("a source that is not one of ours",
+         {"avatar_source": {7: "; drop"}}, (None, authors.DEFAULT_SOURCE)),
+        ("a custom source with no file",
+         {"avatar_source": {7: "custom"}}, (None, authors.DEFAULT_SOURCE)),
+    ]
+    for label, data, want in cases:
+        got = authors.choice_for(data, person)
+        check(f"{label} resolves the same for both", got == want, f"{got} != {want}")
+        through_commands = bot._avatar_choice(
+            types.SimpleNamespace(bot_data=data), person)
+        check(f"{label} is what the commands use too", through_commands == got)
+
+    source = (ROOT / "inline.py").read_text(encoding="utf-8")
+    check("inline passes the source, not only the file",
+          "authors.choice_for(" in source and "chosen, avatar_source)" in source)
+    check("and two sources are two different cached pictures",
+          inline.cache_key(7, "custom:F", "classic", "hi")
+          != inline.cache_key(7, "profile:F", "classic", "hi"))
+
     ctx = types.SimpleNamespace(user_data={})
     first = bot._too_soon(ctx)
     second = bot._too_soon(ctx)
