@@ -76,6 +76,7 @@ Anything new, anything fixed, I say it there. Joining is up to you - only if you
 هر استیکری که اینجا ساخته شود، در یک پک به نام همین گروه جمع می‌شود.
 <code>/pack</code> — لینک پک را می‌دهد
 <code>/unpack</code> — روی یک استیکر ریپلای کن تا از پک حذف شود (فقط ادمین‌های گروه)
+<code>/delpack</code> — کل پک گروه را پاک می‌کند (فقط ادمین‌ها، و برگشت ندارد)
 
 <b>یک نکته</b>
 هر کسی که می‌خواهد از من استفاده کند، باید یک بار در چت خصوصی مرا استارت کرده باشد. اگر نکرده باشد، خودم دکمه‌اش را نشانش می‌دهم.
@@ -105,6 +106,7 @@ Anyone can set a picture for their quotes with <code>/avatar</code> in my privat
 Every sticker made here joins a pack named after the group.
 <code>/pack</code> — the link
 <code>/unpack</code> — reply to a sticker to take it out of the pack (group admins only)
+<code>/delpack</code> — delete the pack entirely (admins in a group, your own in private)
 
 <b>One note</b>
 Anyone who wants to use me has to have started me once in a private chat. If they haven't, I'll show them the button.
@@ -176,6 +178,7 @@ Full guide: /help""",
 <code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
 <code>/pack</code> — لینک استیکرپک این گروه
 <code>/unpack</code> — حذف یک استیکر از پک گروه (ادمین)
+<code>/delpack</code> — حذف کامل پک (در گروه: ادمین؛ در پی‌وی: پک شخصی خودت)
 <code>/mypack</code> — پک شخصی خودت؛ در همین چت می‌توانی اسمش را عوض کنی، یا روی یک استیکر ریپلای کنی و <code>/unpack</code> بزنی تا حذف شود
 <code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
 <code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
@@ -253,6 +256,7 @@ Change it whenever you like; this one has no limit.
 <code>/screenshot</code> — the message as a Telegram screenshot
 <code>/pack</code> — the link to this group's sticker pack
 <code>/unpack</code> — remove one sticker from the pack (admins)
+<code>/delpack</code> — delete the pack entirely (admins in a group, your own in private)
 <code>/avatar</code> — your own picture for your quotes (private chat, twice)
 <code>/settings</code> — choose which picture stands for you
 <code>/template</code> — choose the template: classic, tinted, full frame or card
@@ -334,6 +338,48 @@ Note: the change you spent is not given back.""",
     "avatar_none": {
         "fa": "عکس دلخواهی نداری که پاک کنم.",
         "en": "You have no chosen picture to clear.",
+    },
+    "delpack_ask_group": {
+        "fa": """مطمئنی؟ می‌خواهی <b>کل استیکرپک این گروه</b> پاک شود.
+
+این کار برگشت‌ناپذیر است: پک از تلگرام حذف می‌شود، لینکش دیگر باز نمی‌شود، و برای <b>هر کسی</b> که آن را به استیکرهایش اضافه کرده هم از بین می‌رود — نه فقط برای این گروه.""",
+        "en": """Are you sure? This deletes <b>this group's whole sticker pack</b>.
+
+There is no undo: the pack is removed from Telegram, its link stops working, and it disappears for <b>everyone</b> who ever added it - not only for this group.""",
+    },
+    "delpack_ask_personal": {
+        "fa": """مطمئنی؟ می‌خواهی <b>کل پک شخصی‌ات</b> پاک شود.
+
+این کار برگشت‌ناپذیر است: پک از تلگرام حذف می‌شود، لینکش دیگر باز نمی‌شود، و برای <b>هر کسی</b> که آن را اضافه کرده هم از بین می‌رود.
+
+اگر فقط یک استیکر اضافه است، رویش ریپلای کن و /unpack بزن.""",
+        "en": """Are you sure? This deletes <b>your whole pack</b>.
+
+There is no undo: it is removed from Telegram, its link stops working, and it disappears for <b>everyone</b> who ever added it.
+
+If it is one sticker you want gone, reply to it and send /unpack instead.""",
+    },
+    "btn_delpack_yes": {"fa": "بله، پاکش کن", "en": "Yes, delete it"},
+    "btn_delpack_no": {"fa": "بی‌خیال", "en": "Keep it"},
+    "delpack_done": {
+        "fa": "پک پاک شد. لینکش دیگر کار نمی‌کند ✅",
+        "en": "The pack is gone. Its link no longer works ✅",
+    },
+    "delpack_cancelled": {
+        "fa": "کاری نکردم؛ پک سر جایش است.",
+        "en": "Nothing done - the pack is still there.",
+    },
+    "delpack_none": {
+        "fa": "پکی برای پاک کردن نیست.",
+        "en": "There is no pack to delete.",
+    },
+    "delpack_failed": {
+        "fa": "نشد پاکش کنم. کمی بعد دوباره امتحان کن.",
+        "en": "I could not delete it. Try again in a moment.",
+    },
+    "delpack_not_admin": {
+        "fa": "فقط ادمین‌های این گروه می‌توانند پک گروه را پاک کنند.",
+        "en": "Only this group's admins can delete the group's pack.",
     },
     "unpack_need_reply": {
         "fa": "روی همان استیکری که می‌خواهی از پک حذف شود ریپلای کن و دوباره این دستور را بفرست.",
@@ -556,6 +602,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
         ("template", "انتخاب قالب کوت‌ها"),
+        ("delpack", "حذف کامل پک شخصی‌ات"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
@@ -564,6 +611,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("avatar", "Pick your own picture for your quotes"),
         ("settings", "Choose which picture stands for you"),
         ("template", "Choose the template your quotes use"),
+        ("delpack", "Delete your own pack entirely"),
         ("lang", "Change language"),
         ("help", "Help"),
     ],
@@ -577,6 +625,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("screenshot", "پیام به شکل اسکرین‌شات تلگرام"),
         ("pack", "استیکرپک این گروه"),
         ("unpack", "حذف یک استیکر از پک گروه (ادمین)"),
+        ("delpack", "حذف کامل پک گروه (ادمین)"),
     ],
     "en": [
         ("quote", "A quote card from the replied-to message"),
@@ -585,6 +634,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("screenshot", "The message as a Telegram screenshot"),
         ("pack", "This group's sticker pack"),
         ("unpack", "Remove one sticker from the pack (admins)"),
+        ("delpack", "Delete the group's pack entirely (admins)"),
     ],
 }
 

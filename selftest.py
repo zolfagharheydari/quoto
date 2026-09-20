@@ -1599,6 +1599,71 @@ def test_pack_editing() -> None:
           str(len(ctx.user_data["inline_offered"])))
 
 
+def test_pack_deletion() -> None:
+    section("deleting a whole pack")
+
+    from telegram.error import TelegramError
+
+    class DropBot:
+        username = "getquoto_bot"
+
+        def __init__(self, exists=True, fail=False):
+            self.exists, self.fail = exists, fail
+            self.deleted = []
+
+        async def get_sticker_set(self, name):
+            if not self.exists:
+                raise TelegramError("not found")
+            return types.SimpleNamespace(name=name)
+
+        async def delete_sticker_set(self, name):
+            if self.fail:
+                raise TelegramError("nope")
+            self.deleted.append(name)
+
+    group = types.SimpleNamespace(type="supergroup", id=-1001111, title="g")
+    other = types.SimpleNamespace(type="supergroup", id=-1002222, title="o")
+
+    async def run():
+        b = DropBot()
+        check("a group's pack is deleted",
+              await stickerpack.delete_group(b, group) == "ok")
+        check("and it is that group's pack, named from its own id",
+              b.deleted == [stickerpack.pack_name(group.id, b.username)])
+        check("never another group's",
+              stickerpack.pack_name(other.id, b.username) not in b.deleted)
+
+        b = DropBot()
+        check("a person's own pack is deleted",
+              await stickerpack.delete_personal(b, 7) == "ok")
+        check("and only ever their own",
+              b.deleted == [stickerpack.personal_name(7, b.username)])
+
+        b = DropBot(exists=False)
+        check("nothing to delete is said, not attempted",
+              await stickerpack.delete_personal(b, 7) == "no_pack" and not b.deleted)
+
+        check("a refusal is reported, not raised",
+              await stickerpack.delete_personal(DropBot(fail=True), 7) == "failed")
+        check("a private chat has no group pack",
+              await stickerpack.delete_group(
+                  DropBot(), types.SimpleNamespace(type="private", id=7)) == "not_group")
+
+    asyncio.run(run())
+
+    # The command asks before it does anything: this cannot be undone and it
+    # takes the pack away from everyone who added it, not just from whoever
+    # typed the command.
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    asked = source[source.index("async def cmd_delpack"):source.index("async def on_delpack")]
+    check("the command itself deletes nothing",
+          "delete_group" not in asked and "delete_personal" not in asked)
+    acted = source[source.index("async def on_delpack"):]
+    acted = acted[:acted.index("async def cmd_quote_gif")]
+    check("the button checks who pressed it, not who asked",
+          "_is_group_admin" in acted)
+
+
 def test_pack_names() -> None:
     section("sticker pack naming")
     name = stickerpack.pack_name(-1001234567890, "getquoto_bot")
@@ -2152,6 +2217,7 @@ def main() -> int:
     test_pack_removal()
     test_personal_pack()
     test_pack_editing()
+    test_pack_deletion()
     test_pack_names()
     test_fonts()
     test_no_double_shaping()

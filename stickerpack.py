@@ -188,6 +188,41 @@ async def remove_personal(bot: Bot, user_id: int, sticker) -> str:
     return "ok"
 
 
+async def _drop(bot: Bot, name: str) -> str:
+    """Delete a whole pack. Returns what happened.
+
+    This is the one thing here that cannot be undone and that reaches past the
+    person asking: a deleted pack disappears from everyone who ever added it,
+    not just from them. The caller asks first.
+    """
+    if not await _exists(bot, name):
+        return "no_pack"
+    try:
+        await bot.delete_sticker_set(name)
+    except TelegramError as exc:
+        log.warning("could not delete the pack %s: %s", name, exc)
+        return "failed"
+    log.info("deleted the pack %s", name)
+    return "ok"
+
+
+async def delete_personal(bot: Bot, user_id: int) -> str:
+    """Delete this person's own pack, and only ever theirs."""
+    return await _drop(bot, personal_name(user_id, bot.username))
+
+
+async def delete_group(bot: Bot, chat: Chat) -> str:
+    """Delete this group's pack, and only ever this group's.
+
+    The name is built from the chat the command came from, so an admin of one
+    group cannot reach another group's pack - the same reasoning as
+    remove_quote, and it matters more here, because this takes the lot.
+    """
+    if chat.type not in GROUP_TYPES:
+        return "not_group"
+    return await _drop(bot, pack_name(chat.id, bot.username))
+
+
 async def personal_link(bot: Bot, user_id: int) -> str | None:
     """This person's pack link, if they have one yet."""
     name = personal_name(user_id, bot.username)

@@ -925,6 +925,78 @@ async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await message.reply_text(_t(key, update, context))
 
 
+async def cmd_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Offer to delete a whole pack: the group's here, or your own in private.
+
+    Nothing is deleted by the command itself. It asks, because this is the only
+    thing the bot does that cannot be undone and that takes something away from
+    people who are not in the conversation.
+    """
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    private = message.chat.type == "private"
+
+    if not private:
+        if message.chat.type not in stickerpack.GROUP_TYPES:
+            await message.reply_text(_t("pack_groups_only", update, context))
+            return
+        if not await _is_group_admin(context.bot, message.chat, update.effective_user):
+            await message.reply_text(_t("delpack_not_admin", update, context))
+            return
+
+    what = "me" if private else "group"
+    key = "delpack_ask_personal" if private else "delpack_ask_group"
+    await message.reply_html(
+        i18n.t(key, lang),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton(i18n.t("btn_delpack_no", lang),
+                                 callback_data="delpack:no"),
+            InlineKeyboardButton(i18n.t("btn_delpack_yes", lang),
+                                 callback_data=f"delpack:{what}"),
+        ]]),
+    )
+
+
+async def on_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The answer to that question.
+
+    Whoever presses the button is checked again, not whoever asked. A message
+    with buttons sits in the chat where anyone can reach it, so the permission
+    has to be read at the moment it is used.
+    """
+    query = update.callback_query
+    what = query.data.split(":", 1)[1]
+    message = query.message
+
+    if what == "no":
+        await query.answer()
+        await query.edit_message_text(_t("delpack_cancelled", update, context))
+        return
+
+    if what == "group":
+        if message.chat.type not in stickerpack.GROUP_TYPES:
+            await query.answer()
+            return
+        if not await _is_group_admin(context.bot, message.chat, update.effective_user):
+            await query.answer(_t("delpack_not_admin", update, context),
+                               show_alert=True)
+            return
+        outcome = await stickerpack.delete_group(context.bot, message.chat)
+    else:
+        if message.chat.type != "private":
+            await query.answer()
+            return
+        outcome = await stickerpack.delete_personal(
+            context.bot, update.effective_user.id)
+
+    await query.answer()
+    await query.edit_message_text(_t({
+        "ok": "delpack_done",
+        "no_pack": "delpack_none",
+        "not_group": "pack_groups_only",
+    }.get(outcome, "delpack_failed"), update, context))
+
+
 async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     prepared = await _prepare(update, context)
     if prepared is None:
@@ -1169,6 +1241,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("pack", cmd_pack))
     app.add_handler(CommandHandler(["mypack", "my_pack", "mypak"], cmd_mypack))
     app.add_handler(CommandHandler(["unpack", "unpak", "delsticker"], cmd_unpack))
+    app.add_handler(CommandHandler(["delpack", "deletepack", "dellpack"], cmd_delpack))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CommandHandler(
@@ -1178,6 +1251,7 @@ def register(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(on_pack_rename, pattern=r"^mypack:rename$"))
     # The menu button first: "tpl:menu" would otherwise be read as a template
     # named "menu", and only the first matching handler in a group runs.
+    app.add_handler(CallbackQueryHandler(on_delpack, pattern=r"^delpack:"))
     app.add_handler(CallbackQueryHandler(on_template_menu, pattern=r"^tpl:menu$"))
     app.add_handler(CallbackQueryHandler(on_template_choice, pattern=r"^tpl:"))
     # The operator's own panel: unlisted, and silent for everybody else.
