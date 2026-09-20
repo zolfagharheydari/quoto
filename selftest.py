@@ -240,9 +240,9 @@ def test_templates() -> None:
             # quote, so a long one is where a layout runs off the card.
             check(f"{name} keeps the {label} name on the card",
                   0 < scene.name_y < render.HEIGHT - 40, str(scene.name_y))
-            # Two of them hang a round portrait 150px above the words; that is
-            # the part a long quote pushes off the top edge.
-            head = 150 if name in ("portrait", "card") else 0
+            # Two of them hang a round portrait above the words; that headroom
+            # is the part a long quote pushes off the top edge.
+            head = {"portrait": 194, "card": 150}.get(name, 0)
             check(f"{name} keeps the {label} quote on the card",
                   scene.quote_top - head >= 0, str(scene.quote_top))
 

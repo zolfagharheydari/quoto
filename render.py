@@ -270,15 +270,21 @@ def _portrait(avatar, quote, name, watermark, rtl) -> Scene:
         f"{open_q}{quote}{close_q}", rtl, int(WIDTH * 0.78), int(HEIGHT * 0.44),
         range(60, 29, -2))
 
+    # The portrait and the words are one group, centred together and then lifted
+    # off the middle line. Lifting the group rather than the portrait alone is
+    # what keeps the gap between them the same however long the quote runs, and
+    # it is why a long quote can never grow into the picture: the whole block
+    # moves down instead.
     block = len(lines) * line_height
-    top = (HEIGHT - block) // 2 + 26
-    face_size = 108
+    face_size, gap, rise = 150, 44, 55
+    head = face_size + gap
+    top = (HEIGHT - (head + block + 40)) // 2 + head - rise
 
     canvas = _cover(avatar.convert("RGB"), (WIDTH, HEIGHT))
     canvas = canvas.filter(ImageFilter.GaussianBlur(7))
     canvas = ImageEnhance.Brightness(canvas).enhance(0.42)
     face = _circle(avatar, face_size)
-    canvas.paste(face, ((WIDTH - face_size) // 2, top - 150), face)
+    canvas.paste(face, ((WIDTH - face_size) // 2, top - head), face)
 
     return Scene(
         background=canvas,
