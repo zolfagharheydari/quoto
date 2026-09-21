@@ -21,6 +21,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import Forbidden, TelegramError
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
+import i18n
 import reactions
 
 log = logging.getLogger("quotebot.admin")
@@ -83,6 +84,29 @@ def lost(context, user_id: int) -> None:
     data = _everyone(context).get(user_id)
     if data is not None:
         data["started"] = False
+
+
+async def tell(context, user_id: int, key: str, **fields) -> bool:
+    """Say something to one person, in their own language. False if unreachable.
+
+    Someone who never started the bot, or who has blocked it, cannot be
+    reached - that is not an error worth stopping for, and it is how the bot
+    learns they are gone.
+    """
+    data = _everyone(context).get(user_id) or {}
+    lang = data.get("lang")
+    if lang not in i18n.SUPPORTED:
+        lang = i18n.DEFAULT
+    try:
+        await context.bot.send_message(
+            user_id, i18n.t(key, lang).format(**fields), parse_mode="HTML")
+        return True
+    except Forbidden:
+        lost(context, user_id)
+        return False
+    except TelegramError as exc:
+        log.info("could not tell %s about %s: %s", user_id, key, exc)
+        return False
 
 
 def exempt(context) -> set:
@@ -207,6 +231,11 @@ def reset_quota(context, user_id) -> int:
         used.clear()
         return touched
     return 1 if used.pop(user_id, None) is not None else 0
+
+
+def _delivery(told: bool) -> str:
+    """The tail of what the owner is told: whether the person heard about it."""
+    return " خبرش را هم دادم." if told else " ولی نتوانستم خبرش کنم — ربات را استارت نکرده یا بلاک کرده."
 
 
 def _quota_text(context):
@@ -477,7 +506,7 @@ def make_panel(owner_id: int | None):
             giving = action == "qgiveall"
             await _show(query, (
                 "<b>⚠️ برای همه</b>" + chr(10) + chr(10) +
-                ("به سهمیهٔ همهٔ کاربران یکی اضافه می‌شود. مصرف قبلی‌شان سر جایش می‌ماند." if giving else "مصرف همه صفر می‌شود و هر کسی دوباره از اول سهمیهٔ کامل دارد. این کار برگشت ندارد.")
+                ("به سهمیهٔ همهٔ کاربران یکی اضافه می‌شود. مصرف قبلی‌شان سر جایش می‌ماند. به همه هم در ربات خبر داده می‌شود." if giving else "مصرف همه صفر می‌شود و هر کسی دوباره از اول سهمیهٔ کامل دارد. این کار برگشت ندارد. به همه هم در ربات خبر داده می‌شود.")
             ), InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ انجام بده",
                                       callback_data="adm:qgo:" + action[1:]),
@@ -488,11 +517,30 @@ def make_panel(owner_id: int | None):
             if what == "giveall":
                 grant_quota(context, None, 1)
                 said = "به سهمیهٔ همه یکی اضافه شد."
+                key, fields = "quota_granted", {"count": 1}
             else:
                 said = "مصرف {} کاربر صفر شد.".format(reset_quota(context, None))
+                key, fields = "quota_reset", {}
             log.info("owner changed everyone's avatar quota: %s", what)
+
+            # Everyone is told, one at a time and paced like a broadcast,
+            # because it is one: fifty messages sent at once is what Telegram
+            # rate limits, and the panel should not look frozen meanwhile.
+            targets = members(context)
+            await _show(query, "در حال خبر دادن به {} کاربر…".format(len(targets)), _BACK)
+            reached = 0
+            for i, uid in enumerate(targets, 1):
+                if await tell(context, uid, key, **fields):
+                    reached += 1
+                if i % 25 == 0:
+                    await _show(query, "در حال خبر دادن به {} کاربر…_ON".format(reached, len(targets)),
+                                _BACK)
+                await asyncio.sleep(BROADCAST_PAUSE)
+
             text, markup = _quota_text(context)
-            await _show(query, said + chr(10) + chr(10) + text, markup)
+            await _show(query, said + chr(10) +
+                        "به {} نفر خبر داده شد.".format(reached) + chr(10) + chr(10) + text,
+                        markup)
         elif action in ("cast", "block", "unblock", "qreset", "qgive",
                         "allow", "disallow"):
             context.user_data["admin_await"] = action
@@ -570,10 +618,13 @@ def make_panel(owner_id: int | None):
                 await message.reply_text("این شناسه مسدود نبود.")
         elif waiting == "qreset":
             reset_quota(context, user_id)
-            await message.reply_text("سهمیهٔ آواتار کاربر {} از نو شروع شد.".format(user_id))
+            told = await tell(context, user_id, "quota_reset")
+            await message.reply_text("سهمیهٔ آواتار کاربر {} از نو شروع شد.".format(user_id) + _delivery(told))
         elif waiting == "qgive":
             grant_quota(context, user_id, count)
-            await message.reply_text("{} سهمیهٔ تازه به کاربر {} داده شد.".format(count, user_id))
+            told = await tell(context, user_id, "quota_granted", count=count)
+            await message.reply_text(
+                "{} سهمیهٔ تازه به کاربر {} داده شد.".format(count, user_id) + _delivery(told))
         elif waiting == "allow":
             exempt(context).add(user_id)
             what = "گروه" if user_id < 0 else "کاربر"

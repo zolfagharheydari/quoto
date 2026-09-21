@@ -1958,9 +1958,27 @@ def test_security() -> None:
 OWNER = 4242
 
 
-def _admin_ctx(store=None):
-    return types.SimpleNamespace(bot_data=store if store is not None else {},
-                                 user_data={}, args=[], bot=None)
+class _AdminBot:
+    """Just enough bot for the panel: it writes down who it told what."""
+
+    def __init__(self, refuse=()):
+        self.sent = []
+        self.refuse = set(refuse)
+
+    async def send_message(self, chat_id, text, **kwargs):
+        from telegram.error import Forbidden
+        if chat_id in self.refuse:
+            raise Forbidden("blocked")
+        self.sent.append((chat_id, text))
+
+
+def _admin_ctx(store=None, bot=None, people=None):
+    ctx = types.SimpleNamespace(bot_data=store if store is not None else {},
+                                user_data={}, args=[], bot=bot or _AdminBot())
+    # The panel reads the per-user store off the application, which is where
+    # a person's language lives and how it knows who has started the bot.
+    ctx.application = types.SimpleNamespace(user_data=people or {})
+    return ctx
 
 
 def _admin_update(user_id, chat_type="private", text="/quote", chat_id=-100123,
@@ -2091,6 +2109,38 @@ def test_admin() -> None:
         ctx.user_data["admin_await"] = "qgive"
         await on_input(_admin_update(OWNER, text="77"), ctx)
         check("an id on its own grants one", admin.extra_quota(ctx, 77) == 1)
+
+        # The person hears about it, in their own language, and the owner is
+        # told whether it got through.
+        ctx = _admin_ctx(people={77: {"started": True, "lang": "en"}})
+        ctx.user_data["admin_await"] = "qgive"
+        update = _admin_update(OWNER, text="77 2")
+        await on_input(update, ctx)
+        check("the person is told they were granted more",
+              ctx.bot.sent and ctx.bot.sent[0][0] == 77)
+        check("in their own language, with the number in it",
+              "2 more time" in ctx.bot.sent[0][1], ctx.bot.sent[0][1][:60])
+        check("and the owner is told it arrived",
+              any("خبرش را هم دادم" in r for r in update.effective_message.replies))
+
+        ctx = _admin_ctx(people={77: {"started": True}})
+        ctx.user_data["admin_await"] = "qreset"
+        await on_input(_admin_update(OWNER, text="77"), ctx)
+        check("a reset is announced too", len(ctx.bot.sent) == 1)
+        check("in Persian by default", "سهمیهٔ عکس" in ctx.bot.sent[0][1])
+
+        # Somebody who blocked the bot cannot be told, and saying so is the
+        # moment the bot finds out they are gone.
+        people = {77: {"started": True}}
+        ctx = _admin_ctx(bot=_AdminBot(refuse={77}), people=people)
+        ctx.user_data["admin_await"] = "qgive"
+        update = _admin_update(OWNER, text="77")
+        await on_input(update, ctx)
+        check("the grant still happens when they cannot be reached",
+              admin.extra_quota(ctx, 77) == 1)
+        check("the owner is told it did not arrive",
+              any("نتوانستم خبرش کنم" in r for r in update.effective_message.replies))
+        check("and they stop counting as a user", not people[77]["started"])
 
         ctx = _admin_ctx()
         ctx.user_data["admin_await"] = "qgive"

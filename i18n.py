@@ -301,6 +301,22 @@ Choosing anything other than your own picture only <b>turns it off</b> — it is
         "fa": "انجام شد ✅ از این به بعد: {choice}",
         "en": "Done ✅ From now on: {choice}",
     },
+    "quota_granted": {
+        "fa": """🎁 سهمیهٔ عکس پروفایلت بیشتر شد.
+
+حالا می‌توانی {count} بار دیگر عکس دلخواه انتخاب کنی. با <code>/avatar</code> عکس را بفرست.""",
+        "en": """🎁 Your picture allowance just went up.
+
+You can choose a picture {count} more time(s). Send it with <code>/avatar</code>.""",
+    },
+    "quota_reset": {
+        "fa": """♻️ سهمیهٔ عکس پروفایلت از نو شروع شد.
+
+دوباره سهمیهٔ کامل داری. با <code>/avatar</code> عکس تازه بفرست.""",
+        "en": """♻️ Your picture allowance has been reset.
+
+You have the full allowance again. Send a new one with <code>/avatar</code>.""",
+    },
     "btn_template": {"fa": "🎨 قالب کوت", "en": "🎨 Quote template"},
     "template_prompt": {
         "fa": """کوت‌هایت با کدام قالب ساخته شود؟
