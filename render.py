@@ -179,6 +179,25 @@ def _shade(color: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
     return tuple(max(0, min(255, round(c * factor))) for c in color)
 
 
+def _mix(color: tuple[int, int, int], toward: tuple[int, int, int],
+         amount: float) -> tuple[int, int, int]:
+    return tuple(round(c + (t - c) * amount) for c, t in zip(color, toward))
+
+
+# The bot's handle. It is the only way somebody who is shown a card finds out
+# where it came from, so it has to be readable at the size a phone shows a
+# picture - but it is not the point of the card, so it stays in the corner and
+# a shade quieter than the words. Medium weight rather than a brighter grey:
+# it thickens the strokes without lifting the colour towards the quote's.
+MARK_SIZE = 25
+MARK_WEIGHT = "medium"
+WHITE = (255, 255, 255)
+
+
+def _mark_font():
+    return fonts.load(MARK_WEIGHT, MARK_SIZE)
+
+
 def _circle(img: Image.Image, size: int) -> Image.Image:
     """The picture as a round badge, drawn large and shrunk so the edge is clean."""
     side = min(img.size)
@@ -249,11 +268,11 @@ def _classic(avatar, quote, name, watermark, rtl, tinted: bool = False) -> Scene
         name_font=fonts.load("bold", 36),
         name_y=top + quote_h + 56,
         watermark=watermark,
-        watermark_font=fonts.load("regular", 19),
+        watermark_font=_mark_font(),
         quote_color=(247, 246, 242) if tinted else QUOTE_COLOR,
         # The watermark has to lift off a coloured side, not off black, so it
         # is a lighter shade of that side rather than the fixed grey.
-        mark_color=_shade(base, 0.75) if tinted else MARK_COLOR,
+        mark_color=_mix(base, WHITE, 0.45) if tinted else (163, 163, 166),
         fade_to=side,
     )
 
@@ -297,11 +316,11 @@ def _portrait(avatar, quote, name, watermark, rtl) -> Scene:
         name_font=fonts.load("bold", 34),
         name_y=top + block + 34,
         watermark=watermark,
-        watermark_font=fonts.load("regular", 19),
+        watermark_font=_mark_font(),
         center_x=WIDTH // 2,
         quote_color=(255, 255, 255),
         name_color=(225, 225, 225),
-        mark_color=(200, 200, 200),
+        mark_color=(216, 216, 218),
     )
 
 
@@ -349,13 +368,13 @@ def _card(avatar, quote, name, watermark, rtl) -> Scene:
         name_font=fonts.load("bold", 30),
         name_y=top + block + 30,
         watermark=watermark,
-        watermark_font=fonts.load("regular", 19),
+        watermark_font=_mark_font(),
         center_x=WIDTH // 2,
         quote_color=(28, 28, 30),
         name_color=_shade(base, 0.8),
         # The watermark sits on the frame, not on the card, so it is shaded
         # against the frame's own colour.
-        mark_color=_shade(base, 0.55),
+        mark_color=_shade(base, 0.42),
         fade_to=paper,
     )
 

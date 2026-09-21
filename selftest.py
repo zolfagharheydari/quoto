@@ -295,6 +295,22 @@ def test_templates() -> None:
 
     asyncio.run(sheets())
 
+    # The handle is the only thing on a card that says where it came from, so
+    # every template has to keep it readable against its own corner - which is
+    # black on one, a dark tint on another and a mid-tone frame on the third.
+    def luminance(c):
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+    for name in render.TEMPLATE_ORDER:
+        scene = render.build_scene(avatar, "سلام", "علی", "@getquoto_bot", name)
+        corner = scene.background.convert("RGB").getpixel(
+            (render.WIDTH - 60, render.HEIGHT - 28))
+        gap = abs(luminance(scene.mark_color) - luminance(corner))
+        check(f"{name} keeps the handle readable in its corner", gap > 55,
+              f"{gap:.0f}")
+        check(f"{name} draws the handle at a size a phone can read",
+              scene.watermark_font.size >= 24, str(scene.watermark_font.size))
+
     unknown = render.build_scene(avatar, "x", "y", "@bot", "no-such-template")
     check("an unknown template falls back rather than raising",
           unknown.center_x == render.build_scene(avatar, "x", "y", "@bot").center_x)
