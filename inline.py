@@ -79,7 +79,24 @@ COMMAND_ONLY_RE = re.compile(
 )
 
 
-def _abandon(context) -> None:
+# The gif each person currently has in flight. Deliberately NOT in user_data:
+# that dictionary is pickled to disk, an asyncio task cannot be pickled, and
+# the persistence loop died the first time it tried - silently, taking every
+# later save with it. This is process state anyway; it has no meaning after a
+# restart, which is exactly when a persisted copy would be read back.
+_running: dict[int, asyncio.Task] = {}
+
+
+def _remember_task(user_id: int, task: asyncio.Task) -> None:
+    _running[user_id] = task
+    # Let go of it the moment it finishes, so this does not become a list of
+    # every person who has ever used inline mode.
+    task.add_done_callback(
+        lambda done, uid=user_id: _running.pop(uid, None)
+        if _running.get(uid) is done else None)
+
+
+def _abandon(user_id: int) -> None:
     """Drop the animation the previous keystroke started.
 
     It is halfway through ffmpeg or halfway up to the channel, and nobody will
@@ -87,7 +104,7 @@ def _abandon(context) -> None:
     would finish and file a picture of half a sentence in the storage channel,
     and every keystroke would leave one behind.
     """
-    running = context.user_data.pop("inline_gif", None)
+    running = _running.pop(user_id, None)
     if running is not None and not running.done():
         running.cancel()
 
@@ -291,7 +308,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
 
         # Only the most recent keystroke should reach the renderer.
         context.user_data["inline_seq"] = query.id
-        _abandon(context)
+        _abandon(query.from_user.id)
         await asyncio.sleep(DEBOUNCE_SECONDS)
         if context.user_data.get("inline_seq") != query.id:
             return
@@ -317,7 +334,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
             # stills are even encoded. Nothing waits for it.
             gif = asyncio.ensure_future(_make_animation(
                 context, store, query.from_user.id, scene))
-            context.user_data["inline_gif"] = gif
+            _remember_task(query.from_user.id, gif)
 
             image = await asyncio.to_thread(scene.render)
             png = await asyncio.to_thread(render.to_png, image)
@@ -347,7 +364,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
             if context.user_data.get("inline_seq") != query.id:
                 # Somebody kept typing while this was uploading. What is already
                 # up cannot be unsent, but the animation can still be stopped.
-                _abandon(context)
+                _abandon(query.from_user.id)
             else:
                 _later(context, _finish(context, key,
                                         (photo_id, sticker_id), gif))

@@ -757,12 +757,12 @@ def test_inline_results() -> None:
             uploaded.append(tag)
             return "AN"
 
-        ctx2 = types.SimpleNamespace(user_data={}, bot_data={})
+        typist = 4242
         tasks = []
         for i in range(4):
-            inline._abandon(ctx2)
+            inline._abandon(typist)
             task = asyncio.ensure_future(slow_upload(i))
-            ctx2.user_data["inline_gif"] = task
+            inline._remember_task(typist, task)
             tasks.append(task)
             await asyncio.sleep(0.05)     # still typing
         await asyncio.sleep(0.8)          # the last one finishes
@@ -790,6 +790,70 @@ def test_inline_results() -> None:
     for link in ("t.me/+ztLZKbb", "https://t.me/joinchat/xx", "+ztLZKbb"):
         check(f"an invite link is refused ({link[:12]})", bot._storage_chat(link) is None)
     check("gibberish is refused", bot._storage_chat("my channel") is None)
+
+
+def test_persisted_state() -> None:
+    section("what gets written to disk")
+
+    import pickle
+
+    # Everything in user_data, chat_data and bot_data is pickled by
+    # python-telegram-bot on a timer. Something unpicklable in there does not
+    # raise where it was put: it kills the persistence loop, quietly, and
+    # nothing is saved from then until the next restart - which is when the
+    # file is read back. That is how a whole day of settings can vanish.
+    async def run():
+        loop = asyncio.get_running_loop()
+
+        async def forever():
+            await asyncio.sleep(30)
+
+        task = loop.create_task(forever())
+        user_data = {"inline_seq": "123", "started": True}
+        inline._remember_task(7, task)
+
+        check("a running gif is kept out of the persisted store",
+              all(not isinstance(v, asyncio.Task) for v in user_data.values()))
+        try:
+            pickle.dumps(user_data)
+            ok = True
+        except Exception:  # noqa: BLE001
+            ok = False
+        check("so the store still pickles", ok)
+        check("and the task is held beside it", inline._running.get(7) is task)
+
+        inline._abandon(7)
+        check("abandoning cancels it", task.cancelled() or task.cancelling())
+        check("and lets go of it", 7 not in inline._running)
+
+        # A gif that finishes on its own must not be remembered for ever.
+        done = loop.create_task(asyncio.sleep(0))
+        inline._remember_task(8, done)
+        await asyncio.sleep(0.05)
+        check("a finished one is forgotten too", 8 not in inline._running)
+
+    asyncio.run(run())
+
+    source = (ROOT / "inline.py").read_text(encoding="utf-8")
+    check("inline puts nothing but plain values in user_data",
+          'user_data["inline_gif"]' not in source)
+
+    # The rest of what the bot stores, as it stores it.
+    sample = {
+        "started": True, "lang": "fa", "template": "card",
+        "last_render": 1.0, "await_pack_title": True,
+        "admin_await": "qgive", "cast_from": (1, 2),
+        "blocked": {1, 2}, "exempt": {3}, "queue_cutoff": 1.0,
+        "avatar_extra_all": 2, "avatar_uses": {7: 1},
+        "template_sheet": {"id": "X", "stamp": "1:2"},
+        "paused": False, "storage_chat": -100,
+    }
+    try:
+        pickle.loads(pickle.dumps(sample))
+        ok = True
+    except Exception:  # noqa: BLE001
+        ok = False
+    check("every other kind of stored value survives a round trip", ok)
 
 
 def test_storage_channel() -> None:
@@ -2365,6 +2429,7 @@ def main() -> int:
     test_admin()
     test_quota()
     test_inline_results()
+    test_persisted_state()
     test_storage_channel()
     test_reactions()
     test_reaction_row()
