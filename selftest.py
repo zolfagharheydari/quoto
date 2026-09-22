@@ -181,6 +181,36 @@ def _avatar() -> Image.Image:
     return img
 
 
+def test_command_menus() -> None:
+    section("command menus")
+
+    for lang in ("fa", "en"):
+        group = [n for n, _ in i18n.COMMANDS[lang]]
+        private_only = {n for n, _ in i18n.PRIVATE_ONLY[lang]}
+        # The same rule post_init publishes with.
+        private = [n for n in group
+                   if n not in private_only and n not in i18n.GROUP_ONLY]
+        private += [n for n, _ in i18n.PRIVATE_ONLY[lang]]
+
+        check(f"{lang}: no command is listed twice in private",
+              len(private) == len(set(private)),
+              str([n for n in private if private.count(n) > 1]))
+        check(f"{lang}: a group-only command is not offered in private",
+              all(n not in private for n in i18n.GROUP_ONLY))
+        check(f"{lang}: /pack is still offered in a group", "pack" in group)
+        # /unpack and /delpack exist in both, and the private menu has to carry
+        # the private wording - in a private chat they mean your own pack.
+        for name in ("unpack", "delpack"):
+            said = dict(i18n.PRIVATE_ONLY[lang]).get(name, "")
+            check(f"{lang}: /{name} in private is described as your own",
+                  bool(said) and "گروه" not in said and "group" not in said, said)
+
+    registered = (ROOT / "bot.py").read_text(encoding="utf-8")
+    for name, _ in i18n.COMMANDS["fa"] + i18n.PRIVATE_ONLY["fa"]:
+        check(f"/{name} in the menu is a command that exists",
+              f'"{name}"' in registered, name)
+
+
 def test_render() -> None:
     section("rendering")
     avatar = _avatar()
@@ -2326,6 +2356,7 @@ def test_fallback_fonts() -> None:
 def main() -> int:
     test_text()
     test_i18n()
+    test_command_menus()
     test_render()
     test_templates()
     test_animation()

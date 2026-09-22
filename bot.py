@@ -1142,9 +1142,19 @@ async def post_init(app: Application) -> None:
     async def publish(lang: str, **kwargs) -> None:
         core = [BotCommand(n, d) for n, d in i18n.COMMANDS[lang]]
         extra = [BotCommand(n, d) for n, d in i18n.PRIVATE_ONLY[lang]]
+        # The private menu is the shared commands plus the private ones. A
+        # command that exists in both is described twice, and the private
+        # wording is the right one there: /unpack and /delpack mean the
+        # person's own pack in a private chat and the group's in a group.
+        # Anything group-only is left out entirely rather than sitting in the
+        # menu only to answer "not here".
+        private_names = {c.command for c in extra}
+        shared = [c for c in core
+                  if c.command not in private_names
+                  and c.command not in i18n.GROUP_ONLY]
         # A group's "/" menu stays short; help and lang belong in the bot's own chat.
         await app.bot.set_my_commands(
-            core + extra, scope=BotCommandScopeAllPrivateChats(), **kwargs
+            shared + extra, scope=BotCommandScopeAllPrivateChats(), **kwargs
         )
         await app.bot.set_my_commands(
             core, scope=BotCommandScopeAllGroupChats(), **kwargs

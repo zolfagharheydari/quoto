@@ -612,9 +612,15 @@ Meanwhile you can type: /quote any text you like""",
 # Commands Telegram lists in the "/" menu. Both /help and /lang still work in a
 # group if typed; they are simply not worth a slot in a group's menu, so they are
 # offered in private chats only.
+# Commands that only mean something inside a group. They are published to
+# groups and kept out of the private menu, where they can only answer "not
+# here" - a menu entry that cannot work is worse than no entry.
+GROUP_ONLY = ("pack",)
+
 PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     "fa": [
         ("mypack", "استیکرپک شخصی خودت"),
+        ("unpack", "حذف یک استیکر از پک شخصی‌ات (روی استیکر ریپلای کن)"),
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
         ("template", "انتخاب قالب کوت‌ها"),
@@ -624,6 +630,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     ],
     "en": [
         ("mypack", "Your own sticker pack"),
+        ("unpack", "Remove one sticker from your own pack (reply to it)"),
         ("avatar", "Pick your own picture for your quotes"),
         ("settings", "Choose which picture stands for you"),
         ("template", "Choose the template your quotes use"),
