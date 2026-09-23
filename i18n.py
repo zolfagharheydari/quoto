@@ -257,6 +257,7 @@ Change it whenever you like; this one has no limit.
 <code>/pack</code> — the link to this group's sticker pack
 <code>/unpack</code> — remove one sticker from the pack (admins)
 <code>/delpack</code> — delete the pack entirely (admins in a group, your own in private)
+<code>/mypack</code> — your own sticker pack; rename it here, or reply to a sticker with <code>/unpack</code> to remove it
 <code>/avatar</code> — your own picture for your quotes (private chat, twice)
 <code>/settings</code> — choose which picture stands for you
 <code>/template</code> — choose the template: classic, tinted, full frame or card
@@ -421,21 +422,29 @@ If it is one sticker you want gone, reply to it and send /unpack instead.""",
         "fa": """استیکرپک شخصی‌ات ساخته شد 🎉
 {link}
 
-از این به بعد هر کوت و اسکرین‌شاتی که اینجا یا با حالت inline بسازی به همین اضافه می‌شود. با /mypack هر وقت خواستی لینکش را بگیر.""",
+از این به بعد هر کوت و اسکرین‌شاتی که اینجا یا با حالت inline بسازی به همین اضافه می‌شود. با /mypack هر وقت خواستی لینکش را بگیر.
+
+اگر استیکر تازه را در پک نمی‌بینی، روی خودِ استیکر بزن یا همین لینک را دوباره باز کن — تلگرام گاهی دیر به‌روزش می‌کند.""",
         "en": """Your own sticker pack is ready 🎉
 {link}
 
-Everything you make here or with inline mode joins it from now on. /mypack gives you the link whenever you want it.""",
+Everything you make here or with inline mode joins it from now on. /mypack gives you the link whenever you want it.
+
+Don't see a new sticker in the pack yet? Tap the sticker itself or open this link again - Telegram can be slow to refresh it.""",
     },
     "mypack_link": {
         "fa": """استیکرپک شخصی‌ات:
 {link}
 
-هر کوت یا اسکرین‌شاتی که در چت خصوصی من یا با حالت inline بسازی، خودکار به آن اضافه می‌شود.""",
+هر کوت یا اسکرین‌شاتی که در چت خصوصی من یا با حالت inline بسازی، خودکار به آن اضافه می‌شود.
+
+اگر استیکر تازه را در پک نمی‌بینی، روی خودِ استیکر بزن یا همین لینک را دوباره باز کن — تلگرام گاهی دیر به‌روزش می‌کند.""",
         "en": """Your own sticker pack:
 {link}
 
-Everything you make in my private chat or with inline mode is added to it.""",
+Everything you make in my private chat or with inline mode is added to it.
+
+Don't see a new sticker in the pack yet? Tap the sticker itself or open this link again - Telegram can be slow to refresh it.""",
     },
     "mypack_none": {
         "fa": """هنوز پکی نداری.
@@ -572,15 +581,23 @@ Meanwhile you can type: /quote any text you like""",
     },
     "pack_created": {
         "fa": """استیکرپک این گروه ساخته شد 🎉
-{link}""",
+{link}
+
+اگر استیکر تازه را در پک نمی‌بینی، روی خودِ استیکر بزن یا همین لینک را دوباره باز کن — تلگرام گاهی دیر به‌روزش می‌کند.""",
         "en": """Made a sticker pack for this group 🎉
-{link}""",
+{link}
+
+Don't see a new sticker in the pack yet? Tap the sticker itself or open this link again - Telegram can be slow to refresh it.""",
     },
     "pack_link": {
         "fa": """استیکرپک این گروه:
-{link}""",
+{link}
+
+اگر استیکر تازه را در پک نمی‌بینی، روی خودِ استیکر بزن یا همین لینک را دوباره باز کن — تلگرام گاهی دیر به‌روزش می‌کند.""",
         "en": """This group's sticker pack:
-{link}""",
+{link}
+
+Don't see a new sticker in the pack yet? Tap the sticker itself or open this link again - Telegram can be slow to refresh it.""",
     },
     "pack_none": {
         "fa": "هنوز استیکری برای این گروه ساخته نشده. روی یک پیام ریپلای کن و /sticker بزن.",
