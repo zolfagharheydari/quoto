@@ -19,12 +19,15 @@ Try it on Telegram: [@getquoto_bot](https://t.me/getquoto_bot)
 | `/screenshot` | The message drawn the way Telegram shows it, with name, badges, time and reactions |
 | `/template` | Choose one of four card designs |
 | `/avatar`, `/settings` | Choose which picture stands for you on your cards |
+| `/mygifs` | Every GIF you have made, searchable by who is in it |
 | `/pack`, `/mypack` | The group's sticker pack, or your own |
 | `/unpack`, `/delpack` | Remove one sticker, or a whole pack (group admins, or the pack's owner) |
 
 **Inline mode** works in any chat, including ones the bot is not a member of:
 type `@getquoto_bot` followed by some text and pick a card, sticker or GIF from
-the menu.
+the menu. Type `@getquoto_bot #name` instead to search the GIFs you have made
+of someone, by name, username or numeric id, and send one straight from the
+results.
 
 ## Text rendering
 

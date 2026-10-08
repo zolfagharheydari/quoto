@@ -28,6 +28,7 @@ from telegram.ext import ContextTypes
 
 import animate
 import authors
+import gallery
 import i18n
 import render
 
@@ -199,16 +200,68 @@ OFFERED_LIMIT = 40
 
 
 def remember_offer(context, results, sticker_id: str) -> None:
-    """Note which sticker each offered result stands for."""
+    """Note which sticker each offered result stands for, and which one is a GIF."""
     offered = context.user_data.setdefault("inline_offered", {})
+    gifs = context.user_data.setdefault("inline_offered_gif", {})
     for result in results:
         offered[result.id] = sticker_id
-    while len(offered) > OFFERED_LIMIT:
-        offered.pop(next(iter(offered)))
+        if isinstance(result, InlineQueryResultCachedMpeg4Gif):
+            gifs[result.id] = result.mpeg4_file_id
+    for store in (offered, gifs):
+        while len(store) > OFFERED_LIMIT:
+            store.pop(next(iter(store)))
 
 
 def sticker_for(context, result_id: str) -> str | None:
     return context.user_data.get("inline_offered", {}).get(result_id)
+
+
+def gif_for(context, result_id: str) -> str | None:
+    """The GIF this offered result was, if it was the GIF."""
+    return context.user_data.get("inline_offered_gif", {}).get(result_id)
+
+
+# A query that starts with this searches the person's own GIFs instead of
+# making a new quote: "#ali" finds every GIF they have made of Ali.
+GALLERY_PREFIX = "#"
+
+
+async def answer_gallery(query, context, term: str, lang: str,
+                         hint: str | None = None) -> None:
+    """Answer with this person's own GIFs whose subject matches `term`.
+
+    Results are ids into the archive, never the archive itself, and are sent by
+    Telegram's file_id, so nothing is rendered or uploaded. Their ids start with
+    "g", which no quote result uses, so picking one is never mistaken for
+    sending a new quote and filed a second time.
+    """
+    found = gallery.search(context.user_data, term)
+    try:
+        start = max(0, int(query.offset or 0))
+    except ValueError:
+        start = 0
+    page = found[start:start + gallery.PAGE]
+    results = [
+        InlineQueryResultCachedMpeg4Gif(
+            id=f"g{start + i}", mpeg4_file_id=g["f"],
+            title=g.get("n") or "GIF",
+        )
+        for i, g in enumerate(page)
+    ]
+    more = start + gallery.PAGE < len(found)
+
+    button = None
+    if not found:
+        shown = term.strip()[:20]
+        text = (i18n.t("gallery_none", lang).format(term=shown) if shown
+                else i18n.t(hint or "inline_empty", lang))
+        button = InlineQueryResultsButton(text=text, start_parameter="mygifs")
+    elif hint:
+        button = InlineQueryResultsButton(text=i18n.t(hint, lang),
+                                          start_parameter="inline")
+    await query.answer(results, cache_time=5, is_personal=True,
+                       next_offset=str(start + gallery.PAGE) if more else "",
+                       button=button)
 
 
 def build_results(lang: str, photo_id: str, sticker_id: str,
@@ -252,6 +305,14 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         raw = query.query.strip()
 
         raw = LEADING_COMMAND_RE.sub("", raw).strip()
+        if raw.startswith(GALLERY_PREFIX):
+            await answer_gallery(query, context, raw[len(GALLERY_PREFIX):], lang)
+            return
+        if not raw and context.user_data.get(gallery.KEY):
+            # Nothing typed yet: their own GIFs, with the way to make a new
+            # quote still on the button above them.
+            await answer_gallery(query, context, "", lang, hint="inline_empty")
+            return
         if not raw or COMMAND_ONLY_RE.match(raw):
             # Empty query, or someone typing "@bot /quote" expecting the reply flow.
             hint = "inline_command" if raw else "inline_empty"

@@ -51,6 +51,7 @@ import admin
 import animate
 import authors
 import extract
+import gallery
 import fonts
 import i18n
 import inline
@@ -918,6 +919,31 @@ async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await message.reply_text(_t(key, update, context))
 
 
+async def cmd_mygifs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """How many GIFs this person has made, and the way into searching them.
+
+    The search itself is inline mode - a gallery that can be sent from straight
+    away - so this hands over a button that opens it in the same chat, with
+    whatever was typed after the command already filled in.
+    """
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    term = " ".join(context.args or []).strip()
+    count = len(context.user_data.get(gallery.KEY) or [])
+    if not count:
+        await message.reply_html(i18n.t("mygifs_none", lang))
+        return
+    await message.reply_html(
+        i18n.t("mygifs_intro", lang).format(
+            count=count, people=gallery.people(context.user_data),
+            bot=context.bot.username),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+            i18n.t("btn_mygifs", lang),
+            switch_inline_query_current_chat=inline.GALLERY_PREFIX + term,
+        )]]),
+    )
+
+
 async def cmd_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Offer to delete a whole pack: the group's here, or your own in private.
 
@@ -1000,10 +1026,15 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         scene = await _build_scene(update, context, target, text)
         buf, ext = await asyncio.to_thread(animate.to_animation, scene)
-        await message.reply_animation(
+        sent = await message.reply_animation(
             buf, filename=f"quote.{ext}", reply_to_message_id=target.message_id
         )
         admin.note(context, "gif")
+        # Filed under whoever made it, so they can find it again by who is in it.
+        made = sent.animation or sent.document
+        if made is not None:
+            gallery.record(context.user_data, made.file_id,
+                           authors.resolve(target), text)
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -1194,6 +1225,14 @@ async def on_chosen_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     chosen = update.chosen_inline_result
     if chosen is None:
         return
+    gif_id = inline.gif_for(context, chosen.result_id)
+    if gif_id is not None:
+        # An inline quote is always in the sender's own words, so it is filed
+        # under them.
+        user = chosen.from_user
+        gallery.record(context.user_data, gif_id, authors.Author(
+            user.full_name, user.username or "", user.id, "user", str(user.id)),
+            chosen.query)
     sticker_id = inline.sticker_for(context, chosen.result_id)
     if sticker_id is None:
         log.debug("chosen result %s is not one we remember", chosen.result_id)
@@ -1252,6 +1291,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["mypack", "my_pack", "mypak"], cmd_mypack))
     app.add_handler(CommandHandler(["unpack", "unpak", "delsticker"], cmd_unpack))
     app.add_handler(CommandHandler(["delpack", "deletepack", "dellpack"], cmd_delpack))
+    app.add_handler(CommandHandler(["mygifs", "mygif", "gifs"], cmd_mygifs))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CommandHandler(

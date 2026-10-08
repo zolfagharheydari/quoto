@@ -318,6 +318,20 @@ You can choose a picture {count} more time(s). Send it with <code>/avatar</code>
 
 You have the full allowance again. Send a new one with <code>/avatar</code>.""",
     },
+    "mygifs_intro": {
+        "fa": """🎞 تا حالا <b>{count}</b> گیف از <b>{people}</b> نفر ساخته‌ای.
+
+برای دیدن و فرستادنشان دکمهٔ زیر را بزن. در هر چتی هم می‌توانی بنویسی <code>@{bot} #اسم</code> تا فقط گیف‌های همان شخص بیاید؛ با یوزرنیم یا آیدی عددی هم جستجو می‌شود.""",
+        "en": """🎞 You have made <b>{count}</b> GIFs of <b>{people}</b> people.
+
+Tap the button to browse and send them. In any chat you can also type <code>@{bot} #name</code> to see only one person's; a username or numeric id works too.""",
+    },
+    "mygifs_none": {
+        "fa": "هنوز گیفی نساخته‌ای. روی پیامی ریپلای کن و /gif بزن؛ از این به بعد هر گیفی که بسازی اینجا جمع می‌شود.",
+        "en": "You haven't made any GIFs yet. Reply to a message with /gif; every GIF you make from now on is kept here.",
+    },
+    "btn_mygifs": {"fa": "🔍 گیف‌هایم", "en": "🔍 My GIFs"},
+    "gallery_none": {"fa": "گیفی از «{term}» پیدا نشد", "en": "No GIFs of “{term}”"},
     "btn_template": {"fa": "🎨 قالب کوت", "en": "🎨 Quote template"},
     "template_prompt": {
         "fa": """کوت‌هایت با کدام قالب ساخته شود؟
@@ -641,6 +655,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
         ("template", "انتخاب قالب کوت‌ها"),
+        ("mygifs", "گیف‌هایی که ساخته‌ای، با جستجوی اسم"),
         ("delpack", "حذف کامل پک شخصی‌ات"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
@@ -651,6 +666,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("avatar", "Pick your own picture for your quotes"),
         ("settings", "Choose which picture stands for you"),
         ("template", "Choose the template your quotes use"),
+        ("mygifs", "The GIFs you have made, searchable by name"),
         ("delpack", "Delete your own pack entirely"),
         ("lang", "Change language"),
         ("help", "Help"),

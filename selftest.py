@@ -856,6 +856,137 @@ def test_persisted_state() -> None:
     check("every other kind of stored value survives a round trip", ok)
 
 
+def test_gif_archive() -> None:
+    section("gif archive")
+
+    import pickle
+    import gallery
+
+    def person(name, handle="", uid=None, kind="user"):
+        return authors.Author(name, handle, uid, kind, str(uid))
+
+    ali = person("علی رضایی", "ali_r", 101)
+    sara = person("Sara K", "sarak", 202)
+    chan = person("کانال خبری", "news", -100500, kind="chat")
+
+    data = {}
+    gallery.record(data, "F1", ali, "سلام")
+    gallery.record(data, "F2", sara, "hello")
+    gallery.record(data, "F3", ali, "دوباره")
+    gallery.record(data, "F4", chan, "خبر")
+
+    def ids(found):
+        return [g["f"] for g in found]
+
+    check("everything, newest first", ids(gallery.search(data)) == ["F4", "F3", "F2", "F1"])
+    check("found by part of the name", ids(gallery.search(data, "علی")) == ["F3", "F1"])
+    check("found by username", ids(gallery.search(data, "sarak")) == ["F2"])
+    check("with or without the @", ids(gallery.search(data, "@ali_r")) == ["F3", "F1"])
+    check("found by numeric id", ids(gallery.search(data, "202")) == ["F2"])
+    check("an id matches whole, not as a fragment", gallery.search(data, "20") == [])
+    check("case does not matter", ids(gallery.search(data, "SARA")) == ["F2"])
+    # A name typed on one keyboard, searched for on another.
+    check("Arabic yeh and kaf find the Persian ones",
+          ids(gallery.search(data, "علي رضايي")) == ["F3", "F1"])
+    check("a channel is found by its title", ids(gallery.search(data, "خبری")) == ["F4"])
+    check("a channel keeps no user id", gallery.search(data, "خبری")[0]["u"] is None)
+    check("nothing found is an empty list", gallery.search(data, "nobody") == [])
+    check("people are counted once each", gallery.people(data) == 3)
+
+    gallery.record(data, "F1", ali, "سلام")
+    check("the same file is filed once", ids(gallery.search(data)).count("F1") == 1)
+    check("and moves to the front", ids(gallery.search(data))[0] == "F1")
+
+    big = {}
+    for i in range(gallery.LIMIT + 25):
+        gallery.record(big, f"X{i}", ali)
+    check("the archive is bounded", len(big[gallery.KEY]) == gallery.LIMIT)
+    check("and the oldest go first", big[gallery.KEY][0]["f"] == "X25")
+
+    try:
+        pickle.dumps(data)
+        ok = True
+    except Exception:  # noqa: BLE001
+        ok = False
+    check("the archive pickles with the rest of user_data", ok)
+
+    # Inline: "#name" opens the gallery instead of making a quote.
+    class Query:
+        def __init__(self, text, offset=""):
+            self.query, self.offset, self.id = text, offset, "q1"
+            self.from_user = types.SimpleNamespace(id=7, language_code="en",
+                                                   first_name="M", last_name=None,
+                                                   username="m")
+            self.answered = None
+
+        async def answer(self, results, **kwargs):
+            self.answered = (results, kwargs)
+
+    many = {}
+    for i in range(60):
+        gallery.record(many, f"M{i}", ali if i % 2 else sara)
+
+    async def run():
+        handler = inline.make_handler("@b", None, None)
+        ctx = types.SimpleNamespace(user_data=many, bot_data={}, bot=None)
+
+        async def ask(text, offset=""):
+            q = Query(text, offset)
+            update = types.SimpleNamespace(inline_query=q, effective_user=q.from_user)
+            await handler(update, ctx)
+            return q.answered
+
+        results, kw = await ask("#علی")
+        check("#name answers from the archive", len(results) == 30)
+        check("with only that person", all(r.mpeg4_file_id.startswith("M") and
+                                           int(r.mpeg4_file_id[1:]) % 2 for r in results))
+        check("gallery ids can never be taken for a new quote",
+              all(r.id.startswith("g") for r in results))
+        check("and the answer is personal", kw.get("is_personal") is True)
+
+        results, kw = await ask("#")
+        check("a page is at most what Telegram takes", len(results) == gallery.PAGE)
+        check("and says where the next one starts", kw.get("next_offset") == str(gallery.PAGE))
+        results, kw = await ask("#", offset=str(gallery.PAGE))
+        check("the second page has the rest", len(results) == 10 and not kw.get("next_offset"))
+
+        results, kw = await ask("#nobody")
+        check("no match is said on the button", not results and kw.get("button") is not None
+              and "nobody" in kw["button"].text)
+
+        results, kw = await ask("")
+        check("an empty query shows the archive", len(results) == gallery.PAGE)
+        check("and still offers to make a quote", kw.get("button") is not None)
+
+    asyncio.run(run())
+
+    # Sending a GIF from inline files it; picking from the gallery does not.
+    async def chosen():
+        ctx = types.SimpleNamespace(user_data={"inline_offered_gif": {"r1": "GIF1"}},
+                                    bot_data={}, bot=None)
+        user = types.SimpleNamespace(id=7, full_name="Me", username="me")
+
+        def update(result_id):
+            return types.SimpleNamespace(chosen_inline_result=types.SimpleNamespace(
+                result_id=result_id, from_user=user, query="my words"))
+
+        await bot.on_chosen_inline(update("r1"), ctx)
+        filed = ctx.user_data.get(gallery.KEY, [])
+        check("a GIF sent from inline is filed", [g["f"] for g in filed] == ["GIF1"])
+        check("under the person who sent it", filed and filed[0]["u"] == 7)
+        check("with their words", filed and filed[0]["q"] == "my words")
+        await bot.on_chosen_inline(update("g3"), ctx)
+        check("resending from the gallery files nothing new",
+              len(ctx.user_data.get(gallery.KEY, [])) == 1)
+
+    asyncio.run(chosen())
+
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    gif_cmd = source[source.index("async def cmd_quote_gif"):]
+    gif_cmd = gif_cmd[:gif_cmd.index("\ndef ")]
+    check("/gif files what it sends", "gallery.record(" in gif_cmd)
+
+
 def test_storage_channel() -> None:
     section("storage channel")
 
@@ -2430,6 +2561,7 @@ def main() -> int:
     test_quota()
     test_inline_results()
     test_persisted_state()
+    test_gif_archive()
     test_storage_channel()
     test_reactions()
     test_reaction_row()
