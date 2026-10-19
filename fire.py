@@ -77,7 +77,6 @@ HAND_SCALE = {NASTALIQ.name: 1.3, SCRIPT.name: 1.5}
 
 INK = 0.94                        # how black the writing is, out of 1
 LABEL = (255, 236, 205)           # the name and handle: warm white, like the fire
-DASH = "—"
 
 
 def available() -> bool:
@@ -445,17 +444,16 @@ def _name_label(who: str) -> Label | None:
     # A long name shrinks to fit rather than running off the frame.
     while True:
         font = face(who, size)
-        shown = prep(who, font) if getattr(font, "raqm", False) else (
-            DASH + " " + prep(who, font))
+        # Just the name: no dash before it.
+        shown = prep(who, font)
         width = font.getlength(shown)
         if width <= W - 160 or size <= 24:
             break
         size = int(size * 0.9)
     if getattr(font, "raqm", False):
-        # Nastaliq's own dash sits high above the line; the bot's font draws
-        # it, on the right, where a right-to-left line starts.
-        return Label([(font, (W / 2, 572), shown, "ms"),
-                      (fonts.load("bold", 48), (W / 2 + width / 2 + 18, 552), DASH, "lm")])
+        # On its baseline: Nastaliq's tall strokes would throw a centred
+        # anchor off.
+        return Label([(font, (W / 2, 572), shown, "ms")])
     return Label([(font, (W / 2, 600), shown, "mm")])
 
 
