@@ -564,3 +564,24 @@ def render(quote: str, who: str, handle: str) -> bytes:
         if writer.returncode != 0 or i == 0:
             raise RuntimeError(f"ffmpeg failed (exit {writer.returncode}, {i} frames)")
         return out_path.read_bytes()
+
+
+def placeholder() -> bytes:
+    """A second and a half of the clip before any writing: what is sent first in inline mode.
+
+    An inline answer has to go out in a few seconds and a render takes about
+    twelve, so inline sends this and the finished clip replaces it in place.
+    Small and quick to make, and made once - the caller keeps its file_id.
+    """
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "wait.mp4"
+        subprocess.run(
+            [_ffmpeg(), "-y", "-loglevel", "error", "-i", str(BASE), "-t", "1.5",
+             "-vf", "scale=640:-2", "-c:v", "libx264", "-preset", "veryfast",
+             "-crf", "28", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an",
+             str(out)],
+            check=True, timeout=60, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return out.read_bytes()

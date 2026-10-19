@@ -152,7 +152,7 @@ Full guide: /help""",
 ➎ <b>در چتی که عضوش نیستم</b>
 لازم نیست اضافه‌ام کنی. در همان چت بنویس:
 <code>@BOT متن مورد نظر</code>
-منویی باز می‌شود و انتخاب می‌کنی. چون تلگرام در این حالت به من نمی‌گوید روی چه پیامی ریپلای کرده‌ای، متن را باید خودت بنویسی یا پیست کنی. کارت به نام خودت ساخته می‌شود.
+منویی باز می‌شود و انتخاب می‌کنی. برای آتیش: <code>@BOT 🔥 متن</code> چون تلگرام در این حالت به من نمی‌گوید روی چه پیامی ریپلای کرده‌ای، متن را باید خودت بنویسی یا پیست کنی. کارت به نام خودت ساخته می‌شود.
 
 ➏ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/quote</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
@@ -232,7 +232,7 @@ Add me to the group. If I answer "reply to a message" even though you did, Teleg
 ➎ <b>In a chat I'm not in</b>
 No need to add me. Type this in that chat:
 <code>@BOT your text</code>
-A menu opens and you pick one. Telegram never tells me what you replied to in this mode, so the text has to be typed or pasted, and the card is credited to you.
+A menu opens and you pick one. In fire: <code>@BOT 🔥 text</code> Telegram never tells me what you replied to in this mode, so the text has to be typed or pasted, and the card is credited to you.
 
 ➏ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/quote</code>. I read the original sender's name and photo from the forward.
@@ -632,6 +632,15 @@ This cannot be undone. Are you sure?""",
         "en": "OK, nothing was deleted.",
     },
     "btn_forget_yes": {"fa": "🗑 بله، پاک کن", "en": "🗑 Yes, delete"},
+    "inline_fire_title": {"fa": "🔥 آتیشش کن", "en": "🔥 Write it in fire"},
+    "inline_fire_caption": {"fa": "🔥 داره با آتیش نوشته می‌شه…", "en": "🔥 Being written in fire…"},
+    "btn_fire_wait": {"fa": "🔥 در حال نوشتن…", "en": "🔥 Writing…"},
+    "fire_wait_alert": {"fa": "چند ثانیه صبر کن، داره می‌سوزه 🔥", "en": "A few seconds - it's burning 🔥"},
+    "btn_fire_again": {"fa": "🔥 تو هم آتیشش کن", "en": "🔥 Make your own"},
+    "inline_fire_hint": {"fa": "بعد از 🔥 متنت رو بنویس", "en": "Type your text after 🔥"},
+    "inline_fire_long": {"fa": "متن زیادی بلنده؛ حداکثر {max} حرف 🔥", "en": "Too long: {max} characters at most 🔥"},
+    "inline_fire_busy": {"fa": "الان سرم شلوغه، یه دقیقه دیگه 🔥", "en": "Busy right now, try in a minute 🔥"},
+    "fire_one_at_a_time": {"fa": "اول بذار قبلی تموم شه 🔥", "en": "Let the last one finish first 🔥"},
     "fire_too_long": {
         "fa": "این متن برای آتیش زدن زیادی بلنده 🔥 روی کاغذ حداکثر {max} حرف جا می‌شه. برای متن بلند /gif رو امتحان کن.",
         "en": "That's too long to write in fire 🔥 The page holds {max} characters at most. Try /gif for longer text.",

@@ -18,6 +18,8 @@ import time
 import uuid
 
 from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     InlineQueryResultCachedMpeg4Gif,
     InlineQueryResultCachedPhoto,
     InlineQueryResultCachedSticker,
@@ -29,6 +31,7 @@ from telegram.ext import ContextTypes
 
 import animate
 import authors
+import fire
 import gallery
 import i18n
 import render
@@ -156,9 +159,10 @@ def _remember(context, key: str, ids: tuple) -> None:
 
 def forget_user(bot_data: dict, user_id: int) -> None:
     """Drop everything this person typed in inline mode."""
-    cache = bot_data.get("inline_cache") or {}
-    for key in [k for k in cache if k.startswith(f"{user_id}:")]:
-        del cache[key]
+    for name in ("inline_cache", "fire_inline"):
+        cache = bot_data.get(name) or {}
+        for key in [k for k in cache if k.startswith(f"{user_id}:")]:
+            del cache[key]
 
 
 async def _discard(messages) -> None:
@@ -293,6 +297,120 @@ async def answer_gallery(query, context, term: str, lang: str,
                        button=button)
 
 
+# ------------------------------------------------------------------ fire
+# "@bot 🔥 text" or "@bot /fire text": the text written in fire. A render takes
+# about twelve seconds and an inline answer has a few, so what is offered is a
+# placeholder clip with a button on it. Choosing it sends the placeholder; the
+# button is what makes Telegram hand back the sent message's id, and bot.py
+# renders and swaps the finished clip into that message in place.
+FIRE_PREFIX_RE = re.compile(r"^(?:(?:\U0001F525️?)+|/fire(?:@[A-Za-z0-9_]+)?)(?:\s+|$)",
+                            re.IGNORECASE)
+FIRE_RESULT = "fire:"            # result ids of placeholders start with this
+FIRE_CACHE_LIMIT = 100
+
+
+def fire_text(query_text: str) -> str | None:
+    """What to write in fire, if this query asks for it; None if it does not."""
+    raw = (query_text or "").strip()
+    match = FIRE_PREFIX_RE.match(raw)
+    return None if match is None else raw[match.end():].strip()
+
+
+def fire_key(user_id: int, text: str) -> str:
+    return f"{user_id}:{fire.clean(text)}"
+
+
+def fire_cached(bot_data: dict, key: str) -> str | None:
+    hit = (bot_data.get("fire_inline") or {}).get(key)
+    if isinstance(hit, dict) and 0 <= time.time() - hit.get("at", 0) < CACHE_TTL:
+        return hit["id"]
+    return None
+
+
+def fire_remember(bot_data: dict, key: str, file_id: str) -> None:
+    cache = bot_data.setdefault("fire_inline", {})
+    now = time.time()
+    for stale in [k for k, v in cache.items() if not 0 <= now - v.get("at", 0) < CACHE_TTL]:
+        del cache[stale]
+    cache[key] = {"id": file_id, "at": now}
+    while len(cache) > FIRE_CACHE_LIMIT:
+        cache.pop(next(iter(cache)))
+
+
+def fire_again_markup(lang: str) -> InlineKeyboardMarkup:
+    """Under a finished clip: the way to make one, straight from the chat."""
+    return InlineKeyboardMarkup([[InlineKeyboardButton(
+        i18n.t("btn_fire_again", lang), switch_inline_query_current_chat="🔥 ")]])
+
+
+async def _fire_placeholder(context, store, user_id: int) -> str:
+    """The waiting clip's file_id, uploaded once and kept until the clip changes."""
+    stat = fire.BASE.stat()
+    stamp = f"{stat.st_size}:{int(stat.st_mtime)}"
+    kept = context.bot_data.get("fire_placeholder") or {}
+    if kept.get("stamp") == stamp and kept.get("id"):
+        return kept["id"]
+    data = await asyncio.to_thread(fire.placeholder)
+    message = await context.bot.send_animation(
+        store or user_id, data, filename="fire.mp4", disable_notification=True)
+    if not store:
+        _later(context, _discard([message]))
+    file_id = (message.animation or message.document).file_id
+    context.bot_data["fire_placeholder"] = {"id": file_id, "stamp": stamp}
+    return file_id
+
+
+async def answer_fire(query, context, text: str, lang: str, store) -> None:
+    """Offer the text in fire: finished if it was made before, else the placeholder."""
+    def refuse(key: str, **fields):
+        return query.answer([], cache_time=1, is_personal=True,
+                            button=InlineQueryResultsButton(
+                                text=i18n.t(key, lang).format(**fields),
+                                start_parameter="inline"))
+
+    if not fire.available():
+        await refuse("fire_unavailable")
+        return
+    quote = fire.clean(text)
+    if not quote:
+        await refuse("inline_fire_hint")
+        return
+    if len(quote) > fire.MAX_CHARS:
+        await refuse("inline_fire_long", max=fire.MAX_CHARS)
+        return
+
+    user_id = query.from_user.id
+    done = fire_cached(context.bot_data, fire_key(user_id, quote))
+    if done:
+        result = InlineQueryResultCachedMpeg4Gif(
+            id=f"fd{uuid.uuid4().hex[:16]}", mpeg4_file_id=done,
+            title=i18n.t("inline_fire_title", lang), reply_markup=fire_again_markup(lang))
+        # Filed in their archive when sent, like any other inline GIF.
+        gifs = context.user_data.setdefault("inline_offered_gif", {})
+        gifs[result.id] = done
+        while len(gifs) > OFFERED_LIMIT:
+            gifs.pop(next(iter(gifs)))
+        await query.answer([result], cache_time=5, is_personal=True)
+        return
+
+    if throttle.FIRE.full:
+        await refuse("inline_fire_busy")
+        return
+    try:
+        waiting = await _fire_placeholder(context, store, user_id)
+    except TelegramError as exc:
+        log.info("could not put up the fire placeholder: %s", exc)
+        await refuse("inline_need_start")
+        return
+    result = InlineQueryResultCachedMpeg4Gif(
+        id=f"{FIRE_RESULT}{uuid.uuid4().hex[:16]}", mpeg4_file_id=waiting,
+        title=i18n.t("inline_fire_title", lang),
+        caption=i18n.t("inline_fire_caption", lang),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+            i18n.t("btn_fire_wait", lang), callback_data="fire:wait")]]))
+    await query.answer([result], cache_time=0, is_personal=True)
+
+
 def build_results(lang: str, photo_id: str, sticker_id: str,
                   animation_id: str | None) -> list:
     """What the user sees in the inline list, in the order they see it.
@@ -332,6 +450,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         arrived = asyncio.get_running_loop().time()
         lang = i18n.resolve(update, context.user_data)
         raw = query.query.strip()
+        burning = fire_text(raw)
 
         raw = LEADING_COMMAND_RE.sub("", raw).strip()
         if raw.startswith(GALLERY_PREFIX):
@@ -342,7 +461,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
             # quote still on the button above them.
             await answer_gallery(query, context, "", lang, hint="inline_empty")
             return
-        if not raw or COMMAND_ONLY_RE.match(raw):
+        if burning is None and (not raw or COMMAND_ONLY_RE.match(raw)):
             # Empty query, or someone typing "@bot /quote" expecting the reply flow.
             hint = "inline_command" if raw else "inline_empty"
             await query.answer(
@@ -363,6 +482,11 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
                     ),
                 )
                 return
+
+        if burning is not None:
+            await answer_fire(query, context, burning, lang,
+                              storage_chat or context.bot_data.get("storage_chat"))
+            return
 
         # The quote is always the sender's own words, under their own name.
         text = raw[:MAX_INLINE_CHARS]

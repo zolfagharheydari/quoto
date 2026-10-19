@@ -2020,6 +2020,140 @@ def test_fire() -> None:
     check("small enough to send as a GIF", 200_000 < len(data) < 10_000_000, str(len(data)))
 
 
+def test_inline_fire() -> None:
+    section("fire in inline mode")
+    import fire
+    import gallery
+    import throttle
+
+    for typed, expected in (("🔥 سلام", "سلام"), ("🔥️ hi", "hi"), ("/fire hi", "hi"),
+                            ("/fire@getquoto_bot hi", "hi"), ("🔥", ""), ("سلام 🔥", None),
+                            ("/fireman x", None), ("hi", None)):
+        check(f"inline {typed!r} -> {expected!r}", inline.fire_text(typed) == expected)
+
+    class Sent:
+        def __init__(self, file_id):
+            self.animation = types.SimpleNamespace(file_id=file_id)
+            self.document = None
+            self.deleted = False
+
+        async def delete(self):
+            self.deleted = True
+
+    class FireBot:
+        username = "getquoto_bot"
+
+        def __init__(self):
+            self.uploads, self.edits, self.captions = [], [], []
+
+        async def send_animation(self, chat, data, **kw):
+            self.uploads.append(chat)
+            return Sent(f"FILE{len(self.uploads)}")
+
+        async def edit_message_media(self, inline_message_id, media, reply_markup=None):
+            self.edits.append((inline_message_id, media.media, reply_markup))
+
+        async def edit_message_caption(self, inline_message_id, caption, reply_markup=None):
+            self.captions.append(caption)
+
+    class Query:
+        def __init__(self, uid=7):
+            self.from_user = types.SimpleNamespace(id=uid)
+            self.answers = []
+
+        async def answer(self, results, **kw):
+            self.answers.append((results, kw))
+
+    def ctx_for(b, store=None):
+        app = types.SimpleNamespace(create_task=lambda coro: asyncio.ensure_future(coro))
+        return types.SimpleNamespace(bot=b, bot_data=store if store is not None else {},
+                                     user_data={}, application=app)
+
+    if not fire.available():
+        print("  (assets/fire missing - inline fire not tested)")
+        return
+
+    async def offer(text, store=None, b=None):
+        b = b or FireBot()
+        q = Query()
+        c = ctx_for(b, store)
+        await inline.answer_fire(q, c, text, "fa", -100555)
+        return q, c, b
+
+    q, c, b = asyncio.run(offer("سلام دنیا"))
+    results = q.answers[0][0]
+    check("an uncached text gets the placeholder",
+          len(results) == 1 and results[0].id.startswith(inline.FIRE_RESULT))
+    check("with a button, so the sent message can be edited later",
+          results[0].reply_markup is not None)
+    check("the placeholder is uploaded once to the store", b.uploads == [-100555])
+    q2, _, b2 = asyncio.run(offer("یه چیز دیگه", store=c.bot_data))
+    check("and reused after that", b2.uploads == [])
+
+    q, _, _ = asyncio.run(offer("x" * (fire.MAX_CHARS + 1)))
+    check("too long is refused in the list itself",
+          q.answers[0][0] == [] and q.answers[0][1].get("button") is not None)
+    q, _, _ = asyncio.run(offer(""))
+    check("nothing after the 🔥 gets a hint", q.answers[0][0] == [])
+
+    store = {}
+    inline.fire_remember(store, inline.fire_key(7, "سلام دنیا"), "DONE")
+    q, c, b = asyncio.run(offer("سلام دنیا", store=store))
+    results = q.answers[0][0]
+    check("a text made before is offered finished",
+          len(results) == 1 and results[0].mpeg4_file_id == "DONE" and not b.uploads)
+    check("and filed in their archive when sent",
+          c.user_data["inline_offered_gif"].get(results[0].id) == "DONE")
+
+    # Sent: rendered, uploaded, and swapped into the message that went out.
+    real_render = fire.render
+    fire.render = lambda quote, who, handle: b"MP4"
+    try:
+        b = FireBot()
+        c = ctx_for(b)
+        chosen = types.SimpleNamespace(
+            result_id=inline.FIRE_RESULT + "abc", inline_message_id="IMID", query="🔥 سلام دنیا",
+            from_user=types.SimpleNamespace(id=7, full_name="SAli", username="sali"))
+        bot.STORAGE_CHAT, saved_store = -100555, bot.STORAGE_CHAT
+        try:
+            asyncio.run(bot._fire_inline(c, chosen, "fa"))
+        finally:
+            bot.STORAGE_CHAT = saved_store
+        check("the finished clip replaces the placeholder",
+              b.edits and b.edits[0][0] == "IMID" and b.edits[0][1] == "FILE1")
+        check("with the button to make your own", b.edits[0][2] is not None)
+        check("it is remembered for the same text",
+              inline.fire_cached(c.bot_data, inline.fire_key(7, "سلام دنیا")) == "FILE1")
+        check("and filed in the maker's archive",
+              [g["f"] for g in c.user_data.get(gallery.KEY, [])] == ["FILE1"])
+        check("and nobody is left marked as rendering", not bot._fire_inline_running)
+
+        b = FireBot()
+        asyncio.run(bot._fire_inline(ctx_for(b), types.SimpleNamespace(
+            result_id=inline.FIRE_RESULT + "x", inline_message_id=None, query="🔥 hi",
+            from_user=chosen.from_user), "fa"))
+        check("without a message to edit, nothing is rendered", not b.uploads and not b.edits)
+
+        bot._fire_inline_running.add(7)
+        b = FireBot()
+        asyncio.run(bot._fire_inline(ctx_for(b), chosen, "fa"))
+        bot._fire_inline_running.discard(7)
+        check("one at a time per person", not b.uploads and b.captions)
+    finally:
+        fire.render = real_render
+
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    chosen_body = source[source.index("async def on_chosen_inline"):]
+    check("a fire result is handed off before anything else is filed",
+          chosen_body.index("FIRE_RESULT") < chosen_body.index("gif_for"))
+    store = {"fire_inline": {"7:a": {"id": "x", "at": time.time()},
+                             "8:b": {"id": "y", "at": time.time()}}}
+    inline.forget_user(store, 7)
+    check("deleting your data removes your fire clips too", set(store["fire_inline"]) == {"8:b"})
+    for lang in i18n.SUPPORTED:
+        check(f"the {lang} help says how", "🔥" in i18n.t("help", lang))
+
+
 def test_hardening() -> None:
     section("security fixes")
     import throttle
@@ -2878,6 +3012,7 @@ def main() -> int:
     test_pack_names()
     test_fonts()
     test_fire()
+    test_inline_fire()
     test_hardening()
     test_no_double_shaping()
     test_fallback_fonts()

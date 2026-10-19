@@ -20,6 +20,7 @@ from telegram import (
     BotCommandScopeAllPrivateChats,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaAnimation,
     Message,
     Update,
 )
@@ -1368,6 +1369,75 @@ async def post_init(app: Application) -> None:
     await publish("en", language_code="en")
 
 
+# Whose inline fire clip is being made right now: one at a time each, so a
+# person tapping the result over and over does not fill the queue alone.
+_fire_inline_running: set[int] = set()
+
+
+async def _fire_inline(context: ContextTypes.DEFAULT_TYPE, chosen, lang: str) -> None:
+    """Render the text of a sent inline fire placeholder and swap the clip in.
+
+    The placeholder carries a button for exactly this: without a keyboard,
+    Telegram does not say which message the result became, and there would be
+    nothing to edit.
+    """
+    message_id = chosen.inline_message_id
+    user = chosen.from_user
+    if message_id is None:
+        log.info("an inline fire result arrived without a message to edit")
+        return
+
+    async def say(key: str) -> None:
+        try:
+            await context.bot.edit_message_caption(
+                inline_message_id=message_id, caption=i18n.t(key, lang), reply_markup=None)
+        except TelegramError as exc:
+            log.info("could not update an inline fire message: %s", exc)
+
+    if user.id in _fire_inline_running:
+        await say("fire_one_at_a_time")
+        return
+    quote = fire.clean(inline.fire_text(chosen.query) or "")
+    if not quote or len(quote) > fire.MAX_CHARS or not fire.available():
+        await say("failed")
+        return
+
+    author = authors.Author(user.full_name, user.username or "", user.id, "user", str(user.id))
+    _fire_inline_running.add(user.id)
+    try:
+        data = await throttle.FIRE.run(
+            fire.render, quote, author.name, f"@{context.bot.username}")
+        store = STORAGE_CHAT or context.bot_data.get("storage_chat")
+        upload = await context.bot.send_animation(
+            store or user.id, io.BytesIO(data), filename="fire.mp4",
+            disable_notification=True)
+        made = upload.animation or upload.document
+        if not store:
+            try:
+                await upload.delete()
+            except TelegramError:
+                pass
+        await context.bot.edit_message_media(
+            inline_message_id=message_id,
+            media=InputMediaAnimation(made.file_id),
+            reply_markup=inline.fire_again_markup(lang))
+        inline.fire_remember(context.bot_data, inline.fire_key(user.id, quote), made.file_id)
+        gallery.record(context.user_data, made.file_id, author, quote)
+        admin.note(context, "fire")
+    except throttle.Busy:
+        await say("fire_busy")
+    except Exception:  # noqa: BLE001 - the message is already out; say so in it
+        log.exception("inline fire failed")
+        await say("failed")
+    finally:
+        _fire_inline_running.discard(user.id)
+
+
+async def on_fire_wait(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The button on a placeholder: nothing to do but say it is coming."""
+    await update.callback_query.answer(_t("fire_wait_alert", update, context))
+
+
 async def on_chosen_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """File an inline quote in its maker's pack, once they have actually sent it.
 
@@ -1381,6 +1451,12 @@ async def on_chosen_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """
     chosen = update.chosen_inline_result
     if chosen is None:
+        return
+    if chosen.result_id.startswith(inline.FIRE_RESULT):
+        # The placeholder went out; the clip is made now, off this handler,
+        # and put in its place when it is ready.
+        context.application.create_task(
+            _fire_inline(context, chosen, i18n.resolve(update, context.user_data)))
         return
     gif_id = inline.gif_for(context, chosen.result_id)
     if gif_id is not None:
@@ -1483,6 +1559,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["mygifs", "mygif", "gifs"], cmd_mygifs))
     app.add_handler(CommandHandler(["deletemydata", "forgetme"], cmd_deletemydata))
     app.add_handler(CallbackQueryHandler(on_forget, pattern=r"^forget:"))
+    app.add_handler(CallbackQueryHandler(on_fire_wait, pattern=r"^fire:wait$"))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CommandHandler(
