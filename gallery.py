@@ -23,9 +23,9 @@ _FOLD = str.maketrans({
     "ى": "ی",   # alef maksura -> Persian yeh
     "ك": "ک",   # Arabic kaf -> keheh
     "ة": "ه",   # teh marbuta -> heh
-    "ـ": None,       # tatweel
-    "‌": None,       # zero-width non-joiner
-    "‍": None,       # zero-width joiner
+    "\u0640": None,       # tatweel
+    "\u200c": None,       # zero-width non-joiner
+    "\u200d": None,       # zero-width joiner
 })
 
 

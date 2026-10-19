@@ -105,7 +105,7 @@ def _fade(color: tuple[int, int, int], alpha: float,
 
 def fallback_avatar(seed: str, letter: str, size: int = 640) -> Image.Image:
     """Colored gradient tile with an initial, for users with no profile photo."""
-    digest = hashlib.md5(seed.encode()).digest()
+    digest = hashlib.md5(seed.encode(), usedforsecurity=False).digest()  # a colour, not a secret
     base = AVATAR_PALETTE[digest[0] % len(AVATAR_PALETTE)]
     img = Image.new("RGB", (size, size), base)
     top = Image.new("RGB", (size, size), tuple(min(255, c + 55) for c in base))

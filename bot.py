@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import io
 import logging
 import logging.handlers
@@ -60,6 +61,7 @@ import reactions
 import render
 import screenshot
 import stickerpack
+import throttle
 
 load_dotenv()
 
@@ -67,12 +69,20 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 logging.basicConfig(format=LOG_FORMAT, level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Everything the bot writes - its state and its log - goes in one directory.
+# On the server that is /var/lib/quoto, kept apart from the code so the code
+# can be read-only to the bot: a process that can rewrite its own source, or
+# the pickle it loads at startup, turns any one bug into a permanent foothold.
+# Unset, it is the code's own directory, which is what a laptop wants.
+STATE_DIR = Path(os.getenv("STATE_DIR", "").strip() or Path(__file__).parent)
+
 # The console window is gone the moment it is closed, and a failure that happens
 # once an hour is impossible to catch by watching it. Everything also goes to a
-# file next to the code, rotated so it cannot grow without bound.
+# file, rotated so it cannot grow without bound.
+LOG_FILE = STATE_DIR / "quotebot.log"
+admin.LOG_FILE = LOG_FILE
 _log_file = logging.handlers.RotatingFileHandler(
-    Path(__file__).with_name("quotebot.log"),
-    maxBytes=2_000_000, backupCount=2, encoding="utf-8",
+    LOG_FILE, maxBytes=2_000_000, backupCount=2, encoding="utf-8",
 )
 _log_file.setFormatter(logging.Formatter(LOG_FORMAT))
 logging.getLogger().addHandler(_log_file)
@@ -81,7 +91,7 @@ log = logging.getLogger("quotebot")
 
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WATERMARK = os.getenv("WATERMARK", "").strip()
-STATE_FILE = os.getenv("STATE_FILE", "botdata.pkl").strip()
+STATE_FILE = str(STATE_DIR / (os.getenv("STATE_FILE", "").strip() or "botdata.pkl"))
 PROXY = os.getenv("PROXY", "").strip()
 _tz = os.getenv("TIMEZONE", "").strip()
 try:
@@ -393,7 +403,7 @@ async def _adopt_storage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         await context.bot.send_message(OWNER_ID, "\n".join([
             "✅ این کانال از این به بعد انبار فایل‌های حالت inline است:",
-            f"<b>{member.chat.title or member.chat.id}</b>",
+            f"<b>{html.escape(member.chat.title or str(member.chat.id))}</b>",
             f"<code>{member.chat.id}</code>",
             "",
             "دیگر لازم نیست کاری بکنی — همین الان فعال شد و بعد از ریستارت هم یادش می‌ماند.",
@@ -457,10 +467,18 @@ def _photo_file_id(message: Message | None) -> str | None:
         return None
     if message.photo:
         return message.photo[-1].file_id
+    # A picture sent as a file is not recompressed by Telegram, so it can be
+    # anything its sender made it: only the formats a card can use, and only
+    # at the size of a photo. The type is the sender's word for it, so the
+    # decoder checks again, but there is no reason to take it on at all.
     doc = message.document
-    if doc is not None and (doc.mime_type or "").startswith("image/"):
+    if (doc is not None and doc.mime_type in AVATAR_DOC_TYPES
+            and (doc.file_size or 0) <= authors.MAX_AVATAR_BYTES):
         return doc.file_id
     return None
+
+
+AVATAR_DOC_TYPES = ("image/jpeg", "image/png", "image/webp")
 
 
 async def cmd_avatar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -741,6 +759,20 @@ async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return target, text
 
 
+# The CPU-bound halves of the commands, each one job for the render gate.
+def _card_png(scene):
+    return render.to_png(scene.render())
+
+
+def _card_webp(scene) -> bytes:
+    return render.to_sticker_webp(scene.render()).getvalue()
+
+
+def _screenshot_files(*args):
+    image = screenshot.render(*args)
+    return screenshot.to_png(image), render.to_sticker_webp(image).getvalue()
+
+
 async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     prepared = await _prepare(update, context)
     if prepared is None:
@@ -750,10 +782,11 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
     try:
         scene = await _build_scene(update, context, target, text)
-        image = await asyncio.to_thread(scene.render)
-        buf = await asyncio.to_thread(render.to_png, image)
+        buf = await throttle.RENDER.run(_card_png, scene)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
         admin.note(context, "quote")
+    except throttle.Busy:
+        await message.reply_text(_t("busy", update, context))
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -793,12 +826,13 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await message.chat.send_action(ChatAction.CHOOSE_STICKER)
     try:
         scene = await _build_scene(update, context, target, text)
-        image = await asyncio.to_thread(scene.render)
-        buf = await asyncio.to_thread(render.to_sticker_webp, image)
-        webp = buf.getvalue()
+        webp = await throttle.RENDER.run(_card_webp, scene)
         await message.reply_sticker(io.BytesIO(webp),
                                     reply_to_message_id=target.message_id)
         admin.note(context, "sticker")
+    except throttle.Busy:
+        await message.reply_text(_t("busy", update, context))
+        return
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -857,7 +891,7 @@ async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if message.chat.type not in stickerpack.GROUP_TYPES:
         await message.reply_text(_t("pack_groups_only", update, context))
         return
-    link = await stickerpack.link_for(context.bot, message.chat)
+    link = await stickerpack.link_for_adopting(context.bot, message.chat, OWNER_ID)
     if link is None:
         await message.reply_text(_t("pack_none", update, context))
         return
@@ -945,6 +979,54 @@ async def cmd_mygifs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+async def cmd_deletemydata(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Offer to forget what the bot keeps about this person. Asks first."""
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    if message.chat.type != "private":
+        await message.reply_text(i18n.t("avatar_private_only", lang))
+        return
+    await message.reply_html(
+        i18n.t("forget_ask", lang),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton(i18n.t("btn_delpack_no", lang), callback_data="forget:no"),
+            InlineKeyboardButton(i18n.t("btn_forget_yes", lang), callback_data="forget:yes"),
+        ]]),
+    )
+
+
+def forget_user(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+    """Everything kept about this person, gone - except what keeps the rules.
+
+    Kept on purpose: how many avatar uploads they have used (forgetting it
+    would hand out a fresh allowance to anyone who asked), and whether the
+    owner blocked or excused them. Those are numbers and ids, and they are
+    what the owner's decisions rest on.
+    """
+    store = context.bot_data
+    file_id = (store.get("avatars") or {}).pop(user_id, None)
+    if file_id:
+        authors.forget(f"custom:{file_id}")
+    authors.forget_prefix(f"user:{user_id}:")
+    (store.get("avatar_source") or {}).pop(user_id, None)
+    (store.get("users") or {}).pop(user_id, None)
+    (store.get("channel_members") or {}).pop(user_id, None)
+    inline.forget_user(store, user_id)
+    context.application.drop_user_data(user_id)
+
+
+async def on_forget(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    lang = i18n.resolve(update, context.user_data)
+    await query.answer()
+    if query.data != "forget:yes" or query.message.chat.type != "private":
+        await query.edit_message_text(i18n.t("forget_cancelled", lang))
+        return
+    forget_user(context, update.effective_user.id)
+    log.info("forgot a user at their request")
+    await query.edit_message_text(i18n.t("forget_done", lang))
+
+
 async def cmd_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Offer to delete a whole pack: the group's here, or your own in private.
 
@@ -1026,7 +1108,7 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await message.chat.send_action(ChatAction.UPLOAD_VIDEO)
     try:
         scene = await _build_scene(update, context, target, text)
-        buf, ext = await asyncio.to_thread(animate.to_animation, scene)
+        buf, ext = await throttle.RENDER.run(animate.to_animation, scene)
         sent = await message.reply_animation(
             buf, filename=f"quote.{ext}", reply_to_message_id=target.message_id
         )
@@ -1036,19 +1118,13 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if made is not None:
             gallery.record(context.user_data, made.file_id,
                            authors.resolve(target), text)
+    except throttle.Busy:
+        await message.reply_text(_t("busy", update, context))
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
         log.exception("quote gif failed")
         await message.reply_text(_t("failed", update, context))
-
-
-# One clip at a time: a render takes both of the server's cores for a few
-# seconds, and two at once only make both people wait twice as long. Past a
-# short queue, people are told to come back instead of waiting in silence.
-_fire_slot = asyncio.Semaphore(1)
-_fire_waiting = 0
-FIRE_QUEUE = 4
 
 
 async def _keep_showing(chat, action: str, done: asyncio.Event) -> None:
@@ -1065,8 +1141,11 @@ async def _keep_showing(chat, action: str, done: asyncio.Event) -> None:
 
 
 async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """The quote written in fire, on the Gunna clip."""
-    global _fire_waiting
+    """The quote written in fire, on the Gunna clip.
+
+    One clip at a time (throttle.FIRE): a render takes both of the server's
+    cores for a few seconds. Past a short queue, people are told to come back.
+    """
     prepared = await _prepare(update, context)
     if prepared is None:
         return
@@ -1083,7 +1162,7 @@ async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text(
             _t("fire_too_long", update, context).format(max=fire.MAX_CHARS))
         return
-    if _fire_waiting >= FIRE_QUEUE:
+    if throttle.FIRE.full:
         await message.reply_text(_t("fire_busy", update, context))
         return
 
@@ -1091,11 +1170,9 @@ async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     done = asyncio.Event()
     showing = asyncio.create_task(
         _keep_showing(message.chat, ChatAction.UPLOAD_VIDEO, done))
-    _fire_waiting += 1
     try:
-        async with _fire_slot:
-            data = await asyncio.to_thread(
-                fire.render, quote, author.name, f"@{context.bot.username}")
+        data = await throttle.FIRE.run(
+            fire.render, quote, author.name, f"@{context.bot.username}")
         sent = await message.reply_animation(
             io.BytesIO(data), filename="fire.mp4",
             reply_to_message_id=target.message_id)
@@ -1103,13 +1180,14 @@ async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         made = sent.animation or sent.document
         if made is not None:
             gallery.record(context.user_data, made.file_id, author, text)
+    except throttle.Busy:
+        await message.reply_text(_t("fire_busy", update, context))
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
         log.exception("fire render failed")
         await message.reply_text(_t("failed", update, context))
     finally:
-        _fire_waiting -= 1
         done.set()
         await showing
 
@@ -1202,14 +1280,15 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         badge, badge_is_admin = marked if marked else (None, False)
         seen = reactions.for_message(
             context.bot_data, message.chat_id, target.message_id)
-        image = await asyncio.to_thread(
-            screenshot.render, avatar, author.name, text,
+        buf, webp = await throttle.RENDER.run(
+            _screenshot_files, avatar, author.name, text,
             _clock(target.date), badge, author.seed, seen, badge_is_admin,
         )
-        buf = await asyncio.to_thread(screenshot.to_png, image)
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
         admin.note(context, "screenshot")
-        webp = (await asyncio.to_thread(render.to_sticker_webp, image)).getvalue()
+    except throttle.Busy:
+        await message.reply_text(_t("busy", update, context))
+        return
     except TelegramError:
         raise
     except Exception:  # noqa: BLE001
@@ -1224,8 +1303,14 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     where = "unknown"
     if isinstance(update, Update):
         message = update.effective_message
+        # What someone wrote is theirs and does not belong in a log file; how
+        # long it was and whether it was a command is enough to reproduce.
+        text = (message.text or message.caption or "") if message else ""
         where = (f"chat {update.effective_chat.id if update.effective_chat else '?'}"
-                 f", text {message.text!r}" if message else "no message")
+                 f", {len(text)} chars, command {text.split(maxsplit=1)[0][:32]!r}"
+                 if text.startswith("/") else
+                 f"chat {update.effective_chat.id if update.effective_chat else '?'}"
+                 f", {len(text)} chars" if message else "no message")
     log.error("handler error (%s)", where, exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
         try:
@@ -1339,6 +1424,38 @@ async def _inline_gate(context: ContextTypes.DEFAULT_TYPE, user) -> str | None:
     return None
 
 
+# "اینو استیکرش کن لطفا!" should work as readily as "استیکرش کن".
+#
+# Whitespace is matched in one run at the end, never in quantifiers side by
+# side. The first version had three \s* in a row in its tail, and a reply of
+# "quote", a few thousand spaces and an "x" made re backtrack through every
+# way of sharing the spaces out between them: a minute per pattern, five
+# patterns, all of it on the event loop - one message stopped the bot for
+# everybody. _ShortText caps what reaches these at all, as a second wall.
+_LEAD = r"^\s*(?:این\s*(?:رو|و)?\s*)?"
+_TAIL = r"(?:\s*(?:لطفا|لطفاً|please))?[\s.!?؟،]*$"
+_DO = r"\s*(?:کن|کنید)"
+TRIGGERS = {
+    name: re.compile(_LEAD + body + _TAIL, re.IGNORECASE)
+    for name, body in (
+        ("quote", r"(?:کوت|نقل\s*قول|quote)(?:\s*ش)?(?:" + _DO + r")?"),
+        ("sticker", r"(?:استیکر|sticker)(?:\s*ش)?" + _DO),
+        ("gif", r"(?:گیف|gif)(?:\s*ش)?" + _DO),
+        ("shot", r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + _DO),
+        # «آتیشش کن», and the ways it gets typed: اتیشش, آتشش, آتیش بزن.
+        ("fire", r"(?:آتیش|اتیش|آتش|اتش|fire)(?:\s*ش)?\s*(?:کن|کنید|بزن|بزنید)"),
+    )
+}
+TRIGGER_MAX_CHARS = 40     # «اینو اسکرین شاتش کنید لطفاً!» is 29
+
+
+class _ShortText(filters.MessageFilter):
+    """Only messages short enough to be one of the phrases above."""
+
+    def filter(self, message: Message) -> bool:
+        return bool(message.text) and len(message.text) <= TRIGGER_MAX_CHARS
+
+
 def register(app: Application) -> None:
     """Attach every handler to the application.
 
@@ -1364,6 +1481,8 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["unpack", "unpak", "delsticker"], cmd_unpack))
     app.add_handler(CommandHandler(["delpack", "deletepack", "dellpack"], cmd_delpack))
     app.add_handler(CommandHandler(["mygifs", "mygif", "gifs"], cmd_mygifs))
+    app.add_handler(CommandHandler(["deletemydata", "forgetme"], cmd_deletemydata))
+    app.add_handler(CallbackQueryHandler(on_forget, pattern=r"^forget:"))
     app.add_handler(CommandHandler(["avatar", "avatr", "avater"], cmd_avatar))
     app.add_handler(CommandHandler(["settings", "setting"], cmd_settings))
     app.add_handler(CommandHandler(
@@ -1404,22 +1523,11 @@ def register(app: Application) -> None:
         cmd_screenshot))
     # Saying it in plain Persian instead of typing a command. These are ordinary
     # messages, so in a group they only reach the bot once it is an admin.
-    # "اینو استیکرش کن لطفا!" should work as readily as "استیکرش کن".
-    lead = r"^\s*(?:این\s*(?:رو|و)?\s*)?"
-    tail = r"\s*(?:لطفا|لطفاً|please)?\s*[.!?؟،]*\s*$"
-    do = r"\s*(?:کن|کنید)"
-    triggers = [
-        (lead + r"(?:کوت|نقل\s*قول|quote)(?:\s*ش)?(?:" + do + r")?" + tail, cmd_quote),
-        (lead + r"(?:استیکر|sticker)(?:\s*ش)?" + do + tail, cmd_quote_sticker),
-        (lead + r"(?:گیف|gif)(?:\s*ش)?" + do + tail, cmd_quote_gif),
-        (lead + r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + do + tail, cmd_screenshot),
-        # «آتیشش کن», and the ways it gets typed: اتیشش, آتشش, آتیش بزن.
-        (lead + r"(?:آتیش|اتیش|آتش|اتش|fire)(?:\s*ش)?\s*(?:کن|کنید|بزن|بزنید)" + tail,
-         cmd_fire),
-    ]
-    for pattern, handler in triggers:
+    handlers = {"quote": cmd_quote, "sticker": cmd_quote_sticker, "gif": cmd_quote_gif,
+                "shot": cmd_screenshot, "fire": cmd_fire}
+    for name, pattern in TRIGGERS.items():
         app.add_handler(MessageHandler(
-            filters.REPLY & filters.Regex(re.compile(pattern, re.IGNORECASE)), handler
+            filters.REPLY & _ShortText() & filters.Regex(pattern), handlers[name]
         ))
     # A group of its own: the owner's panel already takes private text in group
     # 0, and only the first matching handler in a group runs, so sharing one

@@ -1,3 +1,8 @@
+# What the bot depends on directly, every version exact. The server installs
+# from requirements.lock instead: the same set plus everything they pull in,
+# each with the hashes PyPI published, so what is installed is what was
+# reviewed and nothing else (pip install --require-hashes -r requirements.lock).
+# After changing anything here, regenerate it - see deploy/README.md.
 python-telegram-bot[rate-limiter,socks]==21.9
 # Pillow and python-bidi are the two that carry compiled code. These are the
 # oldest versions with wheels built for Python 3.14, which is what Ubuntu 26.04
@@ -8,8 +13,10 @@ python-bidi==0.6.11
 arabic-reshaper==3.0.0
 imageio-ffmpeg==0.5.1
 # /fire: warping text onto the moving page.
-numpy>=2.2
-opencv-python-headless>=4.11
-python-dotenv==1.0.1
+numpy==2.5.4
+opencv-python-headless==5.0.0.93
+# 1.2.2 fixes PYSEC-2026-2270 (set_key following symlinks). The bot only ever
+# reads .env, so it was never reachable here, but there is no reason to keep it.
+python-dotenv==1.2.2
 tzdata==2024.2
-fonttools>=4.50   # reads a font's character table, to pick a fallback that has the glyph
+fonttools==4.67.0   # reads a font's character table, to pick a fallback that has the glyph

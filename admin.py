@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -272,7 +273,8 @@ def _menu(context) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("✅ معاف از کانال", callback_data="adm:exempt")],
         [InlineKeyboardButton("🖼 سهمیه آواتار", callback_data="adm:quota"),
          InlineKeyboardButton("📄 لاگ", callback_data="adm:logs")],
-        [InlineKeyboardButton("🧹 پاک کردن صف", callback_data="adm:flush")],
+        [InlineKeyboardButton("🧹 پاک کردن صف", callback_data="adm:flush"),
+         InlineKeyboardButton("🗑 حذف یک پک", callback_data="adm:packdel")],
         [InlineKeyboardButton("▶️ روشن کردن" if paused else "⏸ خاموش کردن موقت",
                               callback_data="adm:pause")],
         [InlineKeyboardButton("✖️ بستن", callback_data="adm:close")],
@@ -421,8 +423,13 @@ def _exempt_text(context) -> tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardMarkup(keyboard))
 
 
+# Where the bot writes its log. bot.py sets it to the state directory at
+# startup; this default is where it lived before there was one.
+LOG_FILE = Path(__file__).with_name("quotebot.log")
+
+
 def _log_text() -> str:
-    path = Path(__file__).with_name("quotebot.log")
+    path = LOG_FILE
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as exc:
@@ -533,7 +540,7 @@ def make_panel(owner_id: int | None):
                 if await tell(context, uid, key, **fields):
                     reached += 1
                 if i % 25 == 0:
-                    await _show(query, "در حال خبر دادن به {} کاربر…_ON".format(reached, len(targets)),
+                    await _show(query, "خبر داده شد: {} از {}…".format(reached, len(targets)),
                                 _BACK)
                 await asyncio.sleep(BROADCAST_PAUSE)
 
@@ -541,8 +548,20 @@ def make_panel(owner_id: int | None):
             await _show(query, said + chr(10) +
                         "به {} نفر خبر داده شد.".format(reached) + chr(10) + chr(10) + text,
                         markup)
+        elif action == "packgo":
+            name = context.user_data.pop("pack_to_delete", None)
+            if not name:
+                await _show(query, "چیزی برای حذف نمانده.", _menu(context))
+                return
+            try:
+                await context.bot.delete_sticker_set(name)
+                said = f"پک <code>{html.escape(name)}</code> حذف شد."
+                log.info("owner deleted the pack %s", name)
+            except TelegramError as exc:
+                said = f"حذف نشد: {html.escape(str(exc))}"
+            await _show(query, said, _menu(context))
         elif action in ("cast", "block", "unblock", "qreset", "qgive",
-                        "allow", "disallow"):
+                        "allow", "disallow", "packdel"):
             context.user_data["admin_await"] = action
             await _show(query, _PROMPTS[action], _BACK)
         elif action == "flush":
@@ -591,6 +610,23 @@ def make_panel(owner_id: int | None):
                      InlineKeyboardButton("✖️ بی‌خیال", callback_data="adm:home")],
                 ]),
             )
+            return
+
+        if waiting == "packdel":
+            context.user_data.pop("admin_await", None)
+            name = pack_from_text(message.text or "", context.bot.username)
+            if name is None:
+                await message.reply_text(
+                    "این لینک یا اسم، پکی از این ربات نیست. لینک t.me/addstickers/... را بفرست.")
+                return
+            context.user_data["pack_to_delete"] = name
+            await message.reply_html(
+                f"پک <code>{html.escape(name)}</code> برای همیشه حذف شود؟ "
+                f"از لیست استیکر همهٔ کسانی که اضافه‌اش کرده‌اند هم پاک می‌شود.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🗑 حذف کن", callback_data="adm:packgo"),
+                    InlineKeyboardButton("✖️ بی‌خیال", callback_data="adm:home"),
+                ]]))
             return
 
         said = (message.text or "").split()
@@ -693,6 +729,24 @@ _PROMPTS = {
     "qreset": ("<b>♻️ ریست سهمیهٔ یک نفر</b>" + chr(10) + chr(10) + "شناسهٔ عددی کاربر را بفرست تا مصرفش صفر شود."),
     "qgive": ("<b>➕ افزودن سهمیه به یک نفر</b>" + chr(10) + chr(10) + "شناسهٔ عددی کاربر را بفرست تا یک سهمیهٔ تازه بگیرد. برای بیشتر، تعداد را بعد از شناسه بنویس، مثل <code>123456789 3</code>"),
 }
+
+_PROMPTS["packdel"] = (
+    "<b>🗑 حذف یک پک</b>" + chr(10) + chr(10)
+    + "لینک پک (t.me/addstickers/...) یا اسمش را بفرست. فقط پک‌هایی که همین ربات "
+    "ساخته حذف می‌شوند. برای وقتی است که پکی گزارش شده یا محتوای نامناسب دارد: "
+    "همهٔ پک‌ها به نام اکانت تو ساخته شده‌اند.")
+
+_PACK_NAME = re.compile(r"(?:addstickers/)?([A-Za-z0-9_]{1,64})/?$")
+
+
+def pack_from_text(text: str, bot_username: str) -> str | None:
+    """The pack a link or name points at, if it is one this bot made."""
+    match = _PACK_NAME.search(text.strip())
+    if match is None:
+        return None
+    name = match.group(1)
+    return name if name.lower().endswith(f"_by_{bot_username}".lower()) else None
+
 
 _FLUSH_PROMPT = (
     "<b>🧹 پاک کردن صف</b>\n\n"

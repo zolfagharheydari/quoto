@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 import uuid
 
 from telegram import (
@@ -31,6 +32,7 @@ import authors
 import gallery
 import i18n
 import render
+import throttle
 
 log = logging.getLogger("quotebot.inline")
 
@@ -40,6 +42,13 @@ log = logging.getLogger("quotebot.inline")
 # channel full of half-sentences. This is long enough to mean a real stop.
 DEBOUNCE_SECONDS = 1.3
 MAX_INLINE_CHARS = 700
+
+# The debounce only stops one keystroke from being rendered twice; it does not
+# stop someone typing a new sentence every second and a half, each one a card,
+# a sticker and an ffmpeg run. Between two renders for the same person there
+# must be at least this long. A repeat of something already drawn is answered
+# from the cache and does not count.
+INLINE_COOLDOWN = 4.0
 
 # Telegram closes an inline query a few seconds after it opens it, and answering
 # a closed one fails with "query is too old". Nothing here waits on the
@@ -120,16 +129,36 @@ def cache_key(user_id: int, avatar: str | None, template: str, text: str) -> str
     return f"{user_id}:{avatar or ''}:{template}:{text}"
 
 
+# The cache key holds the words someone typed. They are kept only as long as
+# they are useful for answering a retype, not for as long as the bot runs.
+CACHE_TTL = 24 * 60 * 60
+
+
 def _cached(context, key: str):
-    return context.bot_data.get("inline_cache", {}).get(key)
+    hit = context.bot_data.get("inline_cache", {}).get(key)
+    # Entries from before they carried a time are treated as gone.
+    if isinstance(hit, dict) and 0 <= time.time() - hit.get("at", 0) < CACHE_TTL:
+        return hit["ids"]
+    return None
 
 
 def _remember(context, key: str, ids: tuple) -> None:
     cache = context.bot_data.setdefault("inline_cache", {})
-    cache[key] = ids
+    now = time.time()
+    for stale in [k for k, v in cache.items()
+                  if not isinstance(v, dict) or not 0 <= now - v.get("at", 0) < CACHE_TTL]:
+        del cache[stale]
+    cache[key] = {"ids": ids, "at": now}
     # Dictionaries keep insertion order, so the front of it is the oldest.
     while len(cache) > CACHE_LIMIT:
         cache.pop(next(iter(cache)))
+
+
+def forget_user(bot_data: dict, user_id: int) -> None:
+    """Drop everything this person typed in inline mode."""
+    cache = bot_data.get("inline_cache") or {}
+    for key in [k for k in cache if k.startswith(f"{user_id}:")]:
+        del cache[key]
 
 
 async def _discard(messages) -> None:
@@ -374,6 +403,17 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         if context.user_data.get("inline_seq") != query.id:
             return
 
+        now = time.time()
+        last = context.user_data.get("inline_render", 0.0)
+        if 0 <= now - last < INLINE_COOLDOWN or throttle.RENDER.full:
+            await query.answer(
+                [], cache_time=1, is_personal=True,
+                button=InlineQueryResultsButton(
+                    text=i18n.t("inline_wait", lang), start_parameter="inline"),
+            )
+            return
+        context.user_data["inline_render"] = now
+
         # .env wins. A channel the bot adopted by being made an admin of it is
         # a convenience for when nothing is configured; it must not quietly
         # replace a store that was chosen deliberately.
@@ -397,9 +437,11 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
                 context, store, query.from_user.id, scene))
             _remember_task(query.from_user.id, gif)
 
-            image = await asyncio.to_thread(scene.render)
-            png = await asyncio.to_thread(render.to_png, image)
-            webp = await asyncio.to_thread(render.to_sticker_webp, image)
+            try:
+                png, webp = await throttle.RENDER.run(_stills, scene)
+            except BaseException:
+                gif.cancel()
+                raise
             drawn = clock()
             try:
                 photo_id, sticker_id = await _upload(
@@ -453,6 +495,13 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
                 ),
             )
             return
+        except throttle.Busy:
+            await query.answer(
+                [], cache_time=1, is_personal=True,
+                button=InlineQueryResultsButton(
+                    text=i18n.t("inline_wait", lang), start_parameter="inline"),
+            )
+            return
         except Exception:  # noqa: BLE001 - one bad query must not kill the handler
             log.exception("inline render failed")
             await _answer(query, [])
@@ -467,9 +516,22 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
     return on_inline
 
 
+def _stills(scene):
+    """The card and the sticker, from one render: one job for the gate."""
+    image = scene.render()
+    return render.to_png(image), render.to_sticker_webp(image)
+
+
 async def _make_animation(context, storage_chat, user_id, scene):
-    """Render the animation and put it up, off the answer's critical path."""
-    animation = await asyncio.to_thread(animate.to_animation, scene)
+    """Render the animation and put it up, off the answer's critical path.
+
+    When the renderer is full, there is simply no animation this time: the
+    card and the sticker are what the answer cannot go out without.
+    """
+    try:
+        animation = await throttle.RENDER.run(animate.to_animation, scene)
+    except throttle.Busy:
+        return None
     return await _upload_animation(context, storage_chat, user_id, animation)
 
 
@@ -481,7 +543,7 @@ async def _finish(context, key: str, ids: tuple, gif) -> None:
     except asyncio.CancelledError:
         return  # a newer keystroke replaced it; there is nothing to remember
     except Exception:  # noqa: BLE001 - nothing to answer any more either way
-        log.debug("inline animation never arrived for %s", key)
+        log.debug("inline animation never arrived for %s", key.split(":", 1)[0])
     _remember(context, key, (*ids, animation_id))
 
 

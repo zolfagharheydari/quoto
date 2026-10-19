@@ -107,8 +107,7 @@ _SMALL_CAPS = str.maketrans({
 ZWNJ = chr(0x200C)   # the Persian half-space, which must survive
 
 _INVISIBLE = str.maketrans({
-    "​": "", "‎": "", "‏": "", "﻿": "",
-    "︎": "", "️": "", " ": " ",
+    "\u200b": "", "\u200e": "", "\u200f": "", "\ufeff": "", "\ufe0e": "", "\ufe0f": "", "\u00a0": " ",
 })
 
 

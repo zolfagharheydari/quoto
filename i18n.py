@@ -185,6 +185,7 @@ Full guide: /help""",
 <code>/mypack</code> — پک شخصی خودت؛ در همین چت می‌توانی اسمش را عوض کنی، یا روی یک استیکر ریپلای کنی و <code>/unpack</code> بزنی تا حذف شود
 <code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
 <code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
+<code>/deletemydata</code> — پاک کردن اطلاعاتت از ربات
 <code>/template</code> — انتخاب قالب کوت‌ها: کلاسیک، کلاسیکِ رنگی، تمام‌قاب یا کارت
 <code>/lang</code> — تغییر زبان ربات
 <code>/help</code> — همین راهنما
@@ -205,13 +206,13 @@ I turn Telegram messages into quote cards: the message text, the sender's name a
 ➊ <b>The basic move</b>
 1. <b>Reply</b> to the message you want
 2. Send <code>/quote</code>
-That's it — the card comes back in the same chat.
+That's it.
 
 ➋ <b>Output formats</b>
 <code>/quote</code> — a quote card, as an image
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — the same card, animated; the text types itself
-<code>/fire</code> — a GIF that writes the text in fire on paper (up to 100 characters)
+<code>/fire</code> — the text written in fire on paper (up to 100 characters)
 <code>/screenshot</code> — the message as it looks in Telegram: bubble, avatar, name and time
 If the message has reactions and the bot was already an admin of the group, they are drawn under it too.
 
@@ -261,9 +262,10 @@ Change it whenever you like; this one has no limit.
 <code>/pack</code> — the link to this group's sticker pack
 <code>/unpack</code> — remove one sticker from the pack (admins)
 <code>/delpack</code> — delete the pack entirely (admins in a group, your own in private)
-<code>/mypack</code> — your own sticker pack; rename it here, or reply to a sticker with <code>/unpack</code> to remove it
+<code>/mypack</code> — your own sticker pack (rename it, or reply to a sticker with <code>/unpack</code>)
 <code>/avatar</code> — your own picture for your quotes (private chat, twice)
 <code>/settings</code> — choose which picture stands for you
+<code>/deletemydata</code> — delete what the bot keeps about you
 <code>/template</code> — choose the template: classic, tinted, full frame or card
 <code>/lang</code> — change the bot's language
 <code>/help</code> — this guide
@@ -589,6 +591,47 @@ Meanwhile you can type: /quote any text you like""",
         "fa": "نشد بسازمش. یه بار دیگه امتحان کن.",
         "en": "I couldn't make that. Give it another try.",
     },
+    "busy": {
+        "fa": "الان سرم خیلی شلوغه 😅 یه دقیقه دیگه دوباره امتحان کن.",
+        "en": "I'm swamped right now 😅 Try again in a minute.",
+    },
+    "inline_wait": {
+        "fa": "چند ثانیه صبر کن و دوباره بنویس…",
+        "en": "Give it a few seconds, then type again…",
+    },
+    "forget_ask": {
+        "fa": """🗑 <b>پاک کردن اطلاعاتت</b>
+
+این‌ها پاک می‌شوند:
+• عکس دلخواه، انتخاب عکس و قالب و زبان
+• آرشیو گیف‌هایی که ساخته‌ای
+• اسم و یوزرنیمی که ربات از تو دیده
+• متن‌هایی که در حالت اینلاین نوشته‌ای
+
+این‌ها می‌مانند: تعداد دفعاتی که عکس دلخواه گذاشته‌ای (برای سهمیه)، و استیکرپک شخصی‌ات — برای پاک کردن پک از /delpack استفاده کن.
+
+این کار برگشت ندارد. مطمئنی؟""",
+        "en": """🗑 <b>Delete your data</b>
+
+This deletes:
+• your own picture, and your picture, template and language choices
+• the archive of GIFs you have made
+• the name and username the bot has seen you under
+• what you have typed in inline mode
+
+This stays: how many times you have set a picture (for the allowance), and your sticker pack - use /delpack to delete that.
+
+This cannot be undone. Are you sure?""",
+    },
+    "forget_done": {
+        "fa": "✅ پاک شد. اگر دوباره از ربات استفاده کنی، فقط چیزهایی که از آن به بعد لازم است نگه داشته می‌شود.",
+        "en": "✅ Deleted. If you use the bot again, only what that needs is kept from then on.",
+    },
+    "forget_cancelled": {
+        "fa": "باشه، چیزی پاک نشد.",
+        "en": "OK, nothing was deleted.",
+    },
+    "btn_forget_yes": {"fa": "🗑 بله، پاک کن", "en": "🗑 Yes, delete"},
     "fire_too_long": {
         "fa": "این متن برای آتیش زدن زیادی بلنده 🔥 روی کاغذ حداکثر {max} حرف جا می‌شه. برای متن بلند /gif رو امتحان کن.",
         "en": "That's too long to write in fire 🔥 The page holds {max} characters at most. Try /gif for longer text.",
@@ -673,6 +716,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("template", "انتخاب قالب کوت‌ها"),
         ("mygifs", "گیف‌هایی که ساخته‌ای، با جستجوی اسم"),
         ("delpack", "حذف کامل پک شخصی‌ات"),
+        ("deletemydata", "پاک کردن اطلاعاتی که ربات از تو دارد"),
         ("lang", "تغییر زبان"),
         ("help", "راهنما"),
     ],
@@ -684,6 +728,7 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
         ("template", "Choose the template your quotes use"),
         ("mygifs", "The GIFs you have made, searchable by name"),
         ("delpack", "Delete your own pack entirely"),
+        ("deletemydata", "Delete what the bot keeps about you"),
         ("lang", "Change language"),
         ("help", "Help"),
     ],

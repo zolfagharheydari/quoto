@@ -1,9 +1,11 @@
 """Work out who said the replied-to message, and fetch their avatar."""
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import time
+from collections import OrderedDict
 
 from PIL import Image
 from telegram import Bot, Message
@@ -15,7 +17,36 @@ log = logging.getLogger(__name__)
 
 _AVATAR_TTL = 60 * 60          # profile pictures rarely change within an hour
 _AVATAR_MISS_TTL = 5 * 60      # but "no picture" is worth re-checking sooner
-_avatar_cache: dict[str, tuple[float, bytes | None, str]] = {}
+# Least recently used first. Bounded by bytes, not entries: one uploaded
+# picture can weigh what a thousand profile thumbnails do, and a cache that only
+# ever grew was a slow leak with a ceiling set by how many people use the bot.
+_avatar_cache: OrderedDict[str, tuple[float, bytes | None, str]] = OrderedDict()
+CACHE_BYTES = 48 * 1024 * 1024
+
+
+def _cache_get(key: str):
+    hit = _avatar_cache.get(key)
+    if hit is not None:
+        _avatar_cache.move_to_end(key)
+    return hit
+
+
+def forget(key: str) -> None:
+    _avatar_cache.pop(key, None)
+
+
+def forget_prefix(prefix: str) -> None:
+    for key in [k for k in _avatar_cache if k.startswith(prefix)]:
+        del _avatar_cache[key]
+
+
+def _cache_put(key: str, data: bytes | None, source: str) -> None:
+    _avatar_cache[key] = (time.time(), data, source)
+    _avatar_cache.move_to_end(key)
+    total = sum(len(entry[1] or b"") for entry in _avatar_cache.values())
+    while total > CACHE_BYTES and len(_avatar_cache) > 1:
+        _, (_, dropped, _) = _avatar_cache.popitem(last=False)
+        total -= len(dropped or b"")
 
 
 class Author:
@@ -99,15 +130,37 @@ async def fetch_avatar(bot: Bot, author: Author, custom_file_id: str | None = No
     log.info("avatar for %s: %s", author.seed, source)
     if data:
         try:
-            image = Image.open(io.BytesIO(data))
-            # open() is lazy; force the decode here so a malformed or oversized
-            # picture fails inside this guard rather than deep in the renderer.
-            image.load()
-            return image
+            # Off the event loop: a picture somebody uploaded can take seconds
+            # to decode, and every other user would wait for it.
+            return await asyncio.to_thread(decode, data)
         except Exception:  # noqa: BLE001 - malformed avatars shouldn't kill the request
             log.warning("could not decode avatar for %s", author.seed)
     letter = next((c for c in author.name if c.isalnum()), "?")
     return render.fallback_avatar(author.seed, letter.upper())
+
+
+# A card shows the avatar at a few hundred pixels. Anything far past this is
+# not a photo of someone but a picture built to be expensive: a small PNG can
+# declare tens of thousands of pixels a side and cost gigabytes to unpack.
+MAX_AVATAR_PIXELS = 16_000_000
+AVATAR_FORMATS = ("JPEG", "PNG", "WEBP")
+
+
+def decode(data: bytes) -> Image.Image:
+    """An uploaded or downloaded picture, refused before decoding if it is a trap.
+
+    open() reads only the header, so the size is known before a pixel is
+    unpacked. Pillow's own guard only warns below twice MAX_IMAGE_PIXELS; this
+    refuses outright, and at a far lower size.
+    """
+    image = Image.open(io.BytesIO(data), formats=AVATAR_FORMATS)
+    width, height = image.size
+    if width * height > MAX_AVATAR_PIXELS:
+        raise ValueError(f"avatar is {width}x{height}, past the limit")
+    # A JPEG can be decoded straight to a smaller size, which is all the card needs.
+    image.draft("RGB", (1280, 1280))
+    image.load()
+    return image
 
 
 async def avatar_source(bot: Bot, author: Author, custom_file_id: str | None = None,
@@ -119,7 +172,7 @@ async def avatar_source(bot: Bot, author: Author, custom_file_id: str | None = N
 
 async def _cached(key: str, label: str, fetch) -> tuple[bytes | None, str]:
     """Run `fetch` unless this key was looked up recently."""
-    hit = _avatar_cache.get(key)
+    hit = _cache_get(key)
     if hit:
         age, data, source = time.time() - hit[0], hit[1], hit[2]
         if age < (_AVATAR_TTL if data else _AVATAR_MISS_TTL):
@@ -130,12 +183,20 @@ async def _cached(key: str, label: str, fetch) -> tuple[bytes | None, str]:
         log.info("%s unavailable for %s: %s", label, key, exc)
         data = None
     source = label if data else "none"
-    _avatar_cache[key] = (time.time(), data, source)
+    _cache_put(key, data, source)
     return data, source
 
 
-async def _download(bot: Bot, file_id: str) -> bytes:
+MAX_AVATAR_BYTES = 5 * 1024 * 1024
+
+
+async def _download(bot: Bot, file_id: str) -> bytes | None:
     file = await bot.get_file(file_id)
+    # A profile photo is a few hundred kilobytes. What is past this was
+    # uploaded as a file to be heavy, and is not fetched at all.
+    if (getattr(file, "file_size", None) or 0) > MAX_AVATAR_BYTES:
+        log.info("not fetching a %s-byte picture", file.file_size)
+        return None
     return bytes(await file.download_as_bytearray())
 
 
@@ -189,7 +250,7 @@ async def _avatar_bytes(bot: Bot, author: Author, custom_file_id: str | None = N
     # The chain differs by source, so it has to be part of the key: a "public
     # only" answer must not be served to someone who asked for the full chain.
     key = f"{author.kind}:{author.avatar_key}:{attempts[0][0]}"
-    hit = _avatar_cache.get(key)
+    hit = _cache_get(key)
     if hit:
         age, cached, cached_label = time.time() - hit[0], hit[1], hit[2]
         # Re-check a miss sooner: the user may have just opened their photo up.
@@ -208,5 +269,5 @@ async def _avatar_bytes(bot: Bot, author: Author, custom_file_id: str | None = N
             found = label
             break
 
-    _avatar_cache[key] = (time.time(), data, found)
+    _cache_put(key, data, found)
     return data, found

@@ -454,31 +454,37 @@ def test_bot_logic() -> None:
     check("channels have no choice",
           bot._avatar_choice(ctx(store), channel) == (None, authors.DEFAULT_SOURCE))
 
-    # Plain-Persian triggers
-    lead = r"^\s*(?:این\s*(?:رو|و)?\s*)?"
-    tail = r"\s*(?:لطفا|لطفاً|please)?\s*[.!?؟،]*\s*$"
-    do = r"\s*(?:کن|کنید)"
-    patterns = {
-        "quote": lead + r"(?:کوت|نقل\s*قول|quote)(?:\s*ش)?(?:" + do + r")?" + tail,
-        "sticker": lead + r"(?:استیکر|sticker)(?:\s*ش)?" + do + tail,
-        "gif": lead + r"(?:گیف|gif)(?:\s*ش)?" + do + tail,
-        "shot": lead + r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + do + tail,
-        "fire": lead + r"(?:آتیش|اتیش|آتش|اتش|fire)(?:\s*ش)?\s*(?:کن|کنید|بزن|بزنید)" + tail,
-    }
+    # Plain-Persian triggers: the bot's own patterns, not a copy of them.
     def fires(text):
-        return {n for n, p in patterns.items() if re.match(p, text, re.IGNORECASE)}
+        return {n for n, p in bot.TRIGGERS.items() if p.search(text)}
     check("«کوتش کن» fires quote", fires("کوتش کن") == {"quote"})
     check("«استیکرش کن» fires sticker", fires("استیکرش کن") == {"sticker"})
     check("«گیفش کن» fires gif", fires("گیفش کن") == {"gif"})
     check("«شاتش کن» fires shot", fires("شاتش کن") == {"shot"})
     for said in ("آتیشش کن", "اینو آتیشش کن لطفا", "اتیشش کن!", "آتیش بزن", "آتشش کن"):
         check(f"«{said}» fires fire", fires(said) == {"fire"})
+    for said in ("اینو استیکرش کن لطفا!", "کوت", "quote please", "اینو اسکرین شاتش کنید لطفاً!",
+                 "  گیفش کن  ", "کوتش کن ؟"):
+        check(f"«{said.strip()}» still fires", len(fires(said)) == 1, str(fires(said)))
     check("talk about fire does not fire", fires("آتیش گرفت") == set())
-    source = (ROOT / "bot.py").read_text(encoding="utf-8")
-    check("the fire trigger in the bot is the one tested",
-          patterns["fire"][len(lead):-len(tail)] in source)
     check("bare noun does not fire", fires("استیکر") == set())
     check("chat does not fire", fires("یه استیکر خوب بفرست") == set())
+    longest = max(("اینو اسکرین شاتش کنید لطفاً!", "اینو نقل قولش کنید please!"), key=len)
+    check("every phrase is under the length cap",
+          len(longest) <= bot.TRIGGER_MAX_CHARS, str(len(longest)))
+
+    # A reply of "quote", thousands of spaces and an "x" used to take re a
+    # minute per pattern, on the event loop. Telegram allows 4096 characters.
+    for padding in (" ", "\n", " "):
+        attack = "quote" + padding * 4090 + "x"
+        started = time.perf_counter()
+        for pattern in bot.TRIGGERS.values():
+            pattern.search(attack)
+        took = time.perf_counter() - started
+        check(f"no backtracking blow-up on {padding!r}", took < 0.05, f"{took:.3f}s")
+    check("long messages never reach the patterns",
+          not bot._ShortText().filter(types.SimpleNamespace(text="کوتش کن" + " " * 60)))
+    check("short ones do", bot._ShortText().filter(types.SimpleNamespace(text="کوتش کن")))
 
     # Inline query cleaning
     for raw, expect_hint in (("/quote", True), ("/qoute", True), ("سلام", False)):
@@ -1876,10 +1882,13 @@ def test_pack_deletion() -> None:
         b = DropBot()
         check("a group's pack is deleted",
               await stickerpack.delete_group(b, group) == "ok")
-        check("and it is that group's pack, named from its own id",
-              b.deleted == [stickerpack.pack_name(group.id, b.username)])
+        check("and it is that group's pack, under both names it has had",
+              b.deleted == [stickerpack.pack_name(group.id, b.username),
+                            stickerpack.legacy_pack_name(group.id, b.username)],
+              str(b.deleted))
         check("never another group's",
-              stickerpack.pack_name(other.id, b.username) not in b.deleted)
+              stickerpack.pack_name(other.id, b.username) not in b.deleted
+              and stickerpack.legacy_pack_name(other.id, b.username) not in b.deleted)
 
         b = DropBot()
         check("a person's own pack is deleted",
@@ -1980,9 +1989,9 @@ def test_fire() -> None:
     check("too long is turned away before rendering",
           body.index("MAX_CHARS") < body.index("fire.render"))
     check("a render never runs on the event loop",
-          re.search(r"asyncio\.to_thread\(\s*fire\.render", body) is not None)
-    check("the queue is released whatever happens",
-          re.search(r"finally:\s*_fire_waiting -= 1", body) is not None)
+          re.search(r"throttle\.FIRE\.run\(\s*fire\.render", body) is not None)
+    check("a full queue is turned away before anything else",
+          body.index("throttle.FIRE.full") < body.index("throttle.FIRE.run"))
     check("fire is counted in the stats", "fire" in {k for k, _ in admin.KINDS})
 
     if not fire.available():
@@ -2009,6 +2018,236 @@ def test_fire() -> None:
     data = fire.render("Stay hungry, stay foolish", "Steve Jobs", "@getquoto_bot")
     check("renders an mp4", data[4:8] == b"ftyp", data[:12].hex())
     check("small enough to send as a GIF", 200_000 < len(data) < 10_000_000, str(len(data)))
+
+
+def test_hardening() -> None:
+    section("security fixes")
+    import throttle
+    import download_fonts
+
+    # Avatars: refused before decoding, not after.
+    def png(w, h):
+        buf = io.BytesIO()
+        Image.new("RGB", (w, h)).save(buf, "PNG")
+        return buf.getvalue()
+
+    check("an ordinary picture decodes", authors.decode(png(640, 640)).size == (640, 640))
+    try:
+        authors.decode(png(4100, 4100))
+        refused = False
+    except ValueError:
+        refused = True
+    check("a picture past the pixel limit is refused", refused)
+    gif = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(gif, "GIF")
+    try:
+        authors.decode(gif.getvalue())
+        refused = False
+    except Exception:  # noqa: BLE001
+        refused = True
+    check("formats a card does not use are refused", refused)
+    source = (ROOT / "authors.py").read_text(encoding="utf-8")
+    check("decoding happens off the event loop",
+          "asyncio.to_thread(decode, data)" in source)
+
+    def doc(mime, size):
+        return types.SimpleNamespace(photo=None, document=types.SimpleNamespace(
+            mime_type=mime, file_size=size, file_id="F"))
+    check("a picture file of photo size is accepted",
+          bot._photo_file_id(doc("image/png", 300_000)) == "F")
+    check("a huge picture file is not",
+          bot._photo_file_id(doc("image/png", 15_000_000)) is None)
+    check("an image type a card cannot use is not",
+          bot._photo_file_id(doc("image/tiff", 1000)) is None)
+
+    # The avatar cache is bounded by bytes, oldest out first.
+    authors._avatar_cache.clear()
+    chunk = b"x" * (authors.CACHE_BYTES // 4)
+    for i in range(10):
+        authors._cache_put(f"k{i}", chunk, "test")
+    held = sum(len(v[1] or b"") for v in authors._avatar_cache.values())
+    check("the avatar cache stays under its budget", held <= authors.CACHE_BYTES, str(held))
+    check("and the newest entry survives", "k9" in authors._avatar_cache)
+    check("the oldest went first", "k0" not in authors._avatar_cache)
+    authors._avatar_cache.clear()
+
+    # The render gate: a fixed number run, a fixed number wait, the rest are told.
+    async def gate_run():
+        gate = throttle.Gate(slots=1, queue=1)
+        release = __import__("threading").Event()
+        first = asyncio.ensure_future(gate.run(release.wait, 5))
+        await asyncio.sleep(0.05)
+        second = asyncio.ensure_future(gate.run(lambda: "second"))
+        await asyncio.sleep(0.05)
+        try:
+            await gate.run(lambda: "third")
+            turned_away = False
+        except throttle.Busy:
+            turned_away = True
+        # The first caller gives up; the thread does not, and its slot is held.
+        first.cancel()
+        await asyncio.sleep(0.05)
+        still_held = not second.done()
+        release.set()
+        result = await asyncio.wait_for(second, 5)
+        return turned_away, still_held, result, gate.pending
+
+    turned_away, still_held, result, pending = asyncio.run(gate_run())
+    check("past slots and queue, a request is turned away", turned_away)
+    check("an abandoned job keeps its slot until its thread ends", still_held)
+    check("then the next one runs", result == "second")
+    check("and nothing is left counted", pending == 0, str(pending))
+    for name in ("cmd_quote", "cmd_quote_sticker", "cmd_quote_gif", "cmd_screenshot"):
+        body = (ROOT / "bot.py").read_text(encoding="utf-8")
+        body = body[body.index(f"async def {name}("):]
+        body = body[:body.index("\nasync def ", 10)]
+        check(f"{name} renders through the gate", "throttle.RENDER.run(" in body)
+        check(f"{name} answers when busy", "throttle.Busy" in body)
+    inline_source = (ROOT / "inline.py").read_text(encoding="utf-8")
+    check("inline renders through the gate",
+          inline_source.count("throttle.RENDER.run(") >= 2)
+    check("inline has a cooldown between renders", "INLINE_COOLDOWN" in inline_source)
+
+    # Inline cache entries expire.
+    ctx = types.SimpleNamespace(bot_data={}, user_data={})
+    inline._remember(ctx, "7:x", ("P", "S", None))
+    ctx.bot_data["inline_cache"]["7:x"]["at"] -= inline.CACHE_TTL + 1
+    check("an expired inline entry is not served", inline._cached(ctx, "7:x") is None)
+    ctx.bot_data["inline_cache"]["7:old"] = ("P", "S", None)
+    check("an entry from before times were kept is not served",
+          inline._cached(ctx, "7:old") is None)
+    inline._remember(ctx, "8:y", ("P", "S", None))
+    check("expired entries are cleared out", set(ctx.bot_data["inline_cache"]) == {"8:y"})
+
+    # Deleting your data.
+    user_store = {7: {"gifs": [1], "lang": "en"}, 8: {"lang": "fa"}}
+    app = types.SimpleNamespace(drop_user_data=lambda uid: user_store.pop(uid, None))
+    store = {"avatars": {7: "F7", 8: "F8"}, "avatar_source": {7: "custom"},
+             "users": {7: {"name": "x"}, 8: {"name": "y"}},
+             "avatar_uses": {7: 2}, "blocked": {7}, "channel_members": {7: (0, True)},
+             "inline_cache": {"7:a": {"ids": (), "at": time.time()},
+                              "8:b": {"ids": (), "at": time.time()}}}
+    authors._cache_put("custom:F7", b"img", "x")
+    authors._cache_put("user:7:profile photo", b"img", "x")
+    bot.forget_user(types.SimpleNamespace(bot_data=store, application=app), 7)
+    check("their own data is gone",
+          7 not in user_store and 7 not in store["avatars"]
+          and 7 not in store["users"] and 7 not in store["avatar_source"]
+          and "7:a" not in store["inline_cache"] and 7 not in store["channel_members"])
+    check("their cached pictures are gone",
+          "custom:F7" not in authors._avatar_cache
+          and "user:7:profile photo" not in authors._avatar_cache)
+    check("nobody else's is touched",
+          8 in user_store and store["avatars"].get(8) == "F8" and "8:b" in store["inline_cache"])
+    check("the allowance and a block survive it - they are the rules, not data",
+          store["avatar_uses"] == {7: 2} and 7 in store["blocked"])
+    authors._avatar_cache.clear()
+    for lang in i18n.SUPPORTED:
+        check(f"/deletemydata in the {lang} menu",
+              "deletemydata" in {n for n, _ in i18n.PRIVATE_ONLY[lang]})
+
+    # Group pack names say nothing about the group.
+    stickerpack.set_salt("a-salt")
+    gid = -1001234567890
+    name = stickerpack.pack_name(gid, "getquoto_bot")
+    check("a group's pack name does not contain its id", str(abs(gid)) not in name, name)
+    check("and is not the old one", name != stickerpack.legacy_pack_name(gid, "getquoto_bot"))
+    check("and differs from a personal one",
+          name != stickerpack.personal_name(abs(gid), "getquoto_bot"))
+
+    # An old id-named pack is carried over, sticker for sticker, and left alone.
+    from telegram.error import TelegramError as _TE
+
+    class MoveBot:
+        username = "getquoto_bot"
+
+        def __init__(self, old_count):
+            self.sets = {stickerpack.legacy_pack_name(gid, self.username): [
+                types.SimpleNamespace(file_id=f"S{i}", emoji="💬") for i in range(old_count)]}
+            self.calls = []
+
+        async def get_sticker_set(self, name):
+            if name not in self.sets:
+                raise _TE("not found")
+            return types.SimpleNamespace(name=name, title="Old", stickers=self.sets[name])
+
+        async def create_new_sticker_set(self, user_id, name, title, stickers):
+            self.calls.append(("create", len(stickers)))
+            self.sets[name] = [types.SimpleNamespace(file_id=s.sticker, emoji="💬")
+                               for s in stickers]
+
+        async def add_sticker_to_set(self, user_id, name, sticker):
+            self.calls.append(("add", 1))
+            self.sets[name].append(types.SimpleNamespace(file_id=sticker.sticker, emoji="💬"))
+
+    chat = types.SimpleNamespace(type="supergroup", id=gid, title="g")
+    mover = MoveBot(old_count=70)
+    moved = asyncio.run(stickerpack._adopt_legacy(mover, chat, owner_id=1))
+    new_set = mover.sets.get(stickerpack.pack_name(gid, mover.username), [])
+    check("an old group pack is carried over", moved and len(new_set) == 70, str(len(new_set)))
+    check("in one create of fifty and adds for the rest",
+          mover.calls[0] == ("create", 50) and len(mover.calls) == 21)
+    check("by the files Telegram already holds", new_set[0].file_id == "S0")
+    check("and the old pack is left where it is",
+          len(mover.sets[stickerpack.legacy_pack_name(gid, mover.username)]) == 70)
+    again = MoveBot(old_count=3)
+    asyncio.run(stickerpack._adopt_legacy(again, chat, owner_id=1))
+    asyncio.run(stickerpack._adopt_legacy(again, chat, owner_id=1))
+    check("it happens once", len(again.calls) == 1)
+    nothing = MoveBot(old_count=0)
+    nothing.sets.clear()
+    check("a group with no old pack gets nothing made for it",
+          asyncio.run(stickerpack._adopt_legacy(nothing, chat, owner_id=1)) is False
+          and not nothing.calls)
+
+    # The owner's pack tool only reaches this bot's packs.
+    for text, expected in (
+        ("https://t.me/addstickers/gabc_by_getquoto_bot", "gabc_by_getquoto_bot"),
+        ("gabc_by_getquoto_bot", "gabc_by_getquoto_bot"),
+        ("https://t.me/addstickers/Animals_by_otherbot", None),
+        ("https://t.me/addstickers/Animals", None),
+        ("rm -rf /", None),
+    ):
+        check(f"pack tool reads {text!r}",
+              admin.pack_from_text(text, "getquoto_bot") == expected)
+
+    # Logs keep no message text.
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    handler = source[source.index("async def on_error"):source.index("async def post_init")]
+    check("an error log does not carry what was written", "message.text!r" not in handler)
+
+    # State and log live where STATE_DIR says.
+    check("state goes in the state directory", bot.STATE_FILE.startswith(str(bot.STATE_DIR)))
+    check("so does the log", admin.LOG_FILE == bot.LOG_FILE)
+    unit = (ROOT / "deploy" / "quoto.service").read_text(encoding="utf-8")
+    for line in ("StateDirectory=quoto", "MemoryMax=", "CPUQuota=", "NoNewPrivileges=true",
+                 "ProtectSystem=strict", "CapabilityBoundingSet="):
+        check(f"service has {line}", line in unit)
+    check("the code is not writable by the service", "ReadWritePaths=/opt/quoto" not in unit)
+
+    # Downloads are pinned and checked.
+    for fonts_ in (download_fonts.FONTS, download_fonts.APPLE):
+        for font, (url, digest) in fonts_.items():
+            check(f"{font} comes from a fixed revision",
+                  "/main/" not in url and "/master/" not in url and "latest" not in url)
+            check(f"{font} has a hash", re.fullmatch(r"[0-9a-f]{64}", digest) is not None)
+    lock = (ROOT / "requirements.lock").read_text(encoding="utf-8")
+    for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        line = line.split("#")[0].strip()
+        if not line:
+            continue
+        check(f"{line} is pinned exactly", "==" in line and ">" not in line)
+        pkg = re.split(r"[\[=]", line)[0].lower()
+        check(f"{pkg} is in the lock with hashes",
+              re.search(rf"^{re.escape(pkg)}==\S+ \\\n\s+--hash=sha256:", lock,
+                        re.MULTILINE | re.IGNORECASE) is not None)
+
+    # No invisible direction marks hiding in the source.
+    controls = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068,
+                0x2069, 0x200E, 0x200F, 0x061C}
+    for path in ROOT.glob("*.py"):
+        hidden = [c for c in path.read_text(encoding="utf-8") if ord(c) in controls]
+        check(f"{path.name} has no bidirectional control characters", not hidden)
 
 
 def test_fonts() -> None:
@@ -2639,6 +2878,7 @@ def main() -> int:
     test_pack_names()
     test_fonts()
     test_fire()
+    test_hardening()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()

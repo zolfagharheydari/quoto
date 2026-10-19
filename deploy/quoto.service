@@ -17,12 +17,53 @@ ExecStart=/opt/quoto/.venv/bin/python bot.py
 Restart=always
 RestartSec=5
 
-# Hardening: the bot only needs to read its own directory and write botdata.pkl.
+# --- What the bot may write: its state and its log, and nothing else.
+# /opt/quoto (the code, the venv, .env) belongs to root and is read-only to
+# the bot. A process that can rewrite its own source, or the pickle it loads
+# at startup, turns any one bug into a foothold that survives restarts.
+StateDirectory=quoto
+StateDirectoryMode=0700
+Environment=STATE_DIR=/var/lib/quoto
+# Bytecode for the read-only code is compiled at deploy time, not here.
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+
+# --- How much it may use. Two cores and 2 GB: a runaway render, a picture
+# built to be expensive, or a flood of requests takes the bot down - not ssh,
+# not the rest of the machine.
+MemoryMax=1200M
+MemorySwapMax=0
+CPUQuota=170%
+TasksMax=128
+
+# --- Everything else it has no business touching.
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/quoto
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# A refused call fails with an error the library can handle, rather than
+# killing the bot outright in the middle of somebody's render.
+SystemCallErrorNumber=EPERM
 
 StandardOutput=journal
 StandardError=journal

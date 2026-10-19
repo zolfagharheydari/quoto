@@ -26,8 +26,13 @@ sudo apt install -y python3 python3-venv python3-pip git ffmpeg fonts-dejavu-cor
 ربات با کاربر جدا اجرا می‌شود، نه با root:
 
 ```bash
-sudo useradd --system --create-home --home-dir /opt/quoto quoto
+sudo useradd --system --no-create-home --home-dir /var/lib/quoto --shell /usr/sbin/nologin quoto
+sudo mkdir -p /opt/quoto
 ```
+
+کد مال root است و ربات فقط می‌تواند بخواندش. چیزهایی که ربات می‌نویسد (`botdata.pkl` و
+لاگ) در `/var/lib/quoto` هستند که systemd خودش می‌سازد. این‌طوری اگر روزی باگی در ربات
+پیدا شود، با آن نمی‌شود کد یا فایل pickle را عوض کرد و ماندگار شد.
 
 ## ۳. کد و وابستگی‌ها
 
@@ -35,18 +40,27 @@ sudo useradd --system --create-home --home-dir /opt/quoto quoto
 خودت بزن (نه روی سرور)، با آی‌پی سرور به‌جای `IP`:
 
 ```bash
-tar -czf - --exclude=.git --exclude=__pycache__ --exclude=preview_out   --exclude=.venv --exclude=botdata.pkl --exclude=.env --exclude='quotebot.log*'   --exclude=assets/demo . | ssh root@IP "tar -xzf - -C /opt/quoto && chown -R quoto:quoto /opt/quoto"
+tar -czf - --exclude=.git --exclude=__pycache__ --exclude=preview_out   --exclude=.venv --exclude=botdata.pkl --exclude=.env --exclude='quotebot.log*'   --exclude=assets/demo . | ssh root@IP "tar -xzf - -C /opt/quoto --no-same-owner && chown -R root:root /opt/quoto && chown root:quoto /opt/quoto/.env 2>/dev/null; chmod 640 /opt/quoto/.env 2>/dev/null; true"
 ```
 
-بعد روی سرور:
+بعد روی سرور (با root):
 
 ```bash
-sudo -u quoto -H bash
 cd /opt/quoto
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install --require-hashes -r requirements.lock
 .venv/bin/python download_fonts.py
-exit
+.venv/bin/python -m compileall -q .
+```
+
+`requirements.lock` همهٔ بسته‌ها را با نسخهٔ دقیق و hash نگه می‌دارد؛ pip هر فایلی که
+hash آن نخواند را نصب نمی‌کند. `download_fonts.py` هم هر فونت را با hash ثبت‌شده چک می‌کند.
+
+اگر `requirements.txt` را عوض کردی، lock را روی سرور (همان پایتون 3.14) دوباره بساز:
+
+```bash
+python3 -m venv /tmp/lock && /tmp/lock/bin/pip install pip-tools
+/tmp/lock/bin/pip-compile --generate-hashes --allow-unsafe --strip-extras --no-header   --output-file requirements.lock requirements.txt
 ```
 
 ### فایل‌های /fire
@@ -65,8 +79,8 @@ libraqm نیاز دارد که Pillow روی اوبونتو دارد؛ روی و
 ## ۴. تنظیمات
 
 ```bash
-sudo -u quoto cp /opt/quoto/.env.example /opt/quoto/.env
-sudo -u quoto nano /opt/quoto/.env
+sudo cp /opt/quoto/.env.example /opt/quoto/.env
+sudo nano /opt/quoto/.env
 ```
 
 `BOT_TOKEN` را بگذار. `OWNER_ID` را هم پر کن، وگرنه استیکرپک گروه‌ها ساخته نمی‌شود و
@@ -74,8 +88,11 @@ sudo -u quoto nano /opt/quoto/.env
 بگذار. دسترسی فایل را هم محدود کن تا توکن خواندنی عمومی نباشد:
 
 ```bash
-sudo chmod 600 /opt/quoto/.env
+sudo chown root:quoto /opt/quoto/.env
+sudo chmod 640 /opt/quoto/.env
 ```
+
+ربات می‌تواند بخواندش ولی نه عوضش کند؛ بقیهٔ کاربرهای سرور اصلاً نمی‌بینندش.
 
 ## ۴.۵ انتقال وضعیت کاربرها
 
@@ -87,7 +104,7 @@ sudo chmod 600 /opt/quoto/.env
 فایل باشد)، بعد:
 
 ```bash
-cat botdata.pkl | ssh root@IP "umask 077; cat > /opt/quoto/botdata.pkl && chown quoto:quoto /opt/quoto/botdata.pkl"
+cat botdata.pkl | ssh root@IP "mkdir -p /var/lib/quoto && umask 077 && cat > /var/lib/quoto/botdata.pkl && chown -R quoto:quoto /var/lib/quoto && chmod 700 /var/lib/quoto"
 ```
 
 ## ۵. سرویس
@@ -118,8 +135,10 @@ journalctl -u quoto -f        # لاگ زنده؛ با Ctrl+C خارج شو
 
 ## به‌روزرسانی
 
+کد را با همان tar بخش ۳ بفرست، بعد روی سرور:
+
 ```bash
-sudo -u quoto -H bash -c 'cd /opt/quoto && git pull && .venv/bin/pip install -r requirements.txt'
+cd /opt/quoto && .venv/bin/pip install --require-hashes -r requirements.lock && .venv/bin/python -m compileall -q .
 sudo systemctl restart quoto
 ```
 
@@ -128,6 +147,7 @@ sudo systemctl restart quoto
 - **همزمان دو نسخه اجرا نکن.** اگر ربات روی سرور بالاست و همزمان روی لپ‌تاپ هم
   `start.bat` را بزنی، تلگرام آپدیت‌ها را بین این دو پخش می‌کند و ربات نصفه‌نیمه جواب
   می‌دهد. قبل از تست محلی، سرویس سرور را متوقف کن.
-- `botdata.pkl` (زبانِ انتخابی کاربرها) کنار کد در `/opt/quoto` ساخته می‌شود؛ در
-  پشتیبان‌گیری فراموشش نکن.
-- سرویس با `ProtectSystem=strict` اجرا می‌شود و فقط به `/opt/quoto` اجازه‌ی نوشتن دارد.
+- `botdata.pkl` و `quotebot.log` در `/var/lib/quoto` هستند؛ در پشتیبان‌گیری فراموششان نکن.
+- سرویس فقط در `/var/lib/quoto` می‌تواند بنویسد، حداکثر ۱۲۰۰ مگابایت رم و ۱.۷ هسته
+  می‌گیرد، و دسترسی‌اش به بقیهٔ سیستم بسته است (فایل `quoto.service` را ببین). اگر
+  رندری از حد بگذرد، فقط ربات ری‌استارت می‌شود، نه کل سرور.

@@ -137,7 +137,7 @@ def _px(value: float) -> int:
 
 
 def name_color(seed: str) -> tuple[int, int, int]:
-    digest = hashlib.md5(seed.encode()).digest()
+    digest = hashlib.md5(seed.encode(), usedforsecurity=False).digest()  # a colour, not a secret
     return NAME_COLORS[digest[0] % len(NAME_COLORS)]
 
 

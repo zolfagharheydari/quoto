@@ -28,7 +28,19 @@ GROUP_TYPES = ("group", "supergroup")
 
 
 def pack_name(chat_id: int, bot_username: str) -> str:
-    """A pack name Telegram will accept: letters, digits and _, ending in _by_bot."""
+    """The group's pack: letters, digits and _, ending in _by_bot.
+
+    A digest of the chat id, for the same reason personal packs are one. The
+    name used to be the id itself, which put every group's id in a public link
+    - and let anyone who knew a private group's id open its pack and read what
+    was said in there.
+    """
+    suffix = f"_by_{bot_username}"
+    return f"g{_digest(chat_id)}"[: MAX_NAME - len(suffix)] + suffix
+
+
+def legacy_pack_name(chat_id: int, bot_username: str) -> str:
+    """What a group's pack was called before the names were hashed."""
     suffix = f"_by_{bot_username}"
     return f"q{abs(chat_id)}"[: MAX_NAME - len(suffix)] + suffix
 
@@ -220,13 +232,58 @@ async def delete_group(bot: Bot, chat: Chat) -> str:
     """
     if chat.type not in GROUP_TYPES:
         return "not_group"
-    return await _drop(bot, pack_name(chat.id, bot.username))
+    # Both names: the group asked for its pack to be gone, and the old one,
+    # left behind by the rename, is the same pack as far as they know.
+    outcomes = [await _drop(bot, pack_name(chat.id, bot.username)),
+                await _drop(bot, legacy_pack_name(chat.id, bot.username))]
+    if "ok" in outcomes:
+        return "ok"
+    return "failed" if "failed" in outcomes else "no_pack"
 
 
 async def personal_link(bot: Bot, user_id: int) -> str | None:
     """This person's pack link, if they have one yet."""
     name = personal_name(user_id, bot.username)
     return pack_link(name) if await _exists(bot, name) else None
+
+
+async def _adopt_legacy(bot: Bot, chat: Chat, owner_id: int | None) -> bool:
+    """Carry a group's old id-named pack over to its hashed name, once.
+
+    Its stickers are copied by file_id - Telegram already holds them, nothing is
+    uploaded again - so the group keeps its collection under the new link. The
+    old pack is left where it is: deleting it would pull it out of the sticker
+    list of everyone who added it, and that is the group's call, through
+    /delpack, not something to happen as a side effect.
+
+    Returns whether the pack under the new name exists now.
+    """
+    name = pack_name(chat.id, bot.username)
+    if await _exists(bot, name):
+        return True
+    if owner_id is None:
+        return False
+    try:
+        old = await bot.get_sticker_set(legacy_pack_name(chat.id, bot.username))
+    except TelegramError:
+        return False
+    stickers = [InputSticker(sticker=s.file_id, emoji_list=[s.emoji or EMOJI],
+                             format="static")
+                for s in old.stickers]
+    if not stickers:
+        return False
+    try:
+        # Fifty is as many as a new set may be created with; the rest follow.
+        await bot.create_new_sticker_set(user_id=owner_id, name=name,
+                                         title=old.title or pack_title(chat.title),
+                                         stickers=stickers[:50])
+        for sticker in stickers[50:]:
+            await bot.add_sticker_to_set(user_id=owner_id, name=name, sticker=sticker)
+    except TelegramError as exc:
+        log.warning("could not carry %s over to %s: %s", old.name, name, exc)
+        return await _exists(bot, name)
+    log.info("carried %s stickers from %s over to %s", len(stickers), old.name, name)
+    return True
 
 
 async def add_quote(bot: Bot, chat: Chat, webp: bytes,
@@ -246,7 +303,7 @@ async def add_quote(bot: Bot, chat: Chat, webp: bytes,
     sticker = InputSticker(sticker=io.BytesIO(webp), emoji_list=[EMOJI], format="static")
 
     try:
-        if await _exists(bot, name):
+        if await _adopt_legacy(bot, chat, owner_id):
             await bot.add_sticker_to_set(user_id=owner_id, name=name, sticker=sticker)
             return pack_link(name), False
 
@@ -284,7 +341,9 @@ async def remove_quote(bot: Bot, chat: Chat, sticker) -> str:
         return "not_group"
     if sticker is None:
         return "no_sticker"
-    if sticker.set_name != pack_name(chat.id, bot.username):
+    # This group's pack, under either of the names it has had.
+    if sticker.set_name not in (pack_name(chat.id, bot.username),
+                                legacy_pack_name(chat.id, bot.username)):
         return "not_ours"
     try:
         await bot.delete_sticker_from_set(sticker.file_id)
@@ -301,3 +360,12 @@ async def link_for(bot: Bot, chat: Chat) -> str | None:
         return None
     name = pack_name(chat.id, bot.username)
     return pack_link(name) if await _exists(bot, name) else None
+
+
+async def link_for_adopting(bot: Bot, chat: Chat, owner_id: int | None) -> str | None:
+    """The chat's pack link, carrying an old-named pack over first if there is one."""
+    if chat.type not in GROUP_TYPES:
+        return None
+    if await _adopt_legacy(bot, chat, owner_id):
+        return pack_link(pack_name(chat.id, bot.username))
+    return None

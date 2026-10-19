@@ -466,28 +466,66 @@ def _geometry() -> dict:
             "homs": {int(k): np.array(v, float) for k, v in page["homs"].items()}}
 
 
-def render(quote: str, who: str, handle: str) -> bytes:
-    """The clip with `quote` written in it, as a silent MP4 - a GIF, to Telegram."""
+# Longer than any render has taken on the server, by a wide margin. Past it,
+# something is stuck - ffmpeg waiting on a pipe, a disk that stopped - and the
+# job is killed rather than holding the only slot until the next restart.
+RENDER_TIMEOUT = 90
+FRAME_BYTES = W * H * 3
+
+
+def _ffmpeg() -> str:
+    import shutil
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
     import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def render(quote: str, who: str, handle: str) -> bytes:
+    """The clip with `quote` written in it, as a silent MP4 - a GIF, to Telegram.
+
+    Two ffmpeg processes, one reading the base clip and one encoding, with
+    frames passed between them here. Both are killed by a timer if the whole
+    thing runs past RENDER_TIMEOUT, which turns a hang into an exception.
+    """
+    import subprocess
+    import threading
 
     quote = clean(quote)
     pen = PenShot(quote)
     page = PageShot(quote, _geometry())
     name = _name_label(who)
     mark = Label([(fonts.load("medium", 34), (W - 40, 630), handle, "rm")])
+    exe = _ffmpeg()
 
     with tempfile.TemporaryDirectory() as tmp:
         out_path = Path(tmp) / "fire.mp4"
-        reader = imageio_ffmpeg.read_frames(str(BASE))
-        next(reader)
-        writer = imageio_ffmpeg.write_frames(
-            str(out_path), (W, H), fps=FPS, codec="libx264", pix_fmt_in="rgb24",
-            output_params=["-crf", "22", "-preset", "veryfast",
-                           "-movflags", "+faststart", "-an"],
-            macro_block_size=8)
-        writer.send(None)
+        reader = subprocess.Popen(
+            [exe, "-loglevel", "error", "-i", str(BASE),
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        writer = subprocess.Popen(
+            [exe, "-y", "-loglevel", "error",
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+             "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+             "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(out_path)],
+            stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        expired = threading.Event()
+
+        def kill():
+            expired.set()
+            for proc in (reader, writer):
+                proc.kill()
+
+        timer = threading.Timer(RENDER_TIMEOUT, kill)
+        timer.start()
         try:
-            for i, raw in enumerate(reader):
+            i = 0
+            while True:
+                raw = reader.stdout.read(FRAME_BYTES)
+                if len(raw) < FRAME_BYTES:
+                    break
                 t = i / FPS
                 frame = None
 
@@ -508,8 +546,23 @@ def render(quote: str, who: str, handle: str) -> bytes:
                 a = window(t, FIRE[0] + 0.5, FIRE[1] + 1, fade=0.3)
                 if a:
                     frame = mark.over(pixels(), a)
-                writer.send(raw if frame is None else np.ascontiguousarray(frame).tobytes())
+                writer.stdin.write(raw if frame is None
+                                   else np.ascontiguousarray(frame).tobytes())
+                i += 1
+            writer.stdin.close()
+            writer.wait()
+            reader.wait()
+        except (BrokenPipeError, OSError, ValueError):
+            if not expired.is_set():
+                raise
         finally:
-            reader.close()
-            writer.close()
+            timer.cancel()
+            for proc in (reader, writer):
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+        if expired.is_set():
+            raise TimeoutError(f"fire render took longer than {RENDER_TIMEOUT}s")
+        if writer.returncode != 0 or i == 0:
+            raise RuntimeError(f"ffmpeg failed (exit {writer.returncode}, {i} frames)")
         return out_path.read_bytes()
