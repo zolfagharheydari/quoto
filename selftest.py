@@ -691,7 +691,7 @@ def test_inline_results() -> None:
             ctx, None, 77, (b"mp4", "mp4"))
         check("the animation goes up by itself", animation_id == "AN")
 
-        # With a storage chat the animation stays and the other two are cleared.
+        # With a storage chat, nothing stays: the file ids outlive the messages.
         bot_ = FakeBot()
         ctx = types.SimpleNamespace(bot=bot_)
         await inline._upload(ctx, -100999, 77, b"png", b"webp")
@@ -700,10 +700,8 @@ def test_inline_results() -> None:
               all(chat == -100999 for _, chat in bot_.sent))
         await asyncio.sleep(0)
         kept = [m for m in bot_.messages if not m.deleted]
-        check("only the animation is kept",
-              len(kept) == 1 and kept[0].animation is not None)
-        check("the photo and sticker are cleared",
-              all(m.deleted for m in bot_.messages if m.animation is None))
+        check("nothing is kept in the storage channel, the GIF included",
+              not kept and any(m.animation is not None for m in bot_.messages))
 
         # The cache: the same words twice should not be rendered twice.
         ctx = types.SimpleNamespace(bot=bot_, bot_data={})

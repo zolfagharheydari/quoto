@@ -219,8 +219,9 @@ async def _upload_animation(context: ContextTypes.DEFAULT_TYPE,
     target = storage_chat or user_id
     message = await context.bot.send_animation(
         target, buf, filename=f"quote.{ext}", disable_notification=True)
-    if not storage_chat:
-        _later(context, _discard([message]))
+    # Not kept, in the storage channel or anywhere: the file_id outlives the
+    # message, and a channel of every half-typed sentence's GIF is clutter.
+    _later(context, _discard([message]))
     # Telegram stores every animation as MP4, whichever way it arrived, but it
     # can still come back as a plain document if it declined to convert one.
     return message.animation.file_id if message.animation else None

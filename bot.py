@@ -1412,15 +1412,15 @@ async def _fire_inline(context: ContextTypes.DEFAULT_TYPE, chosen, lang: str) ->
             store or user.id, io.BytesIO(data), filename="fire.mp4",
             disable_notification=True)
         made = upload.animation or upload.document
-        if not store:
-            try:
-                await upload.delete()
-            except TelegramError:
-                pass
         await context.bot.edit_message_media(
             inline_message_id=message_id,
             media=InputMediaAnimation(made.file_id),
             reply_markup=inline.fire_again_markup(lang))
+        # The upload was only ever a way to get a file_id, which outlives it.
+        try:
+            await upload.delete()
+        except TelegramError:
+            pass
         inline.fire_remember(context.bot_data, inline.fire_key(user.id, quote), made.file_id)
         gallery.record(context.user_data, made.file_id, author, quote)
         admin.note(context, "fire")
