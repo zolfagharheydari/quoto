@@ -51,6 +51,7 @@ import admin
 import animate
 import authors
 import extract
+import fire
 import gallery
 import fonts
 import i18n
@@ -1042,6 +1043,77 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text(_t("failed", update, context))
 
 
+# One clip at a time: a render takes both of the server's cores for a few
+# seconds, and two at once only make both people wait twice as long. Past a
+# short queue, people are told to come back instead of waiting in silence.
+_fire_slot = asyncio.Semaphore(1)
+_fire_waiting = 0
+FIRE_QUEUE = 4
+
+
+async def _keep_showing(chat, action: str, done: asyncio.Event) -> None:
+    """Repeat a chat action until `done`: Telegram drops each after five seconds."""
+    while not done.is_set():
+        try:
+            await chat.send_action(action)
+        except TelegramError:
+            return
+        try:
+            await asyncio.wait_for(done.wait(), 4.5)
+        except asyncio.TimeoutError:
+            pass
+
+
+async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The quote written in fire, on the Gunna clip."""
+    global _fire_waiting
+    prepared = await _prepare(update, context)
+    if prepared is None:
+        return
+    target, text = prepared
+    message = update.effective_message
+    if not fire.available():
+        await message.reply_text(_t("fire_unavailable", update, context))
+        return
+    quote = fire.clean(text)
+    if not quote:
+        await message.reply_text(_t("need_text", update, context))
+        return
+    if len(quote) > fire.MAX_CHARS:
+        await message.reply_text(
+            _t("fire_too_long", update, context).format(max=fire.MAX_CHARS))
+        return
+    if _fire_waiting >= FIRE_QUEUE:
+        await message.reply_text(_t("fire_busy", update, context))
+        return
+
+    author = authors.resolve(target)
+    done = asyncio.Event()
+    showing = asyncio.create_task(
+        _keep_showing(message.chat, ChatAction.UPLOAD_VIDEO, done))
+    _fire_waiting += 1
+    try:
+        async with _fire_slot:
+            data = await asyncio.to_thread(
+                fire.render, quote, author.name, f"@{context.bot.username}")
+        sent = await message.reply_animation(
+            io.BytesIO(data), filename="fire.mp4",
+            reply_to_message_id=target.message_id)
+        admin.note(context, "fire")
+        made = sent.animation or sent.document
+        if made is not None:
+            gallery.record(context.user_data, made.file_id, author, text)
+    except TelegramError:
+        raise
+    except Exception:  # noqa: BLE001
+        log.exception("fire render failed")
+        await message.reply_text(_t("failed", update, context))
+    finally:
+        _fire_waiting -= 1
+        done.set()
+        await showing
+
+
 def _clock(when) -> str:
     """The time as a chat client prints it: 3:47 PM, not 03:47."""
     if TZ is not None:
@@ -1326,6 +1398,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(
         ["sticker", "stiker", "stickr", "sticekr", "stcker"], cmd_quote_sticker))
     app.add_handler(CommandHandler(["gif", "gfi"], cmd_quote_gif))
+    app.add_handler(CommandHandler(["fire", "fier", "fir"], cmd_fire))
     app.add_handler(CommandHandler(
         ["screenshot", "screenshoot", "screanshot", "screnshot", "sceenshot"],
         cmd_screenshot))
@@ -1340,6 +1413,9 @@ def register(app: Application) -> None:
         (lead + r"(?:استیکر|sticker)(?:\s*ش)?" + do + tail, cmd_quote_sticker),
         (lead + r"(?:گیف|gif)(?:\s*ش)?" + do + tail, cmd_quote_gif),
         (lead + r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + do + tail, cmd_screenshot),
+        # «آتیشش کن», and the ways it gets typed: اتیشش, آتشش, آتیش بزن.
+        (lead + r"(?:آتیش|اتیش|آتش|اتش|fire)(?:\s*ش)?\s*(?:کن|کنید|بزن|بزنید)" + tail,
+         cmd_fire),
     ]
     for pattern, handler in triggers:
         app.add_handler(MessageHandler(

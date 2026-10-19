@@ -63,11 +63,12 @@ Anything new, anything fixed, I say it there. Joining is up to you - only if you
 <code>/quote</code> — کارت نقل‌قول، به شکل عکس
 <code>/sticker</code> — همان کارت، به شکل استیکر
 <code>/gif</code> — همان کارت، به شکل گیف با افکت تایپ
+<code>/fire</code> — متن با آتش روی کاغذ نوشته می‌شود (گیف)
 <code>/screenshot</code> — اسکرین‌شات، همان‌طور که در تلگرام دیده می‌شود
 
 <b>فارسی هم می‌فهمم</b>
 به‌جای دستور، در جواب همان پیام کافی است بنویسید:
-«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
 
 <b>عکس دلخواه</b>
 هر کس می‌تواند در چت خصوصی من با <code>/avatar</code> عکسی انتخاب کند که روی کوت‌هایش بنشیند (۲ بار)، و با <code>/settings</code> بگوید کدام عکس نماینده‌اش باشد.
@@ -93,11 +94,12 @@ Anything new, anything fixed, I say it there. Joining is up to you - only if you
 <code>/quote</code> — a quote card, as an image
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — the same card, animated
+<code>/fire</code> — the text written in fire on paper (GIF)
 <code>/screenshot</code> — a screenshot, the way Telegram draws it
 
 <b>Persian phrases work too</b>
 As a reply, instead of a command:
-«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
 
 <b>Your own picture</b>
 Anyone can set a picture for their quotes with <code>/avatar</code> in my private chat (twice), and choose which picture stands for them with <code>/settings</code>.
@@ -130,13 +132,14 @@ Full guide: /help""",
 <code>/quote</code> — کارت نقل‌قول، به شکل عکس
 <code>/sticker</code> — همان کارت، به شکل استیکر
 <code>/gif</code> — همان کارت، به شکل گیف؛ متن جلوی چشم تایپ می‌شود
+<code>/fire</code> — گیفی که متن را با آتش روی کاغذ می‌نویسد (تا ۱۰۰ حرف)
 <code>/screenshot</code> — پیام را همان‌طور که در تلگرام دیده می‌شود می‌سازد: حباب، عکس پروفایل، اسم و ساعت
 اگر پیام ریکشن خورده باشد و ربات از قبل ادمین گروه بوده، ریکشن‌ها هم زیرش می‌آیند.
 
 در گروه، استیکر و اسکرین‌شات به استیکرپک گروه هم اضافه می‌شوند.
 
 یا به‌جای دستور، در جواب پیام فارسی بنویس:
-«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
 (در گروه فقط وقتی کار می‌کند که ادمین باشم)
 
 ➌ <b>بدون ریپلای هم می‌شود</b>
@@ -158,7 +161,6 @@ Full guide: /help""",
 می‌توانی عکسی انتخاب کنی که به‌جای عکس پروفایلت روی کوت‌ها بنشیند — چه خودت کوت بسازی، چه کس دیگری روی پیامت ریپلای بزند.
 در چت خصوصی من عکس را بفرست و در کپشنش بنویس <code>/avatar</code>، یا عکس را بفرست و بعد رویش ریپلای کن و <code>/avatar</code> بزن.
 <code>/avatar off</code> دوباره عکس پروفایل تلگرامت را برمی‌گرداند — یا در <code>/settings</code> دکمهٔ حذف را بزن.
-می‌خواهی عکس بماند ولی فعلاً استفاده نشود؟ در <code>/settings</code> گزینهٔ دیگری را انتخاب کن؛ عکست غیرفعال می‌شود و پاک نمی‌شود.
 
 ⚠️ <b>هر کاربر فقط ۲ بار</b> می‌تواند عکس دلخواه انتخاب کند. بعد از هر انتخاب می‌گویم چند سهمیه‌ات مانده، و وقتی تمام شد دیگر عکس جدیدی پذیرفته نمی‌شود. پاک کردن با <code>/avatar off</code> سهمیه مصرف نمی‌کند.
 
@@ -175,6 +177,7 @@ Full guide: /help""",
 <code>/quote</code> — از پیام ریپلای‌شده کارت نقل‌قول می‌سازد
 <code>/sticker</code> — همان کارت، به شکل استیکر
 <code>/gif</code> — همان کارت، به شکل گیف با افکت تایپ
+<code>/fire</code> — متن با آتش روی کاغذ
 <code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
 <code>/pack</code> — لینک استیکرپک این گروه
 <code>/unpack</code> — حذف یک استیکر از پک گروه (ادمین)
@@ -191,10 +194,10 @@ Full guide: /help""",
 «استیکرش کن» = /sticker
 «گیفش کن» = /gif
 «شاتش کن» = /screenshot
+«آتیشش کن» = /fire
 
 <b>اگر عکس پروفایل روی کارت نیامد</b>
-یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.
-یا اصلاً با <code>/avatar</code> یک عکس دلخواه بگذار تا اصلاً به تنظیمات تلگرام کاری نداشته باشم.""",
+یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
         "en": """📖 <b>Quoto help</b>
 
 I turn Telegram messages into quote cards: the message text, the sender's name and their profile photo on one card.
@@ -208,13 +211,14 @@ That's it — the card comes back in the same chat.
 <code>/quote</code> — a quote card, as an image
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — the same card, animated; the text types itself
+<code>/fire</code> — a GIF that writes the text in fire on paper (up to 100 characters)
 <code>/screenshot</code> — the message as it looks in Telegram: bubble, avatar, name and time
 If the message has reactions and the bot was already an admin of the group, they are drawn under it too.
 
 In a group, stickers and screenshots also join the group's sticker pack.
 
 Or say it in Persian, as a reply, instead of using a command:
-«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن»
+«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
 (in a group these only reach me once I am an admin)
 
 ➌ <b>No reply needed</b>
@@ -236,7 +240,6 @@ A menu opens and you pick one. Telegram never tells me what you replied to in th
 You can pick a picture to use instead of your profile photo — on quotes you make and on quotes others make of you.
 In my private chat, send the photo with <code>/avatar</code> as its caption, or send it and then reply to it with <code>/avatar</code>.
 <code>/avatar off</code> goes back to your Telegram profile photo — or use the delete button in <code>/settings</code>.
-Want to keep the picture but not use it for now? Pick another option in <code>/settings</code>: it is turned off, not deleted.
 
 ⚠️ <b>Two changes each, ever.</b> I tell you how many you have left after each one, and once they are gone no new picture is accepted. Clearing with <code>/avatar off</code> costs nothing.
 
@@ -253,6 +256,7 @@ Change it whenever you like; this one has no limit.
 <code>/quote</code> — a quote card from the replied-to message
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — the same card, animated
+<code>/fire</code> — the text, written in fire
 <code>/screenshot</code> — the message as a Telegram screenshot
 <code>/pack</code> — the link to this group's sticker pack
 <code>/unpack</code> — remove one sticker from the pack (admins)
@@ -269,10 +273,10 @@ Change it whenever you like; this one has no limit.
 «استیکرش کن» = /sticker
 «گیفش کن» = /gif
 «شاتش کن» = /screenshot
+«آتیشش کن» = /fire
 
 <b>If the profile photo is missing from the card</b>
-Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.
-Or set a picture with <code>/avatar</code> and your Telegram settings stop mattering.""",
+Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
     },
     "avatar_saved": {
         "fa": """عکس دلخواهت ذخیره شد ✅
@@ -585,6 +589,18 @@ Meanwhile you can type: /quote any text you like""",
         "fa": "نشد بسازمش. یه بار دیگه امتحان کن.",
         "en": "I couldn't make that. Give it another try.",
     },
+    "fire_too_long": {
+        "fa": "این متن برای آتیش زدن زیادی بلنده 🔥 روی کاغذ حداکثر {max} حرف جا می‌شه. برای متن بلند /gif رو امتحان کن.",
+        "en": "That's too long to write in fire 🔥 The page holds {max} characters at most. Try /gif for longer text.",
+    },
+    "fire_busy": {
+        "fa": "الان چند نفر جلوتر از تو توی صف آتیش‌ان 🔥 یه دقیقه دیگه دوباره امتحان کن.",
+        "en": "A few people are ahead of you in the fire queue 🔥 Try again in a minute.",
+    },
+    "fire_unavailable": {
+        "fa": "این قابلیت فعلاً در دسترس نیست.",
+        "en": "This isn't available right now.",
+    },
     "inline_empty": {
         "fa": "متن را بنویس تا برایت کوت بسازم",
         "en": "Type some text and I'll turn it into a quote",
@@ -678,6 +694,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("quote", "کارت نقل‌قول از پیام ریپلای‌شده"),
         ("sticker", "همان کارت، به شکل استیکر"),
         ("gif", "همان کارت، به شکل گیف"),
+        ("fire", "متن را با آتش روی کاغذ می‌نویسد"),
         ("screenshot", "پیام به شکل اسکرین‌شات تلگرام"),
         ("pack", "استیکرپک این گروه"),
         ("unpack", "حذف یک استیکر از پک گروه (ادمین)"),
@@ -687,6 +704,7 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("quote", "A quote card from the replied-to message"),
         ("sticker", "The same card, as a sticker"),
         ("gif", "The same card, animated"),
+        ("fire", "The text, written in fire"),
         ("screenshot", "The message as a Telegram screenshot"),
         ("pack", "This group's sticker pack"),
         ("unpack", "Remove one sticker from the pack (admins)"),

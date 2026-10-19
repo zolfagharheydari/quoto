@@ -5,3 +5,8 @@ assets/fonts/*.ttf
 botdata.pkl
 quotebot.log*
 assets/demo/
+# /fire: the clip and the handwriting fonts are not ours to publish. They are
+# copied to the server by hand; page.json (how the page moves) is ours.
+assets/fire/*.mp4
+assets/fire/*.ttf
+assets/fire/*.otf

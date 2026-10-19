@@ -463,6 +463,7 @@ def test_bot_logic() -> None:
         "sticker": lead + r"(?:استیکر|sticker)(?:\s*ش)?" + do + tail,
         "gif": lead + r"(?:گیف|gif)(?:\s*ش)?" + do + tail,
         "shot": lead + r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + do + tail,
+        "fire": lead + r"(?:آتیش|اتیش|آتش|اتش|fire)(?:\s*ش)?\s*(?:کن|کنید|بزن|بزنید)" + tail,
     }
     def fires(text):
         return {n for n, p in patterns.items() if re.match(p, text, re.IGNORECASE)}
@@ -470,6 +471,12 @@ def test_bot_logic() -> None:
     check("«استیکرش کن» fires sticker", fires("استیکرش کن") == {"sticker"})
     check("«گیفش کن» fires gif", fires("گیفش کن") == {"gif"})
     check("«شاتش کن» fires shot", fires("شاتش کن") == {"shot"})
+    for said in ("آتیشش کن", "اینو آتیشش کن لطفا", "اتیشش کن!", "آتیش بزن", "آتشش کن"):
+        check(f"«{said}» fires fire", fires(said) == {"fire"})
+    check("talk about fire does not fire", fires("آتیش گرفت") == set())
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    check("the fire trigger in the bot is the one tested",
+          patterns["fire"][len(lead):-len(tail)] in source)
     check("bare noun does not fire", fires("استیکر") == set())
     check("chat does not fire", fires("یه استیکر خوب بفرست") == set())
 
@@ -1949,6 +1956,61 @@ def test_pack_names() -> None:
           mine != stickerpack.pack_name(uid, "getquoto_bot"))
 
 
+def test_fire() -> None:
+    section("fire")
+    import fire
+
+    said = "سلام 🔥\nدنیا 👍🏽"
+    check("emoji are dropped, lines joined",
+          fire.clean(said) == "سلام دنیا", repr(fire.clean(said)))
+    check("persian zero-width non-joiner kept",
+          "‌" in fire.clean("می‌روم"))
+    check("nothing but emoji is nothing", fire.clean("🔥🔥") == "")
+    check("window is shut outside its span",
+          fire.window(0.5, 1, 2) == 0 and fire.window(1.5, 1, 2) == 1)
+
+    # The menus, the guides and the handlers all know it.
+    for lang in i18n.SUPPORTED:
+        check(f"/fire in the {lang} menu",
+              "fire" in {n for n, _ in i18n.COMMANDS[lang]})
+        check(f"/fire in the {lang} help", "/fire" in i18n.t("help", lang))
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    check("/fire registered", '["fire", "fier", "fir"], cmd_fire' in source)
+    body = source[source.index("async def cmd_fire"):source.index("def _clock")]
+    check("too long is turned away before rendering",
+          body.index("MAX_CHARS") < body.index("fire.render"))
+    check("a render never runs on the event loop",
+          re.search(r"asyncio\.to_thread\(\s*fire\.render", body) is not None)
+    check("the queue is released whatever happens",
+          re.search(r"finally:\s*_fire_waiting -= 1", body) is not None)
+    check("fire is counted in the stats", "fire" in {k for k, _ in admin.KINDS})
+
+    if not fire.available():
+        print("  (assets/fire missing - rendering not tested)")
+        return
+    # Reveal: nothing before the pen starts, everything by the end, more in between.
+    geometry = fire._geometry()
+    for quote in ("Stay hungry, stay foolish",
+                  "The best way to predict the future is to create it, so start today."):
+        page = fire.PageShot(quote, geometry)
+        empty, half, full = (int(page.canvas(p).astype(bool).sum()) for p in (0, 0.5, 1))
+        check(f"page reveals in order ({len(quote)} chars)", empty == 0 < half < full,
+              f"{empty} {half} {full}")
+        check(f"page fits without cutting ({len(quote)} chars)",
+              not any(l.endswith("…") for l in page.lines), str(page.lines))
+    pen = fire.PenShot("Stay hungry, stay foolish")
+    check("pen writes nothing before it starts", pen.mask(0.3) is None)
+    check("pen has written by the end", int((pen.mask(1.8) > 0).sum()) > 500)
+    longest = "x" * 9 + " " + "word " * ((fire.MAX_CHARS - 10) // 5)
+    page = fire.PageShot(longest[:fire.MAX_CHARS], geometry)
+    check("the longest allowed quote still fits the page",
+          not any(l.endswith("…") for l in page.lines), str(len(page.lines)))
+
+    data = fire.render("Stay hungry, stay foolish", "Steve Jobs", "@getquoto_bot")
+    check("renders an mp4", data[4:8] == b"ftyp", data[:12].hex())
+    check("small enough to send as a GIF", 200_000 < len(data) < 10_000_000, str(len(data)))
+
+
 def test_fonts() -> None:
     section("fonts")
     check("Vazirmatn present", not fonts.missing_bundled_font())
@@ -2576,6 +2638,7 @@ def main() -> int:
     test_pack_deletion()
     test_pack_names()
     test_fonts()
+    test_fire()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()
