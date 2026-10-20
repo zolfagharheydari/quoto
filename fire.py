@@ -369,7 +369,15 @@ class PageShot:
         font, self.lines, self.step = self._plan(quote)
         S = PAGE_SCALE
         big = face(quote, font.size * S, scaled=False)
-        self.size = (int(PAGE_LEN * S), int((len(self.lines) * self.step + 1) * PITCH * S))
+        # Room above the first line and below the last: Nastaliq reaches well
+        # past its own size both ways, and a canvas that stopped one rule under
+        # the last baseline cut off the dots below the letters and the tail of
+        # every ر. The canvas is moved up by the top margin when it is placed,
+        # so the lines still sit on the same rules.
+        self.pad_top = int(big.size * 0.9)
+        pad_bottom = int(big.size * 1.2)
+        self.size = (int(PAGE_LEN * S),
+                     int(self.pad_top + len(self.lines) * self.step * PITCH * S + pad_bottom))
         w, _ = self.size
         self.parts = []                    # (ink, x, y, ink starts, ink ends) per line
         for i, line in enumerate(self.lines):
@@ -385,7 +393,7 @@ class PageShot:
             if getattr(big, "thin", False):
                 img = thicken(img, 5)
             x = (w - 2 * S) - (img.width - 4 * S) if self.rtl else 2 * S - 4 * S
-            self.parts.append((np.asarray(img), x, int(baseline - by),
+            self.parts.append((np.asarray(img), x, int(self.pad_top + baseline - by),
                                4 * S, 4 * S + lw))
         self.total = sum(len(l) for l in self.lines) or 1
 
@@ -428,7 +436,8 @@ class PageShot:
         p = (t - PAGE[0] - 0.15) / 1.75
         if p <= 0:
             return frame
-        m = hom @ line_space_to_frame(self.origin, PAGE_SCALE)
+        shift = np.array([[1, 0, 0], [0, 1, -self.pad_top], [0, 0, 1]], float)
+        m = hom @ line_space_to_frame(self.origin, PAGE_SCALE) @ shift
         ink = cv2.warpPerspective(self.canvas(min(1.0, p)), m, (W, H), flags=cv2.INTER_AREA)
         ink = (ink.astype(np.float32) * paper_mask(frame) / 255.0).astype(np.uint8)
         return darken(frame, cv2.GaussianBlur(ink, (0, 0), 0.6), 0.93 * a)
