@@ -2,10 +2,11 @@
 
     python tools/make_fire_base.py "Gunna Writing In Fire ... 1080p60.mp4"
 
-Writes two files into assets/fire/:
+Writes three files into assets/fire/:
 
   base.mp4    the clip at 1280x720, 30 fps, silent, with the handwriting on the
               page already erased - so all a request has to do is write
+  base_480p20.mp4  the same, at the size and rate the bot sends
   page.json   how the page moves: a homography per frame of the page shot,
               from the frame the lines were measured in, and where the first
               rule starts. Kept if it is already there; tracking is slow.
@@ -86,6 +87,9 @@ def erase_handwriting(frame, region, paper):
 
 
 def main():
+    if sys.argv[1:] == ["--small"]:
+        write_small()            # only the small copy, from a base.mp4 already here
+        return
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     src = sys.argv[1]
@@ -124,6 +128,19 @@ def main():
         writer.send(np.ascontiguousarray(out).tobytes())
     writer.close()
     print(fire.BASE, fire.BASE.stat().st_size // 1024, "KB")
+    write_small()
+
+
+def write_small():
+    """The clip at the size and rate the bot sends, so no request has to shrink it."""
+    import subprocess
+
+    (w, h), fps = fire.OUT_SIZE, fire.OUT_FPS
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(fire.BASE),
+         "-vf", f"fps={fps},scale={w}:{h}:flags=area", "-c:v", "libx264", "-preset", "slow",
+         "-crf", "17", "-pix_fmt", "yuv420p", "-an", str(fire.BASE_SMALL)], check=True)
+    print(fire.BASE_SMALL, fire.BASE_SMALL.stat().st_size // 1024, "KB")
 
 
 if __name__ == "__main__":

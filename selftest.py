@@ -2016,6 +2016,19 @@ def test_fire() -> None:
     data = fire.render("Stay hungry, stay foolish", "Steve Jobs", "@getquoto_bot")
     check("renders an mp4", data[4:8] == b"ftyp", data[:12].hex())
     check("small enough to send as a GIF", 200_000 < len(data) < 10_000_000, str(len(data)))
+    import imageio_ffmpeg
+    import tempfile as _tempfile
+    with _tempfile.TemporaryDirectory() as tmp:
+        clip = Path(tmp) / "fire.mp4"
+        clip.write_bytes(data)
+        frames = imageio_ffmpeg.read_frames(str(clip))
+        meta = next(frames)
+        frames.close()
+    check("sent at the size and rate chosen for speed",
+          tuple(meta["size"]) == fire.OUT_SIZE and round(meta["fps"]) == fire.OUT_FPS,
+          f"{meta['size']} {meta['fps']}")
+    check("the clip is already there at that size",
+          fire.BASE_SMALL.exists(), "run tools/make_fire_base.py --small")
 
 
 def test_inline_fire() -> None:

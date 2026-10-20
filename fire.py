@@ -36,11 +36,20 @@ log = logging.getLogger(__name__)
 
 ASSETS = Path(__file__).with_name("assets") / "fire"
 BASE = ASSETS / "base.mp4"
+# The same clip already at the size and rate the bot sends, so a request does
+# not have to shrink it on every render. Made by tools/make_fire_base.py; when
+# it is missing, the full-size clip is scaled on the fly instead.
+BASE_SMALL = ASSETS / "base_480p20.mp4"
 GEOMETRY = ASSETS / "page.json"
 NASTALIQ = ASSETS / "IranNastaliq.ttf"
 SCRIPT = ASSETS / "Cinderella.otf"
 
-W, H, FPS = 1280, 720, 30
+W, H, FPS = 1280, 720, 30          # what everything is measured and laid out in
+
+# What is sent. Measured on the server for the same two-line quote: 9.4s at
+# 720p/30, 3.5s at this. On a phone, where Telegram shows the GIF small, the
+# two are hard to tell apart, and the file is half the size.
+OUT_SIZE, OUT_FPS = (854, 480), 20
 
 # The page holds about this much at a size that can still be read; longer
 # quotes are turned away and pointed at /gif, rather than cut short.
@@ -214,11 +223,15 @@ def darken(base: np.ndarray, alpha: np.ndarray, k: float) -> np.ndarray:
     return (base.astype(np.float32) * (1 - a)).astype(np.uint8)
 
 
-def paper_mask(frame: np.ndarray) -> np.ndarray:
-    """Where the page shows: bright, so the dark glove in front of it is left out."""
+def paper_mask(frame: np.ndarray, k: float = 1.0) -> np.ndarray:
+    """Where the page shows: bright, so the dark glove in front of it is left out.
+
+    `k` is the frame's scale against 720p, which the kernel sizes are set for.
+    """
     import cv2
     m = (frame.mean(axis=2) > 70).astype(np.uint8) * 255
-    return cv2.GaussianBlur(cv2.erode(m, np.ones((5, 5), np.uint8)), (0, 0), 2)
+    n = max(3, int(round(5 * k)) | 1)
+    return cv2.GaussianBlur(cv2.erode(m, np.ones((n, n), np.uint8)), (0, 0), 2 * k)
 
 
 def line_space_to_frame(origin, scale: float) -> np.ndarray:
@@ -230,12 +243,15 @@ def line_space_to_frame(origin, scale: float) -> np.ndarray:
 class Label:
     """Text over the picture with a soft shadow, drawn once and faded per frame."""
 
-    def __init__(self, parts):
+    def __init__(self, parts, k: float = 1.0):
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
         for font, xy, text, anchor in parts:
             font.draw_on(d, (xy[0] + 2, xy[1] + 3), text, fill=(0, 0, 0, 190), anchor=anchor)
             font.draw_on(d, xy, text, fill=LABEL + (255,), anchor=anchor)
+        # Laid out at 720p like everything else, then brought to the output size.
+        if k != 1.0:
+            layer = layer.resize((round(W * k), round(H * k)), Image.LANCZOS)
         box = layer.getbbox() or (0, 0, 1, 1)
         x0, y0, x1, y1 = box
         arr = np.asarray(layer.crop(box)).astype(np.float32)
@@ -289,7 +305,7 @@ class PenShot:
             self.strips.append((np.asarray(img), start, end))
         self.total = sum(len(l) for l in self.lines) or 1
 
-    def mask(self, t: float):
+    def mask(self, t: float, scale: float = 1.0):
         import cv2
         p = max(0.0, min(1.0, (t - 0.55) / 1.15))
         done = p * self.total
@@ -331,16 +347,16 @@ class PenShot:
         c, s = np.cos(PEN_SLOPE), np.sin(PEN_SLOPE)
         m = np.array([[c, -s * PEN_SQUASH], [s, c * PEN_SQUASH]])
         offset = tip - m @ np.array([right, base_y])
-        return cv2.warpAffine(canvas, np.hstack([m, offset[:, None]]), (W, H),
-                              flags=cv2.INTER_LINEAR)
+        return cv2.warpAffine(canvas, scale * np.hstack([m, offset[:, None]]),
+                              (round(W * scale), round(H * scale)), flags=cv2.INTER_LINEAR)
 
-    def apply(self, frame: np.ndarray, t: float, a: float) -> np.ndarray:
+    def apply(self, frame: np.ndarray, t: float, a: float, k: float = 1.0) -> np.ndarray:
         import cv2
-        mask = self.mask(t)
+        mask = self.mask(t, k)
         if mask is None:
             return frame
         # Black, like ink, softened to sit in the shot's own focus.
-        return darken(frame, cv2.GaussianBlur(mask, (0, 0), 0.8), INK * a)
+        return darken(frame, cv2.GaussianBlur(mask, (0, 0), 0.8 * k), INK * a)
 
 
 def _paste_max(canvas: np.ndarray, part: np.ndarray, x: int, y: int) -> None:
@@ -428,7 +444,8 @@ class PageShot:
             _paste_max(out, part, px, y)
         return out
 
-    def apply(self, frame: np.ndarray, i: int, t: float, a: float) -> np.ndarray:
+    def apply(self, frame: np.ndarray, i: int, t: float, a: float,
+              k: float = 1.0) -> np.ndarray:
         import cv2
         hom = self.homs.get(i)
         if hom is None:
@@ -437,14 +454,16 @@ class PageShot:
         if p <= 0:
             return frame
         shift = np.array([[1, 0, 0], [0, 1, -self.pad_top], [0, 0, 1]], float)
-        m = hom @ line_space_to_frame(self.origin, PAGE_SCALE) @ shift
-        ink = cv2.warpPerspective(self.canvas(min(1.0, p)), m, (W, H), flags=cv2.INTER_AREA)
-        ink = (ink.astype(np.float32) * paper_mask(frame) / 255.0).astype(np.uint8)
-        return darken(frame, cv2.GaussianBlur(ink, (0, 0), 0.6), 0.93 * a)
+        to_out = np.diag([k, k, 1.0])
+        m = to_out @ hom @ line_space_to_frame(self.origin, PAGE_SCALE) @ shift
+        h, w = frame.shape[:2]
+        ink = cv2.warpPerspective(self.canvas(min(1.0, p)), m, (w, h), flags=cv2.INTER_AREA)
+        ink = (ink.astype(np.float32) * paper_mask(frame, k) / 255.0).astype(np.uint8)
+        return darken(frame, cv2.GaussianBlur(ink, (0, 0), 0.6 * k), 0.93 * a)
 
 
 # ------------------------------------------------------------------ face and end
-def _name_label(who: str) -> Label | None:
+def _name_label(who: str, k: float = 1.0) -> Label | None:
     who = clean(who)
     if not who:
         return None
@@ -462,8 +481,8 @@ def _name_label(who: str) -> Label | None:
     if getattr(font, "raqm", False):
         # On its baseline: Nastaliq's tall strokes would throw a centred
         # anchor off.
-        return Label([(font, (W / 2, 572), shown, "ms")])
-    return Label([(font, (W / 2, 600), shown, "mm")])
+        return Label([(font, (W / 2, 572), shown, "ms")], k)
+    return Label([(font, (W / 2, 600), shown, "mm")], k)
 
 
 @lru_cache(maxsize=1)
@@ -477,7 +496,6 @@ def _geometry() -> dict:
 # something is stuck - ffmpeg waiting on a pipe, a disk that stopped - and the
 # job is killed rather than holding the only slot until the next restart.
 RENDER_TIMEOUT = 90
-FRAME_BYTES = W * H * 3
 
 
 def _ffmpeg() -> str:
@@ -489,7 +507,8 @@ def _ffmpeg() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
-def render(quote: str, who: str, handle: str) -> bytes:
+def render(quote: str, who: str, handle: str, size: tuple[int, int] = OUT_SIZE,
+           fps: int = OUT_FPS) -> bytes:
     """The clip with `quote` written in it, as a silent MP4 - a GIF, to Telegram.
 
     Two ffmpeg processes, one reading the base clip and one encoding, with
@@ -499,22 +518,32 @@ def render(quote: str, who: str, handle: str) -> bytes:
     import subprocess
     import threading
 
+    # Everything is laid out at 720p, 30 fps - the measurements are - and
+    # scaled to `size` and sampled at `fps` on the way out.
+    out_w, out_h = size
+    k = out_w / W
+    frame_bytes = out_w * out_h * 3
     quote = clean(quote)
     pen = PenShot(quote)
     page = PageShot(quote, _geometry())
-    name = _name_label(who)
-    mark = Label([(fonts.load("medium", 34), (W - 40, 630), handle, "rm")])
+    name = _name_label(who, k)
+    mark = Label([(fonts.load("medium", 34), (W - 40, 630), handle, "rm")], k)
     exe = _ffmpeg()
+    source, resample = BASE, ["-vf", f"fps={fps},scale={out_w}:{out_h}:flags=area"]
+    if (tuple(size), fps) == ((W, H), FPS):
+        resample = []
+    elif (tuple(size), fps) == (OUT_SIZE, OUT_FPS) and BASE_SMALL.exists():
+        source, resample = BASE_SMALL, []
 
     with tempfile.TemporaryDirectory() as tmp:
         out_path = Path(tmp) / "fire.mp4"
         reader = subprocess.Popen(
-            [exe, "-loglevel", "error", "-i", str(BASE),
+            [exe, "-loglevel", "error", "-i", str(source), *resample,
              "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         writer = subprocess.Popen(
             [exe, "-y", "-loglevel", "error",
-             "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{out_w}x{out_h}", "-r", str(fps),
              "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
              "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(out_path)],
             stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -530,26 +559,27 @@ def render(quote: str, who: str, handle: str) -> bytes:
         try:
             i = 0
             while True:
-                raw = reader.stdout.read(FRAME_BYTES)
-                if len(raw) < FRAME_BYTES:
+                raw = reader.stdout.read(frame_bytes)
+                if len(raw) < frame_bytes:
                     break
-                t = i / FPS
+                t = i / fps
                 frame = None
 
                 def pixels():
                     return frame if frame is not None else np.frombuffer(
-                        raw, np.uint8).reshape(H, W, 3)
+                        raw, np.uint8).reshape(out_h, out_w, 3)
 
                 a = window(t, PEN[0] + 0.45, PEN[1] + 0.3, fade=0.12)
                 if a:
-                    frame = pen.apply(pixels(), t, a)
+                    frame = pen.apply(pixels(), t, a, k)
                 a = window(t, FACE[0] + 0.3, FACE[1] - 0.05)
                 if a and name is not None:
                     frame = name.over(pixels(), a)
                 if PAGE[0] <= t <= PAGE[1]:
                     a = window(t, PAGE[0], PAGE[1] - 0.05, fade=0.25)
                     if a:
-                        frame = page.apply(pixels(), i, t, a)
+                        # The page's tracking was measured frame by frame at 30 fps.
+                        frame = page.apply(pixels(), round(t * FPS), t, a, k)
                 # The handle is on the whole clip, not only the end: a GIF is
                 # forwarded and cut, and whoever sees any part of it should
                 # see where it came from.
