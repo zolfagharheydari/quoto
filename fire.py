@@ -550,9 +550,10 @@ def render(quote: str, who: str, handle: str) -> bytes:
                     a = window(t, PAGE[0], PAGE[1] - 0.05, fade=0.25)
                     if a:
                         frame = page.apply(pixels(), i, t, a)
-                a = window(t, FIRE[0] + 0.5, FIRE[1] + 1, fade=0.3)
-                if a:
-                    frame = mark.over(pixels(), a)
+                # The handle is on the whole clip, not only the end: a GIF is
+                # forwarded and cut, and whoever sees any part of it should
+                # see where it came from.
+                frame = mark.over(pixels(), min(1.0, 0.25 + t / 0.4))
                 writer.stdin.write(raw if frame is None
                                    else np.ascontiguousarray(frame).tobytes())
                 i += 1
