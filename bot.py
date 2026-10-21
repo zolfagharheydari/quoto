@@ -280,6 +280,24 @@ async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE,
     return False
 
 
+def _custom_need_start(raw: str) -> dict[int, str]:
+    """CUSTOM_NEED_START: "id=message", several joined with "||".
+
+    The owner's own words for particular people who have not started the bot,
+    in place of the usual request. Kept in .env, not in the code: the ids are
+    real people, and the code is public.
+    """
+    found = {}
+    for entry in (raw or "").split("||"):
+        ident, sep, text = entry.partition("=")
+        if sep and ident.strip().lstrip("-").isdigit() and text.strip():
+            found[int(ident.strip())] = text.strip()
+    return found
+
+
+CUSTOM_NEED_START = _custom_need_start(os.getenv("CUSTOM_NEED_START", ""))
+
+
 async def _require_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if await _has_started(update, context):
         return True
@@ -287,8 +305,10 @@ async def _require_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     button = InlineKeyboardButton(
         i18n.t("btn_start", lang), url=f"https://t.me/{context.bot.username}?start=use"
     )
+    user = update.effective_user
+    said = CUSTOM_NEED_START.get(user.id) if user else None
     await update.effective_message.reply_text(
-        i18n.t("need_start", lang), reply_markup=InlineKeyboardMarkup([[button]])
+        said or i18n.t("need_start", lang), reply_markup=InlineKeyboardMarkup([[button]])
     )
     return False
 

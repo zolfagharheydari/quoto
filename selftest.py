@@ -2345,6 +2345,17 @@ def test_hardening() -> None:
           asyncio.run(stickerpack._adopt_legacy(nothing, chat, owner_id=1)) is False
           and not nothing.calls)
 
+    # Custom words for particular people who have not started the bot.
+    custom = bot._custom_need_start("42=اول استارت کن||-7=group?||x=no||99=  ||5=a=b")
+    check("custom start messages are read by id",
+          custom == {42: "اول استارت کن", -7: "group?", 5: "a=b"}, str(custom))
+    check("an unset setting is nobody", bot._custom_need_start("") == {})
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    body = source[source.index("async def _require_start"):]
+    body = body[:body.index("\nasync def ", 10)]
+    check("everyone else still gets the usual request",
+          'said or i18n.t("need_start", lang)' in body)
+
     # The owner's pack tool only reaches this bot's packs.
     for text, expected in (
         ("https://t.me/addstickers/gabc_by_getquoto_bot", "gabc_by_getquoto_bot"),
