@@ -968,29 +968,47 @@ async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await message.reply_text(_t(key, update, context))
 
 
-async def cmd_mygifs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """How many GIFs this person has made, and the way into searching them.
+MYGIFS_SHOWN = 8       # sent at once; a search narrows it down from there
 
-    The search itself is inline mode - a gallery that can be sent from straight
-    away - so this hands over a button that opens it in the same chat, with
-    whatever was typed after the command already filled in.
+
+async def cmd_mygifs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """This person's GIFs, sent back here: the newest, or one person's.
+
+    "/mygifs" alone sends the newest few; "/mygifs ali" sends the ones of Ali
+    - by name, username or numeric id. It used to open a gallery in inline
+    mode, which is switched off now; sending them here is what that gallery
+    was for in the end, and they can be forwarded on from here.
     """
     message = update.effective_message
     lang = i18n.resolve(update, context.user_data)
+    if message.chat.type != "private":
+        await message.reply_text(i18n.t("avatar_private_only", lang))
+        return
     term = " ".join(context.args or []).strip()
-    count = len(context.user_data.get(gallery.KEY) or [])
-    if not count:
+    archive = context.user_data.get(gallery.KEY) or []
+    if not archive:
         await message.reply_html(i18n.t("mygifs_none", lang))
         return
-    await message.reply_html(
-        i18n.t("mygifs_intro", lang).format(
-            count=count, people=gallery.people(context.user_data),
-            bot=context.bot.username),
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-            i18n.t("btn_mygifs", lang),
-            switch_inline_query_current_chat=inline.GALLERY_PREFIX + term,
-        )]]),
-    )
+    found = gallery.search(context.user_data, term)
+    if not found:
+        await message.reply_text(i18n.t("gallery_none", lang).format(term=term[:40]))
+        return
+    if term:
+        # The term is theirs and goes into HTML: escaped, not trusted.
+        await message.reply_html(i18n.t("mygifs_found", lang).format(
+            count=len(found), term=html.escape(term[:40])))
+    else:
+        await message.reply_html(i18n.t("mygifs_intro", lang).format(
+            count=len(archive), people=gallery.people(context.user_data)))
+    for entry in found[:MYGIFS_SHOWN]:
+        try:
+            await message.reply_animation(entry["f"])
+        except TelegramError as exc:
+            # A file_id can stop working; the rest of the list still can.
+            log.info("an archived GIF could not be sent: %s", exc)
+    if len(found) > MYGIFS_SHOWN:
+        await message.reply_html(i18n.t("mygifs_more", lang).format(
+            rest=len(found) - MYGIFS_SHOWN))
 
 
 async def cmd_deletemydata(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1444,7 +1462,7 @@ async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: 
         await context.bot.edit_message_media(
             inline_message_id=message_id,
             media=InputMediaAnimation(made.file_id),
-            reply_markup=inline.fire_again_markup(lang))
+            reply_markup=inline.fire_again_markup(lang, context.bot.username))
         # The upload was only ever a way to get a file_id, which outlives it.
         try:
             await upload.delete()
@@ -1740,6 +1758,9 @@ class _ShortText(filters.MessageFilter):
         return bool(message.text) and len(message.text) <= TRIGGER_MAX_CHARS
 
 
+INLINE_MODE = False
+
+
 def register(app: Application) -> None:
     """Attach every handler to the application.
 
@@ -1827,9 +1848,14 @@ def register(app: Application) -> None:
     # Reactions are only delivered while the bot is an administrator of the
     # group, and only from the moment it became one.
     app.add_handler(MessageReactionHandler(on_reaction))
-    app.add_handler(InlineQueryHandler(
-        inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate)))
-    app.add_handler(ChosenInlineResultHandler(on_chosen_inline))
+    # Inline mode is switched off in BotFather: with it on, typing the bot's
+    # name opened the inline menu, and that stood in the way of mentioning it
+    # as a guest - which does the same job and also knows what was replied to.
+    # The handlers are kept, so turning it back on is this flag and BotFather.
+    if INLINE_MODE:
+        app.add_handler(InlineQueryHandler(
+            inline.make_handler(WATERMARK, STORAGE_CHAT, _inline_gate)))
+        app.add_handler(ChosenInlineResultHandler(on_chosen_inline))
     app.add_error_handler(on_error)
 
 

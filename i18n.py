@@ -150,8 +150,8 @@ Full guide: /help""",
 مرا به گروه اضافه کن. اگر ریپلای‌ها را ندیدم و گفتم «روی پیامی ریپلای کن»، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم؛ در این حالت کافی است مرا در گروه <b>ادمین</b> کنی.
 
 ➎ <b>در چتی که عضوش نیستم</b>
-لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس <code>@BOT</code> (یا <code>@BOT گیفش کن</code>، <code>آتیشش کن</code>…)؛ اسم و عکس همان آدم می‌آید.
-یا بنویس <code>@BOT متن</code> و انتخاب کن (آتیش: <code>@BOT 🔥 متن</code>)، به نام خودت.
+لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس <code>@BOT</code> — یا <code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code> و… — کوت با اسم و عکس همان آدم در همان چت می‌آید.
+بدون ریپلای: <code>@BOT متن</code> تا از حرف خودت کوت بسازم.
 
 ➏ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/quote</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
@@ -229,8 +229,8 @@ The card is credited to you, with your profile photo.
 Add me to the group. If I answer "reply to a message" even though you did, Telegram is not letting me see it — making me an <b>admin</b> in the group fixes that.
 
 ➎ <b>In a chat I'm not in</b>
-No need to add me. Reply to a message with <code>@BOT</code> (or <code>@BOT /gif</code>, <code>/fire</code>…): their name and photo come with it.
-Or type <code>@BOT text</code> and pick one (fire: <code>@BOT 🔥 text</code>), credited to you.
+No need to add me. Reply to a message with <code>@BOT</code> — or <code>@BOT /gif</code>, <code>@BOT /fire</code>… — and the quote arrives in that chat with their name and photo.
+No reply: <code>@BOT your text</code> quotes your own words.
 
 ➏ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/quote</code>. I read the original sender's name and photo from the forward.
@@ -323,12 +323,12 @@ You can choose a picture {count} more time(s). Send it with <code>/avatar</code>
 You have the full allowance again. Send a new one with <code>/avatar</code>.""",
     },
     "mygifs_intro": {
-        "fa": """🎞 تا حالا <b>{count}</b> گیف از <b>{people}</b> نفر ساخته‌ای.
+        "fa": """🎞 تا حالا <b>{count}</b> گیف از <b>{people}</b> نفر ساخته‌ای. جدیدترین‌ها این‌ها هستند.
 
-برای دیدن و فرستادنشان دکمهٔ زیر را بزن. در هر چتی هم می‌توانی بنویسی <code>@{bot} #اسم</code> تا فقط گیف‌های همان شخص بیاید؛ با یوزرنیم یا آیدی عددی هم جستجو می‌شود.""",
-        "en": """🎞 You have made <b>{count}</b> GIFs of <b>{people}</b> people.
+برای گیف‌های یک نفر بنویس <code>/mygifs اسم</code> — با یوزرنیم یا آیدی عددی هم پیدا می‌شود. از همین‌جا می‌توانی برای هر کسی فورواردشان کنی.""",
+        "en": """🎞 You have made <b>{count}</b> GIFs of <b>{people}</b> people. Here are the newest.
 
-Tap the button to browse and send them. In any chat you can also type <code>@{bot} #name</code> to see only one person's; a username or numeric id works too.""",
+For one person's, send <code>/mygifs name</code> — a username or numeric id works too. Forward them on to anyone from here.""",
     },
     "mygifs_none": {
         "fa": "هنوز گیفی نساخته‌ای. روی پیامی ریپلای کن و /gif بزن؛ از این به بعد هر گیفی که بسازی اینجا جمع می‌شود.",
@@ -336,6 +336,11 @@ Tap the button to browse and send them. In any chat you can also type <code>@{bo
     },
     "btn_mygifs": {"fa": "🔍 گیف‌هایم", "en": "🔍 My GIFs"},
     "gallery_none": {"fa": "گیفی از «{term}» پیدا نشد", "en": "No GIFs of “{term}”"},
+    "mygifs_found": {"fa": "🎞 <b>{count}</b> گیف از «{term}»:", "en": "🎞 <b>{count}</b> GIFs of “{term}”:"},
+    "mygifs_more": {
+        "fa": "و {rest} تای دیگر هم هست؛ برای دیدنشان اسم دقیق‌تری بنویس، مثلاً <code>/mygifs یوزرنیم</code>.",
+        "en": "And {rest} more; narrow it down with a fuller name, e.g. <code>/mygifs username</code>.",
+    },
     "btn_template": {"fa": "🎨 قالب کوت", "en": "🎨 Quote template"},
     "template_prompt": {
         "fa": """کوت‌هایت با کدام قالب ساخته شود؟
@@ -440,13 +445,13 @@ If it is one sticker you want gone, reply to it and send /unpack instead.""",
         "fa": """استیکرپک شخصی‌ات ساخته شد 🎉
 {link}
 
-از این به بعد هر کوت و اسکرین‌شاتی که اینجا یا با حالت inline بسازی به همین اضافه می‌شود. با /mypack هر وقت خواستی لینکش را بگیر.
+از این به بعد هر کوت و اسکرین‌شاتی که اینجا بسازی به همین اضافه می‌شود. با /mypack هر وقت خواستی لینکش را بگیر.
 
 اگر استیکر تازه را در پک نمی‌بینی، روی خودِ استیکر بزن یا همین لینک را دوباره باز کن — تلگرام گاهی دیر به‌روزش می‌کند.""",
         "en": """Your own sticker pack is ready 🎉
 {link}
 
-Everything you make here or with inline mode joins it from now on. /mypack gives you the link whenever you want it.
+Everything you make here joins it from now on. /mypack gives you the link whenever you want it.
 
 Don't see a new sticker in the pack yet? Tap the sticker itself or open this link again - Telegram can be slow to refresh it.""",
     },
@@ -454,13 +459,13 @@ Don't see a new sticker in the pack yet? Tap the sticker itself or open this lin
         "fa": """استیکرپک شخصی‌ات:
 {link}
 
-هر کوت یا اسکرین‌شاتی که در چت خصوصی من یا با حالت inline بسازی، خودکار به آن اضافه می‌شود.
+هر کوت یا اسکرین‌شاتی که در چت خصوصی من بسازی، خودکار به آن اضافه می‌شود.
 
 اگر استیکر تازه را در پک نمی‌بینی، روی خودِ استیکر بزن یا همین لینک را دوباره باز کن — تلگرام گاهی دیر به‌روزش می‌کند.""",
         "en": """Your own sticker pack:
 {link}
 
-Everything you make in my private chat or with inline mode is added to it.
+Everything you make in my private chat is added to it.
 
 Don't see a new sticker in the pack yet? Tap the sticker itself or open this link again - Telegram can be slow to refresh it.""",
     },
@@ -604,7 +609,6 @@ Meanwhile you can type: /quote any text you like""",
 • عکس دلخواه، انتخاب عکس و قالب و زبان
 • آرشیو گیف‌هایی که ساخته‌ای
 • اسم و یوزرنیمی که ربات از تو دیده
-• متن‌هایی که در حالت اینلاین نوشته‌ای
 
 این‌ها می‌مانند: تعداد دفعاتی که عکس دلخواه گذاشته‌ای (برای سهمیه)، و استیکرپک شخصی‌ات — برای پاک کردن پک از /delpack استفاده کن.
 
@@ -615,7 +619,6 @@ This deletes:
 • your own picture, and your picture, template and language choices
 • the archive of GIFs you have made
 • the name and username the bot has seen you under
-• what you have typed in inline mode
 
 This stays: how many times you have set a picture (for the allowance), and your sticker pack - use /delpack to delete that.
 
@@ -640,7 +643,7 @@ For example: @getquoto_bot /gif""",
     "inline_fire_caption": {"fa": "🔥 داره با آتیش نوشته می‌شه…", "en": "🔥 Being written in fire…"},
     "btn_fire_wait": {"fa": "🔥 در حال نوشتن…", "en": "🔥 Writing…"},
     "fire_wait_alert": {"fa": "چند ثانیه صبر کن، داره می‌سوزه 🔥", "en": "A few seconds - it's burning 🔥"},
-    "btn_fire_again": {"fa": "🔥 تو هم آتیشش کن", "en": "🔥 Make your own"},
+    "btn_fire_again": {"fa": "🔥 تو هم بساز", "en": "🔥 Make your own"},
     "inline_fire_hint": {"fa": "بعد از 🔥 متنت رو بنویس", "en": "Type your text after 🔥"},
     "inline_fire_long": {"fa": "متن زیادی بلنده؛ حداکثر {max} حرف 🔥", "en": "Too long: {max} characters at most 🔥"},
     "inline_fire_busy": {"fa": "الان سرم شلوغه، یه دقیقه دیگه 🔥", "en": "Busy right now, try in a minute 🔥"},

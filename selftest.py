@@ -2162,7 +2162,8 @@ def test_inline_fire() -> None:
     inline.forget_user(store, 7)
     check("deleting your data removes your fire clips too", set(store["fire_inline"]) == {"8:b"})
     for lang in i18n.SUPPORTED:
-        check(f"the {lang} help says how", "🔥" in i18n.t("help", lang))
+        check(f"the {lang} help says how to mention the bot as a guest",
+              "<code>@BOT</code>" in i18n.t("help", lang))
 
 
 def test_guest() -> None:
@@ -2302,6 +2303,42 @@ def test_guest() -> None:
     reg = source[source.index("def register"):]
     check("guest messages are handled before anything else in their group",
           reg.index("GUEST_MESSAGE") < reg.index('CommandHandler("start"'))
+
+    # Inline mode is off; the archive is searched in the bot's own chat.
+    check("inline handlers are not registered while it is off", bot.INLINE_MODE is False)
+    check("nothing offers a switch into inline mode",
+          "switch_inline_query" not in source
+          and "switch_inline_query" not in (ROOT / "inline.py").read_text(encoding="utf-8"))
+
+    def mygifs_run(args, archive):
+        sent, said = [], []
+
+        async def reply_animation(file_id):
+            sent.append(file_id)
+
+        async def reply_html(text, **kw):
+            said.append(text)
+
+        message = types.SimpleNamespace(chat=types.SimpleNamespace(type="private"),
+                                        reply_animation=reply_animation, reply_html=reply_html,
+                                        reply_text=reply_html)
+        update = types.SimpleNamespace(effective_message=message,
+                                       effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+        ctx = types.SimpleNamespace(args=args, user_data={"gifs": archive, "lang": "fa"})
+        asyncio.run(bot.cmd_mygifs(update, ctx))
+        return sent, said
+
+    archive = [{"f": f"F{i}", "u": 8 if i % 2 else 9, "n": "Hedieh" if i % 2 else "Amir",
+                "h": "", "q": "", "t": i} for i in range(20)]
+    sent, said = mygifs_run([], archive)
+    check("/mygifs alone sends the newest few", sent == [f"F{i}" for i in range(19, 19 - bot.MYGIFS_SHOWN, -1)])
+    check("and says there are more", len(said) == 2)
+    sent, _ = mygifs_run(["hedieh"], archive)
+    check("/mygifs name sends that person's", sent and all(int(f[1:]) % 2 for f in sent))
+    marked = archive + [{"f": "FX", "u": None, "n": "<b>x", "h": "", "q": "", "t": 99}]
+    sent, said = mygifs_run(["<b>x"], marked)
+    check("a typed name cannot inject markup",
+          sent == ["FX"] and "<b>x" not in said[0] and "&lt;b&gt;x" in said[0], str(said[:1]))
 
 
 def test_review_fixes() -> None:

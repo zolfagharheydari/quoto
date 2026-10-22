@@ -338,10 +338,15 @@ def fire_remember(bot_data: dict, key: str, file_id: str) -> None:
         cache.pop(next(iter(cache)))
 
 
-def fire_again_markup(lang: str) -> InlineKeyboardMarkup:
-    """Under a finished clip: the way to make one, straight from the chat."""
+def fire_again_markup(lang: str, bot_username: str) -> InlineKeyboardMarkup:
+    """Under a finished clip: the way to the bot, for whoever wants one too.
+
+    A link rather than a switch into inline mode: inline is switched off, and
+    a guest message is answered in a chat the reader may have nothing to do
+    with - the bot itself is where they can make their own.
+    """
     return InlineKeyboardMarkup([[InlineKeyboardButton(
-        i18n.t("btn_fire_again", lang), switch_inline_query_current_chat="🔥 ")]])
+        i18n.t("btn_fire_again", lang), url=f"https://t.me/{bot_username}?start=fire")]])
 
 
 async def _fire_placeholder(context, store, user_id: int) -> str:
@@ -385,7 +390,8 @@ async def answer_fire(query, context, text: str, lang: str, store) -> None:
     if done:
         result = InlineQueryResultCachedMpeg4Gif(
             id=f"fd{uuid.uuid4().hex[:16]}", mpeg4_file_id=done,
-            title=i18n.t("inline_fire_title", lang), reply_markup=fire_again_markup(lang))
+            title=i18n.t("inline_fire_title", lang),
+            reply_markup=fire_again_markup(lang, context.bot.username))
         # Filed in their archive when sent, like any other inline GIF.
         gifs = context.user_data.setdefault("inline_offered_gif", {})
         gifs[result.id] = done

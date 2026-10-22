@@ -19,15 +19,16 @@ Try it on Telegram: [@getquoto_bot](https://t.me/getquoto_bot)
 | `/screenshot` | The message drawn the way Telegram shows it, with name, badges, time and reactions |
 | `/template` | Choose one of four card designs |
 | `/avatar`, `/settings` | Choose which picture stands for you on your cards |
-| `/mygifs` | Every GIF you have made, searchable by who is in it |
+| `/mygifs` | Every GIF you have made; `/mygifs name` for one person's |
 | `/pack`, `/mypack` | The group's sticker pack, or your own |
 | `/unpack`, `/delpack` | Remove one sticker, or a whole pack (group admins, or the pack's owner) |
 
-**Inline mode** works in any chat, including ones the bot is not a member of:
-type `@getquoto_bot` followed by some text and pick a card, sticker or GIF from
-the menu. Type `@getquoto_bot #name` instead to search the GIFs you have made
-of someone, by name, username or numeric id, and send one straight from the
-results.
+**Guest mode** works in any chat, including ones the bot is not a member of:
+reply to a message with `@getquoto_bot` - or `@getquoto_bot /gif`, `/sticker`,
+`/fire` - and the bot answers in that chat with the card, sticker, GIF or fire
+clip of that message, under the sender's own name and picture. With no reply,
+the words after the mention are quoted. `/mygifs name` in the bot's chat finds
+the GIFs you have made of someone, by name, username or numeric id.
 
 ## Text rendering
 
@@ -84,7 +85,7 @@ before every deployment.
 | `render.py`, `animate.py` | Quote cards, the four templates, and the typing animation |
 | `screenshot.py`, `reactions.py` | Message screenshots and the reaction counts under them |
 | `textkit.py`, `fonts.py` | Shaping, bidirectional layout, line breaking, font fallback |
-| `inline.py` | Inline mode |
+| `inline.py` | Inline mode (switched off; guest mode does its job) and the fire placeholder |
 | `authors.py`, `extract.py` | Who said it, their picture, and the text to quote |
 | `stickerpack.py` | Group and personal sticker packs |
 | `admin.py` | The owner's panel: statistics, broadcast, blocking, quotas |
