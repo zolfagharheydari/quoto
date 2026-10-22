@@ -1180,7 +1180,7 @@ def test_reaction_row() -> None:
 
     # The count is drawn in the accent colour, so the row must actually have ink.
     row = with_row.crop((0, with_row.height - 120, with_row.width, with_row.height))
-    check("the row has something in it", len(set(row.convert("RGB").getdata())) > 20)
+    check("the row has something in it", len(set(row.convert("RGB").get_flattened_data())) > 20)
 
     # The time shares the reaction row rather than stacking under it whenever
     # the two fit side by side, which for a short message they always do.
@@ -1269,7 +1269,7 @@ def test_badges() -> None:
         # The pill is tinted, so it is neither the bubble's white nor the
         # wallpaper: look for it in the top-right corner of the bubble.
         band = shot.crop((shot.width // 2, 0, shot.width, shot.height // 3))
-        return len(set(band.convert("RGB").getdata())) > 30
+        return len(set(band.convert("RGB").get_flattened_data())) > 30
     check("the badge sits at the far edge in English",
           badge_at_edge("Hello my name is window"))
     check("and in Persian", badge_at_edge("سلام اسم من پنجره است"))
@@ -1516,7 +1516,7 @@ def test_wallpaper() -> None:
                      for want in screenshot.WALLPAPER]
         check(f"the {where} corner is its colour",
               distances.index(min(distances)) == i, f"{got}")
-    check("it is a gradient, not a flat fill", len(set(paper.getdata())) > 100)
+    check("it is a gradient, not a flat fill", len(set(paper.get_flattened_data())) > 100)
 
     # The bubble has to stay readable on it, which is the whole point of the
     # white fill; a screenshot is still rendered end to end.
@@ -2163,6 +2163,145 @@ def test_inline_fire() -> None:
     check("deleting your data removes your fire clips too", set(store["fire_inline"]) == {"8:b"})
     for lang in i18n.SUPPORTED:
         check(f"the {lang} help says how", "🔥" in i18n.t("help", lang))
+
+
+def test_guest() -> None:
+    section("guest mode")
+    import datetime as _dt
+    from telegram import Chat as _Chat, Message as _Message, Update as _Update, User as _User
+    from telegram.ext import ApplicationHandlerStop as _Stop
+
+    for typed, expected in (("@getquoto_bot", ("quote", "")),
+                            ("@getquoto_bot گیفش کن", ("gif", "")),
+                            ("@GetQuoto_Bot /sticker", ("sticker", "")),
+                            ("@getquoto_bot آتیشش کن", ("fire", "")),
+                            ("@getquoto_bot شاتش کن", ("shot", "")),
+                            ("@getquoto_bot سلام دنیا", ("quote", "سلام دنیا")),
+                            ("/fire@getquoto_bot از شنبه", ("fire", "از شنبه"))):
+        check(f"guest {typed!r}", bot.guest_request(typed, "getquoto_bot") == expected,
+              str(bot.guest_request(typed, "getquoto_bot")))
+
+    class GuestBot:
+        username = "getquoto_bot"
+
+        def __init__(self):
+            self.answers, self.uploads, self.deleted, self.actions = [], [], 0, []
+
+        async def answer_guest_query(self, query_id, result):
+            self.answers.append((query_id, result))
+            return types.SimpleNamespace(inline_message_id="IM1")
+
+        async def send_chat_action(self, chat_id, action):
+            self.actions.append(chat_id)
+
+        def _sent(self, kind):
+            bot_ = self
+
+            class Sent:
+                photo = [types.SimpleNamespace(file_id=f"{kind}-id")]
+                sticker = types.SimpleNamespace(file_id=f"{kind}-id")
+                animation = types.SimpleNamespace(file_id=f"{kind}-id")
+                document = None
+
+                async def delete(self):
+                    bot_.deleted += 1
+            return Sent()
+
+        async def send_photo(self, chat, data, **kw):
+            self.uploads.append(("photo", chat))
+            return self._sent("photo")
+
+        async def send_sticker(self, chat, data, **kw):
+            self.uploads.append(("sticker", chat))
+            return self._sent("sticker")
+
+        async def send_animation(self, chat, data, **kw):
+            self.uploads.append(("animation", chat))
+            return self._sent("animation")
+
+        async def get_user_profile_photos(self, user_id, limit=1):
+            return types.SimpleNamespace(total_count=0, photos=[])
+
+        async def get_chat(self, chat_id):
+            return types.SimpleNamespace(photo=None)
+
+        async def get_chat_member(self, chat_id, user_id):
+            return types.SimpleNamespace(status="member")
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    caller = _User(7, "SAli", False, language_code="fa")
+    friend = _User(8, "Hedieh", False)
+    chat = _Chat(-100777, "supergroup")
+
+    def guest_update(text, reply_text=None):
+        replied = (_Message(5, now, chat, from_user=friend, text=reply_text)
+                   if reply_text else None)
+        message = _Message(9, now, chat, from_user=caller, text=text,
+                           reply_to_message=replied, guest_query_id="GQ")
+        return _Update(1, guest_message=message)
+
+    def run_guest(text, reply_text=None, started=True, store=-100555):
+        b = GuestBot()
+        tasks = []
+        ctx = types.SimpleNamespace(
+            bot=b, user_data={"started": started} if started else {}, bot_data={"exempt": {7}},
+            application=types.SimpleNamespace(create_task=lambda c: tasks.append(c) or c.close()))
+        saved = bot.STORAGE_CHAT
+        bot.STORAGE_CHAT = store
+        try:
+            asyncio.run(bot.on_guest(guest_update(text, reply_text), ctx))
+            stopped = False
+        except _Stop:
+            stopped = True
+        finally:
+            bot.STORAGE_CHAT = saved
+        return b, ctx, stopped, tasks
+
+    b, ctx, stopped, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن")
+    check("a reply and a mention make a card", len(b.answers) == 1
+          and b.answers[0][0] == "GQ" and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+    check("uploaded to the store and taken down again",
+          b.uploads == [("photo", -100555)] and b.deleted == 1)
+    check("and nothing else handles a guest message", stopped)
+
+    b, ctx, _, _ = run_guest("@getquoto_bot گیفش کن", "قهوه‌ی سوم")
+    check("«گیفش کن» makes a GIF", getattr(b.answers[0][1], "mpeg4_file_id", None) == "animation-id")
+    check("filed in the caller's archive, under the person quoted",
+          [g["u"] for g in ctx.user_data.get("gifs", [])] == [8])
+
+    b, _, _, _ = run_guest("@getquoto_bot /sticker", "قهوه‌ی سوم")
+    check("/sticker makes a sticker", getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id")
+
+    b, _, _, _ = run_guest("@getquoto_bot شاتش کن", "اینترنت قطع شد")
+    check("«شاتش کن» makes a screenshot", getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+
+    b, _, _, _ = run_guest("@getquoto_bot حرف خودم")
+    check("with no reply, their own words are quoted",
+          getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+
+    b, _, _, _ = run_guest("@getquoto_bot")
+    check("nothing to quote gets the how-to", b.answers and b.answers[0][1].type == "article")
+
+    import fire as _fire
+    if _fire.available():
+        b, _, _, tasks = run_guest("@getquoto_bot آتیشش کن", "از شنبه، این بار جدی")
+        check("fire sends the placeholder first", b.answers
+              and getattr(b.answers[0][1], "mpeg4_file_id", None) == "animation-id"
+              and b.answers[0][1].reply_markup is not None)
+        check("and renders into the message it became", len(tasks) == 1)
+
+    b, ctx, _, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن", started=False)
+    # The gate asks Telegram whether they started the bot; the fake says yes by
+    # not refusing the chat action, so mark the refusal directly.
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    body = source[source.index("async def on_guest"):]
+    body = body[:body.index("\nasync def ", 10)]
+    check("the same gate as inline mode", "_inline_gate(context, user)" in body)
+    check("the same cooldown", "_too_soon(context)" in body)
+    check("renders wait in the same queue", body.count("throttle.RENDER.run(") >= 4)
+    reg = source[source.index("def register"):]
+    check("guest messages are handled before anything else in their group",
+          reg.index("GUEST_MESSAGE") < reg.index('CommandHandler("start"'))
 
 
 def test_review_fixes() -> None:
@@ -3011,7 +3150,7 @@ def _ink(img: Image.Image, box) -> int:
     """How many pixels in this box are not the background colour."""
     crop = img.convert("RGB").crop(box)
     background = crop.getpixel((0, 0))
-    return sum(1 for pixel in crop.getdata() if pixel != background)
+    return sum(1 for pixel in crop.get_flattened_data() if pixel != background)
 
 
 def test_no_double_shaping() -> None:
@@ -3139,6 +3278,7 @@ def main() -> int:
     test_inline_fire()
     test_hardening()
     test_review_fixes()
+    test_guest()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()

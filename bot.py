@@ -9,6 +9,7 @@ import logging.handlers
 import time
 import re
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -62,6 +63,7 @@ import reactions
 import render
 import screenshot
 import stickerpack
+import textkit
 import throttle
 
 load_dotenv()
@@ -1397,12 +1399,24 @@ async def _fire_inline(context: ContextTypes.DEFAULT_TYPE, chosen, lang: str) ->
     Telegram does not say which message the result became, and there would be
     nothing to edit.
     """
-    message_id = chosen.inline_message_id
-    user = chosen.from_user
-    if message_id is None:
+    if chosen.inline_message_id is None:
         log.info("an inline fire result arrived without a message to edit")
         return
+    user = chosen.from_user
+    # Inline is always the sender's own words, under their own name.
+    author = authors.Author(user.full_name, user.username or "", user.id, "user", str(user.id))
+    await _fire_into(context, chosen.inline_message_id, inline.fire_text(chosen.query) or "",
+                     author, user, lang)
 
+
+async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: str,
+                     author: authors.Author, maker, lang: str) -> None:
+    """Render `text` in fire, credited to `author`, and swap it into an inline message.
+
+    Inline mode and guest mode both send a placeholder first - an answer cannot
+    wait the seconds a render takes - and land here to replace it. `maker` is
+    whoever asked: one clip at a time each, and it goes in their archive.
+    """
     async def say(key: str) -> None:
         try:
             await context.bot.edit_message_caption(
@@ -1410,22 +1424,21 @@ async def _fire_inline(context: ContextTypes.DEFAULT_TYPE, chosen, lang: str) ->
         except TelegramError as exc:
             log.info("could not update an inline fire message: %s", exc)
 
-    if user.id in _fire_inline_running:
+    if maker.id in _fire_inline_running:
         await say("fire_one_at_a_time")
         return
-    quote = fire.clean(inline.fire_text(chosen.query) or "")
+    quote = fire.clean(text)
     if not quote or len(quote) > fire.MAX_CHARS or not fire.available():
         await say("failed")
         return
 
-    author = authors.Author(user.full_name, user.username or "", user.id, "user", str(user.id))
-    _fire_inline_running.add(user.id)
+    _fire_inline_running.add(maker.id)
     try:
         data = await throttle.FIRE.run(
             fire.render, quote, author.name, f"@{context.bot.username}")
         store = STORAGE_CHAT or context.bot_data.get("storage_chat")
         upload = await context.bot.send_animation(
-            store or user.id, io.BytesIO(data), filename="fire.mp4",
+            store or maker.id, io.BytesIO(data), filename="fire.mp4",
             disable_notification=True)
         made = upload.animation or upload.document
         await context.bot.edit_message_media(
@@ -1437,16 +1450,195 @@ async def _fire_inline(context: ContextTypes.DEFAULT_TYPE, chosen, lang: str) ->
             await upload.delete()
         except TelegramError:
             pass
-        inline.fire_remember(context.bot_data, inline.fire_key(user.id, quote), made.file_id)
+        if author.avatar_key == maker.id:
+            inline.fire_remember(context.bot_data, inline.fire_key(maker.id, quote), made.file_id)
         gallery.record(context.user_data, made.file_id, author, quote)
         admin.note(context, "fire")
     except throttle.Busy:
         await say("fire_busy")
     except Exception:  # noqa: BLE001 - the message is already out; say so in it
-        log.exception("inline fire failed")
+        log.exception("fire into an inline message failed")
         await say("failed")
     finally:
-        _fire_inline_running.discard(user.id)
+        _fire_inline_running.discard(maker.id)
+
+
+# ------------------------------------------------------------------ guest mode
+# Mentioned in a chat the bot is not in: "@getquoto_bot" as a reply to a
+# message, maybe with a phrase - «گیفش کن», /sticker - or "@getquoto_bot some
+# words" with no reply at all. Telegram hands over the summoning message and
+# the one it replies to, and takes exactly one answer, sent into that chat as
+# the bot's. Everything else about the bot - its gates, its renderers, its
+# limits - is the same as anywhere.
+_GUEST_COMMANDS = {
+    "quote": ("quote", "qoute", "quto", "qute", "quot", "quoet", "q"),
+    "sticker": ("sticker", "stiker", "stickr", "sticekr", "stcker"),
+    "gif": ("gif", "gfi"),
+    "shot": ("screenshot", "screenshoot", "screanshot", "screnshot", "sceenshot"),
+    "fire": ("fire", "fier", "fir"),
+}
+
+
+def guest_request(text: str, bot_username: str) -> tuple[str, str]:
+    """(what to make, any words of their own) from a guest summoning message."""
+    rest = re.sub(rf"@{re.escape(bot_username)}\b", " ", text or "", flags=re.IGNORECASE)
+    rest = " ".join(rest.split())
+    command = re.match(r"^/([A-Za-z]+)(?:@\w+)?(?:\s+|$)", rest)
+    if command:
+        name = command.group(1).lower()
+        for kind, names in _GUEST_COMMANDS.items():
+            if name in names:
+                return kind, rest[command.end():].strip()
+    for kind, pattern in TRIGGERS.items():
+        if len(rest) <= TRIGGER_MAX_CHARS and pattern.search(rest):
+            return kind, ""
+    return "quote", rest
+
+
+def _guest_text(lang: str, key: str, start_with: str | None = None, **fields):
+    """A plain message as the one guest answer: when a picture cannot be made.
+
+    `start_with` is the bot's username, when the answer should carry the button
+    that opens it.
+    """
+    from telegram import InlineQueryResultArticle, InputTextMessageContent
+    text = i18n.t(key, lang).format(**fields)
+    markup = None
+    if start_with:
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+            i18n.t("btn_start", lang), url=f"https://t.me/{start_with}?start=guest")]])
+    return InlineQueryResultArticle(
+        id=f"t{uuid.uuid4().hex[:16]}", title="Quoto",
+        input_message_content=InputTextMessageContent(text), reply_markup=markup)
+
+
+async def _guest_upload(context, kind: str, data, user_id: int) -> str:
+    """Put a picture up to get a file_id, and take the message down again."""
+    store = STORAGE_CHAT or context.bot_data.get("storage_chat") or user_id
+    send = {"card": context.bot.send_photo, "shot": context.bot.send_photo,
+            "sticker": context.bot.send_sticker, "gif": context.bot.send_animation}[kind]
+    extra = {"filename": "quote.mp4"} if kind == "gif" else {}
+    message = await send(store, data, disable_notification=True, **extra)
+    if kind in ("card", "shot"):
+        file_id = message.photo[-1].file_id
+    elif kind == "sticker":
+        file_id = message.sticker.file_id
+    else:
+        file_id = (message.animation or message.document).file_id
+    try:
+        await message.delete()
+    except TelegramError:
+        pass
+    return file_id
+
+
+async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A guest summoning: make what was asked for and answer with it, once."""
+    from telegram import (InlineQueryResultCachedMpeg4Gif, InlineQueryResultCachedPhoto,
+                          InlineQueryResultCachedSticker)
+    message = update.guest_message
+    user = update.effective_user
+    query_id = getattr(message, "guest_query_id", None)
+    if query_id is None or user is None or user.is_bot:
+        raise ApplicationHandlerStop
+    lang = i18n.resolve(update, context.user_data)
+    username = context.bot.username
+
+    async def answer(result):
+        try:
+            return await context.bot.answer_guest_query(query_id, result)
+        except BadRequest as exc:
+            log.info("a guest query could not be answered: %s", exc)
+            return None
+
+    try:
+        if _too_soon(context):
+            log.info("ignoring a guest burst from %s", user.id)
+            return
+        refused = await _inline_gate(context, user)
+        if refused:
+            key = "need_start" if refused == "inline_need_start" else refused
+            await answer(_guest_text(lang, key, username if key == "need_start" else None))
+            return
+
+        kind, own = guest_request(message.text or message.caption or "", username)
+        target = message.reply_to_message
+        if target is not None:
+            text = extract.quote_text(target)
+            author = authors.resolve(target)
+        else:
+            text = textkit.normalize_display(own)[:extract.MAX_QUOTE_CHARS] if own else None
+            author = authors.Author(user.full_name, user.username or "", user.id, "user",
+                                    str(user.id))
+        if not text:
+            await answer(_guest_text(lang, "guest_how"))
+            return
+        log.info("guest request: %s in %s", kind, message.chat.type if message.chat else "?")
+
+        if kind == "fire":
+            quote = fire.clean(text)
+            if not fire.available():
+                await answer(_guest_text(lang, "fire_unavailable"))
+                return
+            if not quote or len(quote) > fire.MAX_CHARS:
+                await answer(_guest_text(lang, "fire_too_long", max=fire.MAX_CHARS))
+                return
+            if throttle.FIRE.full:
+                await answer(_guest_text(lang, "fire_busy"))
+                return
+            waiting = await inline._fire_placeholder(
+                context, STORAGE_CHAT or context.bot_data.get("storage_chat"), user.id)
+            sent = await answer(InlineQueryResultCachedMpeg4Gif(
+                id=f"f{uuid.uuid4().hex[:16]}", mpeg4_file_id=waiting,
+                caption=i18n.t("inline_fire_caption", lang),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                    i18n.t("btn_fire_wait", lang), callback_data="fire:wait")]])))
+            if sent is not None:
+                context.application.create_task(
+                    _fire_into(context, sent.inline_message_id, quote, author, user, lang))
+            return
+
+        avatar = await authors.fetch_avatar(context.bot, author, *_avatar_choice(context, author))
+        if kind == "shot":
+            png, _ = await throttle.RENDER.run(
+                _screenshot_files, avatar, author.name, text,
+                _clock(target.date if target else message.date), None, author.seed, [], False)
+            result = InlineQueryResultCachedPhoto(
+                id=f"p{uuid.uuid4().hex[:16]}",
+                photo_file_id=await _guest_upload(context, "shot", png, user.id))
+            admin.note(context, "screenshot")
+        else:
+            scene = await throttle.RENDER.run(
+                render.build_scene, avatar, text, author.name, WATERMARK, _template(context))
+            if kind == "sticker":
+                webp = await throttle.RENDER.run(_card_webp, scene)
+                result = InlineQueryResultCachedSticker(
+                    id=f"s{uuid.uuid4().hex[:16]}",
+                    sticker_file_id=await _guest_upload(context, "sticker", webp, user.id))
+            elif kind == "gif":
+                buf, _ = await throttle.RENDER.run(animate.to_animation, scene)
+                file_id = await _guest_upload(context, "gif", buf, user.id)
+                result = InlineQueryResultCachedMpeg4Gif(
+                    id=f"g{uuid.uuid4().hex[:16]}", mpeg4_file_id=file_id)
+                gallery.record(context.user_data, file_id, author, text)
+            else:
+                png = await throttle.RENDER.run(_card_png, scene)
+                result = InlineQueryResultCachedPhoto(
+                    id=f"p{uuid.uuid4().hex[:16]}",
+                    photo_file_id=await _guest_upload(context, "card", png, user.id))
+            admin.note(context, kind if kind in ("sticker", "gif") else "quote")
+        await answer(result)
+    except throttle.Busy:
+        await answer(_guest_text(lang, "busy"))
+    except TelegramError as exc:
+        log.info("guest request failed: %s", exc)
+    except Exception:  # noqa: BLE001 - one bad request must not reach the other handlers
+        log.exception("guest request failed")
+    finally:
+        # Nothing else is meant for a guest message: the reply triggers and the
+        # private-text handlers would otherwise answer it as if the bot were
+        # a member of a chat it is not in.
+        raise ApplicationHandlerStop
 
 
 async def on_fire_wait(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1563,6 +1755,9 @@ def register(app: Application) -> None:
     # the stale check above matches every update there is - sharing a group
     # with it meant this never ran at all.
     app.add_handler(TypeHandler(Update, admin.make_tracker(OWNER_ID)), group=-1)
+    # Guest messages first: they would otherwise match the reply triggers and
+    # the private-text handlers. on_guest stops every later group too.
+    app.add_handler(MessageHandler(filters.UpdateType.GUEST_MESSAGE, on_guest))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("lang", cmd_lang))
@@ -1638,21 +1833,6 @@ def register(app: Application) -> None:
     app.add_error_handler(on_error)
 
 
-def _ensure_event_loop() -> None:
-    """Give run_polling a loop to find on Python 3.14.
-
-    3.14 stopped having asyncio.get_event_loop() create one when the thread has
-    none, and python-telegram-bot 21.9 calls it on the way into run_polling - so
-    the bot died at startup with "There is no current event loop in thread
-    'MainThread'". This is what PTB 22.8 does about it upstream; when we move to
-    that version, this can go.
-    """
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-
 def main() -> None:
     if not TOKEN:
         raise SystemExit(
@@ -1686,7 +1866,6 @@ def main() -> None:
 
     register(app)
 
-    _ensure_event_loop()
     log.info("bot is up")
     try:
         app.run_polling(allowed_updates=Update.ALL_TYPES)

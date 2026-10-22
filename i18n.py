@@ -150,9 +150,8 @@ Full guide: /help""",
 مرا به گروه اضافه کن. اگر ریپلای‌ها را ندیدم و گفتم «روی پیامی ریپلای کن»، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم؛ در این حالت کافی است مرا در گروه <b>ادمین</b> کنی.
 
 ➎ <b>در چتی که عضوش نیستم</b>
-لازم نیست اضافه‌ام کنی. در همان چت بنویس:
-<code>@BOT متن مورد نظر</code>
-منویی باز می‌شود و انتخاب می‌کنی. برای آتیش: <code>@BOT 🔥 متن</code> چون تلگرام در این حالت به من نمی‌گوید روی چه پیامی ریپلای کرده‌ای، متن را باید خودت بنویسی یا پیست کنی. کارت به نام خودت ساخته می‌شود.
+لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس <code>@BOT</code> (یا <code>@BOT گیفش کن</code>، <code>آتیشش کن</code>…)؛ اسم و عکس همان آدم می‌آید.
+یا بنویس <code>@BOT متن</code> و انتخاب کن (آتیش: <code>@BOT 🔥 متن</code>)، به نام خودت.
 
 ➏ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
 پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/quote</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
@@ -230,9 +229,8 @@ The card is credited to you, with your profile photo.
 Add me to the group. If I answer "reply to a message" even though you did, Telegram is not letting me see it — making me an <b>admin</b> in the group fixes that.
 
 ➎ <b>In a chat I'm not in</b>
-No need to add me. Type this in that chat:
-<code>@BOT your text</code>
-A menu opens and you pick one. In fire: <code>@BOT 🔥 text</code> Telegram never tells me what you replied to in this mode, so the text has to be typed or pasted, and the card is credited to you.
+No need to add me. Reply to a message with <code>@BOT</code> (or <code>@BOT /gif</code>, <code>/fire</code>…): their name and photo come with it.
+Or type <code>@BOT text</code> and pick one (fire: <code>@BOT 🔥 text</code>), credited to you.
 
 ➏ <b>Quoting someone with their own name and photo</b>
 <b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/quote</code>. I read the original sender's name and photo from the forward.
@@ -632,6 +630,12 @@ This cannot be undone. Are you sure?""",
         "en": "OK, nothing was deleted.",
     },
     "btn_forget_yes": {"fa": "🗑 بله، پاک کن", "en": "🗑 Yes, delete"},
+    "guest_how": {
+        "fa": """روی یه پیام ریپلای کن و منو صدا بزن، یا بعد از اسمم متنت رو بنویس.
+مثلاً: @getquoto_bot گیفش کن""",
+        "en": """Reply to a message and mention me, or write your text after my name.
+For example: @getquoto_bot /gif""",
+    },
     "inline_fire_title": {"fa": "🔥 آتیشش کن", "en": "🔥 Write it in fire"},
     "inline_fire_caption": {"fa": "🔥 داره با آتیش نوشته می‌شه…", "en": "🔥 Being written in fire…"},
     "btn_fire_wait": {"fa": "🔥 در حال نوشتن…", "en": "🔥 Writing…"},

@@ -3,12 +3,14 @@
 # each with the hashes PyPI published, so what is installed is what was
 # reviewed and nothing else (pip install --require-hashes -r requirements.lock).
 # After changing anything here, regenerate it - see deploy/README.md.
-python-telegram-bot[rate-limiter,socks]==21.9
-# Pillow and python-bidi are the two that carry compiled code. These are the
-# oldest versions with wheels built for Python 3.14, which is what Ubuntu 26.04
-# ships; the previous pins had none, so pip tried to build them from source and
-# wanted a C toolchain, zlib headers and a Rust compiler on the server.
-Pillow==12.3.0
+python-telegram-bot[rate-limiter,socks]==22.8
+# Pillow and python-bidi are the two that carry compiled code, and both need
+# wheels built for Python 3.14, which is what Ubuntu 26.04 ships. Pillow is
+# also the part strangers' files reach: 13.0 fixes the TIFF, GIF, PDF and EPS
+# advisories that 12.3 is open to (the bot only decodes JPEG, PNG and WebP
+# from users, but there is no reason to sit on them). Its Linux wheels carry
+# raqm, which the Nastaliq in /fire depends on - checked on the server.
+Pillow==13.0.0
 python-bidi==0.6.11
 arabic-reshaper==3.0.0
 imageio-ffmpeg==0.5.1
