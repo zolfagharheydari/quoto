@@ -121,162 +121,101 @@ Full guide: /help""",
     "help": {
         "fa": """📖 <b>راهنمای Quoto</b>
 
-من از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم: کارتی که متن پیام، اسم گوینده و عکس پروفایلش رویش نوشته شده.
+از پیام‌های تلگرام کارت نقل‌قول، استیکر، گیف و اسکرین‌شات می‌سازم، با اسم و عکس گوینده.
 
-➊ <b>ساده‌ترین کار</b>
-۱. روی پیامی که می‌خواهی <b>ریپلای</b> کن
-۲. بنویس <code>/quote</code> و بفرست
-تمام. کارت را همان‌جا می‌فرستم.
+➊ <b>کار اصلی</b>
+روی هر پیامی <b>ریپلای</b> کن و یکی از این‌ها را بفرست:
+<code>/quote</code> یا «کوتش کن» — کارت نقل‌قول
+<code>/sticker</code> یا «استیکرش کن» — همان کارت، به شکل استیکر
+<code>/gif</code> یا «گیفش کن» — گیفی که جمله را جلوی چشم تایپ می‌کند
+<code>/screenshot</code> یا «شاتش کن» — اسکرین‌شات تلگرامی، با ساعت و ریکشن‌ها
+<code>/fire</code> یا «آتیشش کن» — گیف سینمایی: جمله با خط نستعلیق روی کاغذ نوشته می‌شود و آتش می‌گیرد (تا ۱۰۰ حرف)
 
-➋ <b>شکل‌های خروجی</b>
-<code>/quote</code> — کارت نقل‌قول، به شکل عکس
-<code>/sticker</code> — همان کارت، به شکل استیکر
-<code>/gif</code> — همان کارت، به شکل گیف؛ متن جلوی چشم تایپ می‌شود
-<code>/fire</code> — گیفی که متن را با آتش روی کاغذ می‌نویسد (تا ۱۰۰ حرف)
-<code>/screenshot</code> — پیام را همان‌طور که در تلگرام دیده می‌شود می‌سازد: حباب، عکس پروفایل، اسم و ساعت
-اگر پیام ریکشن خورده باشد و ربات از قبل ادمین گروه بوده، ریکشن‌ها هم زیرش می‌آیند.
+بدون ریپلای هم می‌شود: <code>/quote متن دلخواه</code> — کارت به نام خودت ساخته می‌شود.
 
-در گروه، استیکر و اسکرین‌شات به استیکرپک گروه هم اضافه می‌شوند.
+➋ <b>در چتی که عضوش نیستم</b>
+پیوی دوستانت، گروه‌های دیگر — لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس:
+<code>@BOT</code> — کارت کوت
+<code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code>، <code>@BOT شاتش کن</code>…
+جواب را خودم در همان چت می‌فرستم، با اسم و عکس همان آدم.
+بدون ریپلای: <code>@BOT متن</code> — از حرف خودت.
 
-یا به‌جای دستور، در جواب پیام فارسی بنویس:
-«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
-(در گروه فقط وقتی کار می‌کند که ادمین باشم)
+➌ <b>در گروه</b>
+مرا به گروه اضافه کن و <b>ادمین</b> کن؛ تا ادمین نباشم، تلگرام ریپلای‌ها و ریکشن‌ها را به من نمی‌دهد.
+استیکرها و اسکرین‌شات‌های هر گروه در استیکرپک همان گروه جمع می‌شوند:
+<code>/pack</code> — لینک پک گروه
+<code>/unpack</code> — روی یک استیکر ریپلای کن تا از پک حذف شود (ادمین‌ها)
+<code>/delpack</code> — حذف کامل پک گروه (ادمین‌ها، برگشت ندارد)
 
-➌ <b>بدون ریپلای هم می‌شود</b>
-<code>/quote هر متنی که بخواهی</code>
-کارت با اسم و عکس پروفایل خودت ساخته می‌شود.
+➍ <b>کوت از حرف دیگران، در چت خصوصی من</b>
+پیامشان را اینجا <b>فوروارد</b> کن و رویش ریپلای بزن؛ اسم و عکس گوینده‌ی اصلی را خودم برمی‌دارم.
 
-➍ <b>در گروه</b>
-مرا به گروه اضافه کن. اگر ریپلای‌ها را ندیدم و گفتم «روی پیامی ریپلای کن»، یعنی تلگرام اجازه نمی‌دهد پیام‌ها را ببینم؛ در این حالت کافی است مرا در گروه <b>ادمین</b> کنی.
+➎ <b>عکس و قالب</b>
+<code>/avatar</code> — عکس دلخواه برای کوت‌هایت: عکس را با کپشن <code>/avatar</code> بفرست (هر نفر ۲ بار). <code>/avatar off</code> حذفش می‌کند.
+<code>/settings</code> — کدام عکس نماینده‌ات باشد: عکس دلخواه، عکس پروفایل، عکس عمومی یا فقط حرف اول اسم
+<code>/template</code> — قالب کارت‌ها: کلاسیک، رنگی، تمام‌قاب یا کارت
 
-➎ <b>در چتی که عضوش نیستم</b>
-لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس <code>@BOT</code> — یا <code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code> و… — کوت با اسم و عکس همان آدم در همان چت می‌آید.
-بدون ریپلای: <code>@BOT متن</code> تا از حرف خودت کوت بسازم.
-
-➏ <b>کوت گرفتن از حرف دیگران با اسم و عکس خودشان</b>
-پیام آن شخص را به همین‌جا (چت خصوصی من) <b>فوروارد</b> کن، بعد روی پیام فورواردشده ریپلای کن و <code>/quote</code> بزن. اسم و عکس پروفایل گوینده‌ی اصلی را خودم برمی‌دارم.
-
-➐ <b>عکس دلخواه برای کوت‌هایت</b>
-می‌توانی عکسی انتخاب کنی که به‌جای عکس پروفایلت روی کوت‌ها بنشیند — چه خودت کوت بسازی، چه کس دیگری روی پیامت ریپلای بزند.
-در چت خصوصی من عکس را بفرست و در کپشنش بنویس <code>/avatar</code>، یا عکس را بفرست و بعد رویش ریپلای کن و <code>/avatar</code> بزن.
-<code>/avatar off</code> دوباره عکس پروفایل تلگرامت را برمی‌گرداند — یا در <code>/settings</code> دکمهٔ حذف را بزن.
-
-⚠️ <b>هر کاربر فقط ۲ بار</b> می‌تواند عکس دلخواه انتخاب کند. بعد از هر انتخاب می‌گویم چند سهمیه‌ات مانده، و وقتی تمام شد دیگر عکس جدیدی پذیرفته نمی‌شود. پاک کردن با <code>/avatar off</code> سهمیه مصرف نمی‌کند.
-
-➑ <b>انتخاب اینکه چه عکسی نمایندهٔ توست</b>
-<code>/settings</code> در چت خصوصی، و از بین این‌ها یکی را بزن:
-• عکسی که خودت فرستادی
-• عکس پروفایل تلگرامت
-• عکس پابلیک پروفایلت
-• فقط حرف اول اسمت
-
-هر وقت خواستی می‌توانی عوضش کنی؛ این انتخاب سهمیه‌ای ندارد.
-
-<b>📋 همه‌ی دستورها</b>
-<code>/quote</code> — از پیام ریپلای‌شده کارت نقل‌قول می‌سازد
-<code>/sticker</code> — همان کارت، به شکل استیکر
-<code>/gif</code> — همان کارت، به شکل گیف با افکت تایپ
-<code>/fire</code> — متن با آتش روی کاغذ
-<code>/screenshot</code> — پیام را به شکل اسکرین‌شات تلگرام می‌سازد
-<code>/pack</code> — لینک استیکرپک این گروه
-<code>/unpack</code> — حذف یک استیکر از پک گروه (ادمین)
-<code>/delpack</code> — حذف کامل پک (در گروه: ادمین؛ در پی‌وی: پک شخصی خودت)
-<code>/mypack</code> — پک شخصی خودت؛ در همین چت می‌توانی اسمش را عوض کنی، یا روی یک استیکر ریپلای کنی و <code>/unpack</code> بزنی تا حذف شود
-<code>/avatar</code> — عکس دلخواه برای کوت‌های خودت (فقط در چت خصوصی، ۲ بار)
-<code>/settings</code> — انتخاب اینکه چه عکسی نمایندهٔ توست
+➏ <b>مال خودت</b>
+<code>/mypack</code> — استیکرپک شخصی‌ات؛ هر استیکری که اینجا بسازی به آن اضافه می‌شود
+<code>/unpack</code> — روی استیکری از پکت ریپلای کن تا حذف شود
+<code>/mygifs</code> — گیف‌هایی که ساخته‌ای؛ <code>/mygifs اسم</code> برای گیف‌های یک نفر
+<code>/delpack</code> — حذف کامل پک شخصی‌ات
 <code>/deletemydata</code> — پاک کردن اطلاعاتت از ربات
-<code>/template</code> — انتخاب قالب کوت‌ها: کلاسیک، کلاسیکِ رنگی، تمام‌قاب یا کارت
-<code>/lang</code> — تغییر زبان ربات
-<code>/help</code> — همین راهنما
+<code>/lang</code> — تغییر زبان
 
-<b>معادل فارسی‌شان، در جواب یک پیام:</b>
-«کوتش کن» = /quote
-«استیکرش کن» = /sticker
-«گیفش کن» = /gif
-«شاتش کن» = /screenshot
-«آتیشش کن» = /fire
+<b>عکس پروفایل روی کارت نیامد؟</b>
+تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا با <code>/avatar</code> عکس دلخواه بگذار.
 
-<b>اگر عکس پروفایل روی کارت نیامد</b>
-یعنی تنظیمات حریم خصوصی‌ات اجازه نمی‌دهد ببینمش. در تلگرام: Settings ← Privacy and Security ← Profile Photo را روی Everybody بگذار، یا همان‌جا یک Public Photo تعریف کن. اگر هیچ‌کدام نبود، به‌جای عکس، حرف اول اسم را می‌گذارم.""",
+کانال خبرها: @getQuoto""",
         "en": """📖 <b>Quoto help</b>
 
-I turn Telegram messages into quote cards: the message text, the sender's name and their profile photo on one card.
+I turn Telegram messages into quote cards, stickers, GIFs and screenshots, with the sender's name and photo.
 
-➊ <b>The basic move</b>
-1. <b>Reply</b> to the message you want
-2. Send <code>/quote</code>
-That's it.
-
-➋ <b>Output formats</b>
-<code>/quote</code> — a quote card, as an image
+➊ <b>The basics</b>
+<b>Reply</b> to any message with one of these:
+<code>/quote</code> — a quote card
 <code>/sticker</code> — the same card, as a sticker
-<code>/gif</code> — the same card, animated; the text types itself
-<code>/fire</code> — the text written in fire on paper (up to 100 characters)
-<code>/screenshot</code> — the message as it looks in Telegram: bubble, avatar, name and time
-If the message has reactions and the bot was already an admin of the group, they are drawn under it too.
+<code>/gif</code> — a GIF that types the words out
+<code>/screenshot</code> — a Telegram-style screenshot, with the time and reactions
+<code>/fire</code> — a cinematic GIF: the words written on paper in Nastaliq script, catching fire (up to 100 characters)
+The Persian phrases work too: «کوتش کن» «استیکرش کن» «گیفش کن» «شاتش کن» «آتیشش کن»
 
-In a group, stickers and screenshots also join the group's sticker pack.
+No reply needed: <code>/quote any text</code> makes a card credited to you.
 
-Or say it in Persian, as a reply, instead of using a command:
-«کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
-(in a group these only reach me once I am an admin)
-
-➌ <b>No reply needed</b>
-<code>/quote any text you like</code>
-The card is credited to you, with your profile photo.
-
-➍ <b>In a group</b>
-Add me to the group. If I answer "reply to a message" even though you did, Telegram is not letting me see it — making me an <b>admin</b> in the group fixes that.
-
-➎ <b>In a chat I'm not in</b>
-No need to add me. Reply to a message with <code>@BOT</code> — or <code>@BOT /gif</code>, <code>@BOT /fire</code>… — and the quote arrives in that chat with their name and photo.
+➋ <b>In a chat I'm not in</b>
+Your friends' chats, other groups — no need to add me. Reply to a message with:
+<code>@BOT</code> — a quote card
+<code>@BOT /gif</code>, <code>@BOT /fire</code>, <code>@BOT /screenshot</code>…
+I answer in that same chat, with that person's name and photo.
 No reply: <code>@BOT your text</code> quotes your own words.
 
-➏ <b>Quoting someone with their own name and photo</b>
-<b>Forward</b> their message here to my private chat, then reply to that forwarded message with <code>/quote</code>. I read the original sender's name and photo from the forward.
+➌ <b>In a group</b>
+Add me and make me an <b>admin</b>; until then Telegram does not pass me replies or reactions.
+Each group's stickers and screenshots collect in that group's own sticker pack:
+<code>/pack</code> — the pack's link
+<code>/unpack</code> — reply to a sticker to take it out of the pack (admins)
+<code>/delpack</code> — delete the group's pack entirely (admins, cannot be undone)
 
-➐ <b>Your own picture on your quotes</b>
-You can pick a picture to use instead of your profile photo — on quotes you make and on quotes others make of you.
-In my private chat, send the photo with <code>/avatar</code> as its caption, or send it and then reply to it with <code>/avatar</code>.
-<code>/avatar off</code> goes back to your Telegram profile photo — or use the delete button in <code>/settings</code>.
+➍ <b>Quoting someone else, in my private chat</b>
+<b>Forward</b> their message here and reply to it; I take the original sender's name and photo.
 
-⚠️ <b>Two changes each, ever.</b> I tell you how many you have left after each one, and once they are gone no new picture is accepted. Clearing with <code>/avatar off</code> costs nothing.
+➎ <b>Pictures and templates</b>
+<code>/avatar</code> — your own picture for your quotes: send it with <code>/avatar</code> as the caption (twice per person). <code>/avatar off</code> removes it.
+<code>/settings</code> — which picture stands for you: your own, your profile photo, your public photo, or just your initial
+<code>/template</code> — the card design: classic, tinted, full frame or card
 
-➑ <b>Choosing which picture stands for you</b>
-Send <code>/settings</code> in my private chat and pick one:
-• the picture you sent
-• your Telegram profile photo
-• your public profile photo
-• just the first letter of your name
-
-Change it whenever you like; this one has no limit.
-
-<b>📋 Every command</b>
-<code>/quote</code> — a quote card from the replied-to message
-<code>/sticker</code> — the same card, as a sticker
-<code>/gif</code> — the same card, animated
-<code>/fire</code> — the text, written in fire
-<code>/screenshot</code> — the message as a Telegram screenshot
-<code>/pack</code> — the link to this group's sticker pack
-<code>/unpack</code> — remove one sticker from the pack (admins)
-<code>/delpack</code> — delete the pack entirely (admins in a group, your own in private)
-<code>/mypack</code> — your own sticker pack (rename it, or reply to a sticker with <code>/unpack</code>)
-<code>/avatar</code> — your own picture for your quotes (private chat, twice)
-<code>/settings</code> — choose which picture stands for you
+➏ <b>Your own</b>
+<code>/mypack</code> — your personal sticker pack; every sticker you make here joins it
+<code>/unpack</code> — reply to a sticker from your pack to remove it
+<code>/mygifs</code> — the GIFs you have made; <code>/mygifs name</code> for one person's
+<code>/delpack</code> — delete your personal pack entirely
 <code>/deletemydata</code> — delete what the bot keeps about you
-<code>/template</code> — choose the template: classic, tinted, full frame or card
-<code>/lang</code> — change the bot's language
-<code>/help</code> — this guide
+<code>/lang</code> — change language
 
-<b>Their Persian equivalents, as a reply:</b>
-«کوتش کن» = /quote
-«استیکرش کن» = /sticker
-«گیفش کن» = /gif
-«شاتش کن» = /screenshot
-«آتیشش کن» = /fire
+<b>Profile photo missing from the card?</b>
+Your privacy settings hide it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a picture with <code>/avatar</code>.
 
-<b>If the profile photo is missing from the card</b>
-Your privacy settings are hiding it from me. In Telegram: Settings → Privacy and Security → Profile Photo → Everybody, or set a Public Photo there. With neither, I fall back to the first letter of the name.""",
+News channel: @getQuoto""",
     },
     "avatar_saved": {
         "fa": """عکس دلخواهت ذخیره شد ✅
@@ -779,32 +718,26 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
 # command list is one tap away in the menu once someone has started the bot.
 DESCRIPTIONS: dict[str, str] = {
     "fa": """سلام! 👋
-من از پیام‌ها عکسِ نقل‌قول می‌سازم.
+از پیام‌های تلگرام کارت نقل‌قول، استیکر، گیف، اسکرین‌شات و گیف آتیشی می‌سازم، با اسم و عکس گوینده.
 
-هر پیامی را تبدیل می‌کنم به یک کارت، با متن پیام و اسم و عکس پروفایلِ گوینده‌اش. خروجی را به شکل عکس، استیکر یا گیف می‌گیری.
-
-در گروه‌ها هم کار می‌کنم.
+روی هر پیامی ریپلای کن و بنویس «کوتش کن» یا «آتیشش کن». در گروه‌ها کار می‌کنم، و حتی در چت‌هایی که عضوشان نیستم: کافی است @getquoto_bot را صدا بزنی.
 
 کانال خبرها: @getQuoto
 
 برای شروع Start را بزن 👇""",
     "en": """Hi! 👋
-I turn messages into quote cards.
+I turn Telegram messages into quote cards, stickers, GIFs, screenshots and fire GIFs, with the sender's name and photo.
 
-Any message becomes a card carrying its text, the sender's name and their profile photo — as an image, a sticker or an animation.
+Reply to any message with /quote or /fire. I work in groups, and even in chats I'm not in: just mention @getquoto_bot.
 
-I work in groups too.
+News channel: @getQuoto
 
-News and updates: @getQuoto
-
-Press Start to begin 👇""",
+Tap Start to begin 👇""",
 }
 
 SHORT_DESCRIPTIONS: dict[str, str] = {
-    "fa": """از پیام‌های تلگرام عکسِ نقل‌قول می‌سازم، با اسم و عکس پروفایلِ گوینده.
-کانال: @getQuoto""",
-    "en": """I turn Telegram messages into quote cards with the sender's name and photo.
-Channel: @getQuoto""",
+    "fa": """کارت نقل‌قول، استیکر و گیف از پیام‌های تلگرام، با اسم و عکس گوینده. کانال: @getQuoto""",
+    "en": """Quote cards, stickers and GIFs from Telegram messages, with the sender's photo. @getQuoto""",
 }
 
 
