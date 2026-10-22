@@ -2165,6 +2165,119 @@ def test_inline_fire() -> None:
         check(f"the {lang} help says how", "🔥" in i18n.t("help", lang))
 
 
+def test_review_fixes() -> None:
+    section("review fixes")
+    import throttle
+    from telegram.error import BadRequest as _BadRequest, NetworkError as _NetworkError
+
+    # arabic_reshaper rebuilt its ligature table on every call; ours keeps it.
+    check("the reshaper keeps its ligature table", hasattr(textkit._reshaper, "__ligatures_re"))
+    started = time.perf_counter()
+    for _ in range(200):
+        textkit.shape("سلام دنیا، این یک آزمایش است", True)
+    took = time.perf_counter() - started
+    check("shaping is quick", took < 0.5, f"{took:.2f}s for 200")
+    long_fa = ("این یک جمله‌ی طولانی برای آزمایش است که باید چند خط بشه " * 14)[:700]
+    started = time.perf_counter()
+    render.build_scene(_avatar(), long_fa, "SEP", "", "portrait")
+    took = time.perf_counter() - started
+    check("a 700-character quote lays out in well under the seconds it took",
+          took < 3.0, f"{took:.2f}s")
+    check("plain left-to-right text is not shaped", textkit.shape("hello 123", False) == "hello 123")
+    check("a right-to-left line of digits is still ordered right to left",
+          textkit.shape("123 456", True) != "123 456")
+
+    # The typing GIF draws a repeated frame once.
+    scene = render.build_scene(_avatar(), "کوتاه", "SEP", "", "classic")
+    frames = list(animate._iter_frames(scene))
+    distinct = len({id(f) for f in frames})
+    check("repeated animation frames are reused", distinct < len(frames), f"{distinct}/{len(frames)}")
+    check("and the last one shows the name", frames[-1] is frames[-2])
+
+    # Layout waits its turn with the rest of the rendering.
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    build = source[source.index("async def _build_scene"):]
+    build = build[:build.index("\nasync def ", 10)]
+    check("layout goes through the render gate", "throttle.RENDER.run(" in build)
+    check("in inline too", "throttle.RENDER.run(\n                render.build_scene"
+          in (ROOT / "inline.py").read_text(encoding="utf-8"))
+
+    # An inline query Telegram closed is not an error, whichever path answers it.
+    class ClosedQuery:
+        query = "🔥 "
+        offset = ""
+        id = "q"
+        from_user = types.SimpleNamespace(id=7, first_name="a", last_name="", username="",
+                                          language_code="fa", is_bot=False)
+
+        async def answer(self, *a, **kw):
+            raise _BadRequest("Query is too old and response timeout expired or query id is invalid")
+
+    async def closed_run():
+        handler = inline.make_handler("", None, None)
+        update = types.SimpleNamespace(inline_query=ClosedQuery(), effective_user=ClosedQuery.from_user)
+        ctx = types.SimpleNamespace(user_data={}, bot_data={}, bot=None, application=None)
+        try:
+            await handler(update, ctx)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+    check("a closed inline query is not raised as an error", asyncio.run(closed_run()))
+
+    # Network trouble is a warning, not a traceback and a "failed" to the user.
+    sent = []
+
+    async def error_run(error):
+        update = types.SimpleNamespace()
+        ctx = types.SimpleNamespace(error=error)
+        await bot.on_error(update, ctx)
+
+    import logging as _logging
+    records = []
+    handler = _logging.Handler()
+    handler.emit = records.append
+    bot.log.addHandler(handler)
+    try:
+        asyncio.run(error_run(_NetworkError("Bad Gateway")))
+    finally:
+        bot.log.removeHandler(handler)
+    check("a network error is logged as a warning",
+          records and all(r.levelno == _logging.WARNING and not r.exc_info for r in records))
+
+    # Waiting for a pack title does not last for ever.
+    renamed = []
+
+    async def title_run(asked):
+        ctx = types.SimpleNamespace(user_data={"await_pack_title": asked}, bot=None)
+        message = types.SimpleNamespace(text="new title")
+        update = types.SimpleNamespace(effective_message=message,
+                                       effective_user=types.SimpleNamespace(id=7, language_code="fa"))
+        real = stickerpack.rename_personal
+
+        async def fake(bot_, uid, title):
+            renamed.append(title)
+            return True
+        stickerpack.rename_personal = fake
+
+        async def reply(text):
+            return None
+        message.reply_text = reply
+        try:
+            await bot.on_pack_title(update, ctx)
+        finally:
+            stickerpack.rename_personal = real
+    asyncio.run(title_run(time.time() - 3600))
+    check("a pack title typed long after the button is not taken", renamed == [])
+    asyncio.run(title_run(True))
+    check("nor one left over from before the wait had a time", renamed == [])
+    asyncio.run(title_run(time.time() - 5))
+    check("one typed straight after is", renamed == ["new title"])
+
+    unit = (ROOT / "deploy" / "quoto.service").read_text(encoding="utf-8")
+    check("a stop lets the request in hand finish", "KillMode=mixed" in unit)
+    check("the render gate is shared, not one per caller", isinstance(throttle.RENDER, throttle.Gate))
+
+
 def test_hardening() -> None:
     section("security fixes")
     import throttle
@@ -3036,6 +3149,7 @@ def main() -> int:
     test_fire()
     test_inline_fire()
     test_hardening()
+    test_review_fixes()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()

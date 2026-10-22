@@ -403,8 +403,10 @@ def render_quote(avatar: Image.Image, quote: str, name: str,
 
 
 def to_png(img: Image.Image) -> io.BytesIO:
+    # Not optimize=True: it tries every filter for a file 4% smaller and takes
+    # four times as long, and Telegram recompresses a photo on arrival anyway.
     buf = io.BytesIO()
-    img.save(buf, "PNG", optimize=True)
+    img.save(buf, "PNG", compress_level=6)
     buf.seek(0)
     return buf
 

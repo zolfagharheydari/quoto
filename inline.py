@@ -446,7 +446,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
     so this module still knows nothing about that one.
 
     """
-    async def on_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.inline_query
         arrived = asyncio.get_running_loop().time()
         lang = i18n.resolve(update, context.user_data)
@@ -550,7 +550,7 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
             avatar = await authors.fetch_avatar(
                 context.bot, author, chosen, avatar_source)
             got_avatar = clock()
-            scene = await asyncio.to_thread(
+            scene = await throttle.RENDER.run(
                 render.build_scene, avatar, text, author.name, watermark,
                 template,
             )
@@ -638,7 +638,25 @@ def make_handler(watermark: str, storage_chat: str | int | None, gate=None):
         remember_offer(context, results, sticker_id)
         await _answer(query, results, arrived)
 
+    async def on_inline(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        # Telegram closes a query a few seconds after opening it, and every
+        # way of answering one - a hint, the archive, a refusal, the fire
+        # placeholder - can arrive after that on a slow link. That is not a
+        # fault; the next keystroke is answered. Only the main path knew it.
+        try:
+            await answer(update, context)
+        except BadRequest as exc:
+            if not _closed(exc):
+                raise
+            log.info("an inline query closed before it was answered")
+
     return on_inline
+
+
+def _closed(exc: Exception) -> bool:
+    """Whether Telegram refused an answer because the query had already closed."""
+    text = str(exc).lower()
+    return "too old" in text or "query id is invalid" in text
 
 
 def _stills(scene):
@@ -681,7 +699,7 @@ async def _answer(query, results, opened: float = 0.0) -> None:
     try:
         await query.answer(results, cache_time=30, is_personal=True)
     except BadRequest as exc:
-        if "too old" in str(exc).lower() or "query id is invalid" in str(exc).lower():
+        if _closed(exc):
             log.info("inline query was closed %.1fs after it arrived, before the "
                      "answer went out", asyncio.get_running_loop().time() - opened)
             return

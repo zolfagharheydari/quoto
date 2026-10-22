@@ -738,7 +738,8 @@ async def _build_scene(update: Update, context: ContextTypes.DEFAULT_TYPE,
     avatar = await authors.fetch_avatar(
         context.bot, author, *_avatar_choice(context, author)
     )
-    return await asyncio.to_thread(
+    # Laying a long quote out is real work too; it waits its turn with the rest.
+    return await throttle.RENDER.run(
         render.build_scene, avatar, text, author.name, WATERMARK,
         _template(context),
     )
@@ -884,17 +885,27 @@ async def cmd_mypack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+PACK_TITLE_WAIT = 10 * 60
+
+
 async def on_pack_rename(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Ask for the new title. The next thing they type is it."""
     query = update.callback_query
-    context.user_data["await_pack_title"] = True
+    context.user_data["await_pack_title"] = time.time()
     await query.answer()
     await query.edit_message_text(_t("mypack_rename_ask", update, context))
 
 
 async def on_pack_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Whatever they typed while the bot was waiting for a pack title."""
-    if not context.user_data.pop("await_pack_title", False):
+    """Whatever they typed while the bot was waiting for a pack title.
+
+    Only for a while after the button. Waiting for good meant that someone who
+    pressed it and changed their mind had their pack renamed days later, after
+    whatever they next wrote to the bot.
+    """
+    asked = context.user_data.pop("await_pack_title", None)
+    # True is how the wait was written down before it carried a time.
+    if asked is None or asked is True or not _fresh(asked, time.time(), PACK_TITLE_WAIT):
         return
     title = (update.effective_message.text or "").strip()
     if not title:
@@ -1321,18 +1332,23 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    where = "unknown"
+    error = context.error
+    # The connection, not the code: Telegram answering 502 now and then, a
+    # dropped read, a timeout. Polling retries on its own, and a traceback for
+    # each one buried the real faults in the log.
+    if isinstance(error, NetworkError) and not isinstance(error, BadRequest):
+        log.warning("network trouble talking to Telegram: %s", error)
+        return
+    where = "no update"
     if isinstance(update, Update):
         message = update.effective_message
+        chat = update.effective_chat.id if update.effective_chat else "?"
         # What someone wrote is theirs and does not belong in a log file; how
-        # long it was and whether it was a command is enough to reproduce.
+        # long it was and which command it was is enough to reproduce.
         text = (message.text or message.caption or "") if message else ""
-        where = (f"chat {update.effective_chat.id if update.effective_chat else '?'}"
-                 f", {len(text)} chars, command {text.split(maxsplit=1)[0][:32]!r}"
-                 if text.startswith("/") else
-                 f"chat {update.effective_chat.id if update.effective_chat else '?'}"
-                 f", {len(text)} chars" if message else "no message")
-    log.error("handler error (%s)", where, exc_info=context.error)
+        command = text.split(maxsplit=1)[0][:32] if text.startswith("/") else ""
+        where = f"chat {chat}, {len(text)} chars" + (f", command {command!r}" if command else "")
+    log.error("handler error (%s)", where, exc_info=error)
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(_t("failed", update, context))

@@ -17,6 +17,25 @@ from bidi.algorithm import get_display
 
 import fonts
 
+
+def _make_reshaper() -> arabic_reshaper.ArabicReshaper:
+    """A reshaper that builds its ligature table once, as it was meant to.
+
+    arabic_reshaper means to cache that table, but checks for it under the name
+    "__ligatures_re" while storing it under the mangled one, so the check never
+    succeeds and every call rebuilds it - several hundred config lookups per
+    string. Shaping is called for every candidate line while wrapping, so a
+    700-character quote spent six to eight seconds here. Building it once and
+    setting the name the check looks for makes the cache work.
+    """
+    reshaper = arabic_reshaper.ArabicReshaper()
+    table = reshaper._ligatures_re          # built and stored, under the mangled name
+    setattr(reshaper, "__ligatures_re", table)
+    return reshaper
+
+
+_reshaper = _make_reshaper()
+
 RTL_RE = re.compile(r"[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 def is_rtl(text: str) -> bool:
@@ -34,11 +53,13 @@ def shape(text: str, rtl: bool | None = None) -> str:
     direction of its own, and left to itself would lay out left-to-right in the
     middle of a Persian quote.
     """
+    if not rtl and not RTL_RE.search(text):
+        # Nothing to join and nothing to reorder: a left-to-right line with no
+        # Persian in it comes out of both passes exactly as it went in.
+        return text
     if rtl is None:
-        if not RTL_RE.search(text):
-            return text
         rtl = True
-    return get_display(arabic_reshaper.reshape(text), base_dir="R" if rtl else "L")
+    return get_display(_reshaper.reshape(text), base_dir="R" if rtl else "L")
 
 
 def width_of(text: str, font, rtl: bool | None = None) -> float:
@@ -79,15 +100,28 @@ def fit(text: str, font_loader, max_width: float, max_height: float,
 
     `font_loader` is a callable size -> font. Returns (logical lines, font, line_height).
     """
-    best = None
-    for size in sizes:  # descending
+    sizes = list(sizes)   # largest first
+
+    def attempt(size):
         font = font_loader(size)
         line_height = int(size * line_spacing)
         lines = wrap(text, font, max_width, rtl)
-        if len(lines) * line_height <= max_height:
-            return lines, font, line_height
-        best = (lines, font, line_height)
-    return best  # smallest size; caller may clip
+        return (lines, font, line_height), len(lines) * line_height <= max_height
+
+    # A smaller size never needs more room, so the first size that fits is
+    # found by halving rather than by trying each in turn: a long quote used
+    # to wrap at all sixteen sizes before reaching the one that fits.
+    lo, hi, found = 0, len(sizes) - 1, None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        result, fits = attempt(sizes[mid])
+        if fits:
+            found, hi = result, mid - 1
+        else:
+            lo = mid + 1
+    if found is not None:
+        return found
+    return attempt(sizes[-1])[0]  # nothing fits: the smallest size; caller may clip
 
 
 # Display names love decorative Unicode: 𝓙𝓾𝓼𝓽, ＪＵＳＴ, ᴊᴜsᴛ. The bundled fonts have

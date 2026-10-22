@@ -16,6 +16,11 @@ ExecStart=/opt/quoto/.venv/bin/python bot.py
 # Telegram drops long-poll connections routinely; always come back.
 Restart=always
 RestartSec=5
+# A stop goes to the bot alone, which finishes the request in hand before
+# exiting; the ffmpeg it started are only killed if it has not after 30s.
+# Sending the stop to every process at once cut renders off mid-frame.
+KillMode=mixed
+TimeoutStopSec=30
 
 # --- What the bot may write: its state and its log, and nothing else.
 # /opt/quoto (the code, the venv, .env) belongs to root and is read-only to
