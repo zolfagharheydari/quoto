@@ -133,6 +133,11 @@ Full guide: /help""",
 
 بدون ریپلای هم می‌شود: <code>/quote متن دلخواه</code> — کارت به نام خودت ساخته می‌شود.
 
+🔄 <b>تبدیل</b> — روی عکس، ویدیو، گیف یا استیکر ریپلای کن:
+«تبدیل به گیف» یا «تبدیل به استیکر» — از عکس و ویدیو
+«تبدیل به ویدیو» — از گیف و استیکر متحرک
+«تبدیل به عکس» — از استیکر
+
 ➋ <b>در چتی که عضوش نیستم</b>
 پیوی دوستانت، گروه‌های دیگر — لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس:
 <code>@BOT</code> — کارت کوت
@@ -181,6 +186,11 @@ I turn Telegram messages into quote cards, stickers, GIFs and screenshots, with 
 The Persian phrases work too: «کوتش کن» «استیکرش کن» «گیفش کن» «شاتش کن» «آتیشش کن»
 
 No reply needed: <code>/quote any text</code> makes a card credited to you.
+
+🔄 <b>Converting</b> — reply to a photo, video, GIF or sticker:
+<code>/togif</code> or <code>/tosticker</code> — from a photo or a video
+<code>/tovideo</code> — from a GIF or an animated sticker
+<code>/tophoto</code> — from a sticker
 
 ➋ <b>In a chat I'm not in</b>
 Your friends' chats, other groups — no need to add me. Reply to a message with:
@@ -572,6 +582,30 @@ This cannot be undone. Are you sure?""",
         "en": "OK, nothing was deleted.",
     },
     "btn_forget_yes": {"fa": "🗑 بله، پاک کن", "en": "🗑 Yes, delete"},
+    "convert_need_reply": {
+        "fa": """روی یه عکس، ویدیو، گیف یا استیکر ریپلای کن و بنویس:
+«تبدیل به گیف» • «تبدیل به استیکر» • «تبدیل به ویدیو» • «تبدیل به عکس»""",
+        "en": """Reply to a photo, video, GIF or sticker with:
+/togif • /tosticker • /tovideo • /tophoto""",
+    },
+    "convert_unsupported": {
+        "fa": """این رو نمی‌شه به {target} تبدیل کرد.
+عکس و ویدیو ← گیف یا استیکر
+گیف و استیکر متحرک ← ویدیو
+استیکر ← عکس""",
+        "en": """That can't be made into {target}.
+Photo or video → GIF or sticker
+GIF or animated sticker → video
+Sticker → photo""",
+    },
+    "convert_too_big": {
+        "fa": "این فایل بیشتر از ۲۰ مگابایته؛ تلگرام اجازه نمی‌ده ربات فایل بزرگ‌تر از این رو دانلود کنه.",
+        "en": "That file is over 20 MB, and Telegram doesn't let bots download anything bigger.",
+    },
+    "convert_name_gif": {"fa": "گیف", "en": "a GIF"},
+    "convert_name_sticker": {"fa": "استیکر", "en": "a sticker"},
+    "convert_name_video": {"fa": "ویدیو", "en": "a video"},
+    "convert_name_photo": {"fa": "عکس", "en": "a photo"},
     "guest_how": {
         "fa": """روی یه پیام ریپلای کن و منو صدا بزن، یا بعد از اسمم متنت رو بنویس.
 مثلاً: @getquoto_bot گیفش کن""",

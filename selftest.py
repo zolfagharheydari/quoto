@@ -2341,6 +2341,178 @@ def test_guest() -> None:
           sent == ["FX"] and "<b>x" not in said[0] and "&lt;b&gt;x" in said[0], str(said[:1]))
 
 
+def test_convert() -> None:
+    section("converting media")
+    import convert
+    import gzip as _gzip
+    import json as _json
+    import subprocess as _sp
+    import tempfile as _tempfile
+
+    for said, expected in (("تبدیل به گیف", "gif"), ("تبدیلش کن به استیکر", "sticker"),
+                           ("به ویدیو تبدیلش کن", "video"), ("اینو تبدیل کن به عکس", "photo"),
+                           ("تبدیل به گیف کن لطفا", "gif"), ("to gif", "gif"),
+                           ("convert to sticker", "sticker"), ("تبدیل به فیلم", "video"),
+                           ("گیفش کن", None), ("تبدیل به پیتزا", None),
+                           ("حرف ما تبدیل به گیف شد", None)):
+        check(f"«{said}» -> {expected}", bot.convert_target(said) == expected)
+    started = time.perf_counter()
+    bot.CONVERT_RE.search("تبدیل به" + " " * 4000 + "x")
+    check("the conversion phrase cannot be made to backtrack", time.perf_counter() - started < 0.05)
+
+    # What may be made from what.
+    for target, kind, ok in (("gif", "photo", True), ("sticker", "video", True),
+                             ("video", "animated_sticker", True), ("photo", "sticker", True),
+                             ("photo", "video", False), ("video", "photo", False),
+                             ("sticker", "sticker", False)):
+        try:
+            convert.check(target, kind, 1000)
+            allowed = True
+        except convert.Unsupported:
+            allowed = False
+        check(f"{kind} -> {target} {'allowed' if ok else 'refused'}", allowed == ok)
+    try:
+        convert.check("gif", "video", convert.MAX_INPUT_BYTES + 1)
+        refused = False
+    except convert.TooBig:
+        refused = True
+    check("a file past the download limit is refused before fetching", refused)
+
+    def ns(**kw):
+        base = dict(sticker=None, animation=None, photo=None, video=None, video_note=None,
+                    document=None)
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+    sticker = lambda **kw: types.SimpleNamespace(file_id="S", file_size=10,
+                                                 is_animated=False, is_video=False, **kw)
+    check("a static sticker is a sticker", convert.media_of(ns(sticker=sticker()))[0] == "sticker")
+    check("a .tgs is an animated sticker", convert.media_of(ns(sticker=types.SimpleNamespace(
+        file_id="S", file_size=10, is_animated=True, is_video=False)))[0] == "animated_sticker")
+    check("a picture sent as a file is a photo", convert.media_of(ns(document=types.SimpleNamespace(
+        mime_type="image/png", file_id="D", file_size=5)))[0] == "photo")
+    check("text is nothing to convert", convert.media_of(ns()) is None)
+
+    # Every conversion, on real files.
+    ff = convert.ffmpeg_exe()
+    with _tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        buf = io.BytesIO()
+        Image.new("RGB", (900, 600), (40, 90, 160)).save(buf, "JPEG")
+        photo = buf.getvalue()
+        _sp.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                 "testsrc=size=640x360:rate=25:duration=2", "-c:v", "libx264", "-pix_fmt",
+                 "yuv420p", str(tmp / "v.mp4")], check=True)
+        video = (tmp / "v.mp4").read_bytes()
+        frames = []
+        for i in range(30):
+            im = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+            ImageDraw.Draw(im).ellipse([40 + i * 6, 156, 240 + i * 6, 356], fill=(30, 90, 230, 255))
+            frames.append(im.tobytes())
+        _sp.run([ff, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s",
+                 "512x512", "-r", "30", "-i", "-", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+                 "-b:v", "200k", "-auto-alt-ref", "0", "-an", str(tmp / "s.webm")],
+                input=b"".join(frames), check=True)
+        video_sticker = (tmp / "s.webm").read_bytes()
+        buf = io.BytesIO()
+        st = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+        ImageDraw.Draw(st).rectangle([100, 100, 400, 400], fill=(230, 60, 90, 255))
+        st.save(buf, "WEBP")
+        still_sticker = buf.getvalue()
+        lottie = {"v": "5.5.2", "fr": 30, "ip": 0, "op": 30, "w": 512, "h": 512, "assets": [],
+                  "layers": [{"ty": 4, "ind": 1, "ip": 0, "op": 30, "st": 0, "sr": 1,
+                              "ks": {"o": {"a": 0, "k": 100}, "r": {"a": 0, "k": 0},
+                                     "p": {"a": 0, "k": [256, 256, 0]}, "a": {"a": 0, "k": [0, 0, 0]},
+                                     "s": {"a": 0, "k": [100, 100, 100]}},
+                              "shapes": [{"ty": "gr", "it": [
+                                  {"ty": "rc", "d": 1, "s": {"a": 0, "k": [200, 200]},
+                                   "p": {"a": 0, "k": [0, 0]}, "r": {"a": 0, "k": 20}},
+                                  {"ty": "fl", "c": {"a": 0, "k": [0.2, 0.7, 0.4, 1]},
+                                   "o": {"a": 0, "k": 100}},
+                                  {"ty": "tr", "p": {"a": 0, "k": [0, 0]}, "a": {"a": 0, "k": [0, 0]},
+                                   "s": {"a": 0, "k": [100, 100]}, "r": {"a": 0, "k": 0},
+                                   "o": {"a": 0, "k": 100}}]}]}]}
+        tgs = _gzip.compress(_json.dumps(lottie).encode())
+        samples = {"photo": photo, "video": video, "animation": video,
+                   "sticker": still_sticker, "video_sticker": video_sticker,
+                   "animated_sticker": tgs}
+        expected_ext = {"gif": "mp4", "video": "mp4", "photo": "png"}
+        for target, kinds in convert.TARGETS.items():
+            for kind in kinds:
+                try:
+                    data, ext = convert.convert(target, kind, samples[kind])
+                    ok = bool(data) and ext == expected_ext.get(
+                        target, "webp" if kind == "photo" else "webm")
+                    detail = f"{len(data)} bytes .{ext}"
+                except Exception as exc:  # noqa: BLE001
+                    ok, detail = False, repr(exc)
+                check(f"{kind} becomes {target}", ok, detail)
+        data, _ = convert.convert("sticker", "video", video)
+        check("a video sticker keeps to 256 KB", len(data) <= convert.VIDEO_STICKER_BYTES)
+        data, _ = convert.convert("photo", "sticker", still_sticker)
+        png = Image.open(io.BytesIO(data)).convert("RGB")
+        check("a sticker's transparency becomes white in a photo", png.getpixel((10, 10)) == (255, 255, 255)
+              and png.getpixel((256, 256))[0] > 200)
+        data, _ = convert.convert("video", "animation", video)
+        probe = _sp.run([ff, "-i", "-"], input=data, capture_output=True)
+        check("a video gets a sound track, so Telegram keeps it a video",
+              b"Audio:" in probe.stderr)
+        big = _gzip.compress(b"{" + b" " * (convert.TGS_MAX_JSON + 10) + b"}")
+        try:
+            convert.convert("video", "animated_sticker", big)
+            refused = False
+        except convert.Unsupported:
+            refused = True
+        check("an animated sticker that unpacks into megabytes is refused", refused)
+
+    # The bot replies with the right kind of message, under the media.
+    sent = []
+
+    class Reply:
+        def __init__(self):
+            self.chat = types.SimpleNamespace(send_action=self.noop, type="private")
+            self.reply_to_message = types.SimpleNamespace(
+                message_id=5, sticker=None, animation=None, video=None, video_note=None,
+                document=None, photo=[types.SimpleNamespace(file_id="P", file_size=2000)])
+
+        async def noop(self, *a, **kw):
+            return None
+
+        def __getattr__(self, name):
+            if name.startswith("reply_"):
+                async def record(*a, **kw):
+                    sent.append((name, kw.get("reply_to_message_id")))
+                return record
+            raise AttributeError(name)
+
+    class ConvertBot:
+        async def get_file(self, file_id):
+            class F:
+                file_size = len(photo)
+
+                async def download_as_bytearray(self):
+                    return bytearray(photo)
+            return F()
+
+    async def run(target):
+        message = Reply()
+        update = types.SimpleNamespace(effective_message=message,
+                                       effective_user=types.SimpleNamespace(id=7, language_code="fa"),
+                                       effective_chat=types.SimpleNamespace(id=7))
+        ctx = types.SimpleNamespace(bot=ConvertBot(), user_data={"started": True},
+                                    bot_data={"exempt": {7}})
+        await bot._convert_and_reply(update, ctx, target)
+    sent.clear()
+    asyncio.run(run("gif"))
+    check("a photo made into a GIF is sent as an animation under it", sent == [("reply_animation", 5)], str(sent))
+    sent.clear()
+    asyncio.run(run("video"))
+    check("a photo cannot be made into a video, and says so", sent and sent[0][0] == "reply_text", str(sent))
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    check("conversions wait in their own queue", "throttle.MEDIA.run(convert.convert" in source)
+    for target in ("gif", "sticker", "video", "photo"):
+        check(f"/to{target} is registered", f'["to{target}"], _convert_command("{target}")' in source)
+
+
 def test_review_fixes() -> None:
     section("review fixes")
     import throttle
@@ -3316,6 +3488,7 @@ def main() -> int:
     test_hardening()
     test_review_fixes()
     test_guest()
+    test_convert()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()

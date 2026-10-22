@@ -53,6 +53,7 @@ from telegram.ext import (
 import admin
 import animate
 import authors
+import convert
 import extract
 import fire
 import gallery
@@ -1481,6 +1482,111 @@ async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: 
         _fire_inline_running.discard(maker.id)
 
 
+# ------------------------------------------------------------------ conversions
+# «تبدیل به گیف» on a photo or a video, «تبدیل به ویدیو» on a GIF or an animated
+# sticker, «تبدیل به عکس» on a sticker - and the same as /togif, /tosticker,
+# /tovideo and /tophoto. convert.py does the work; this is the asking.
+_CONVERT_NAMES = {"گیف": "gif", "gif": "gif", "استیکر": "sticker", "sticker": "sticker",
+                  "ویدیو": "video", "ویدئو": "video", "فیلم": "video", "video": "video",
+                  "عکس": "photo", "تصویر": "photo", "photo": "photo"}
+_CONVERT_WORD = "(?P<w{n}>" + "|".join(_CONVERT_NAMES) + ")"
+CONVERT_RE = re.compile(
+    r"^\s*(?:این\s*(?:رو|و)?\s*)?(?:"
+    r"تبدیل(?:\s*ش)?(?:\s*کن(?:ید)?)?\s*به\s*" + _CONVERT_WORD.format(n=1)
+    + r"(?:\s*کن(?:ید)?)?"
+    r"|به\s*" + _CONVERT_WORD.format(n=2) + r"\s*تبدیل(?:\s*ش)?\s*کن(?:ید)?"
+    r"|(?:convert\s+)?to\s+" + _CONVERT_WORD.format(n=3) + r")"
+    r"(?:\s*(?:لطفا|لطفاً|please))?[\s.!?؟،]*$", re.IGNORECASE)
+
+
+def convert_target(text: str) -> str | None:
+    """What a phrase asks the replied-to media to become, if it is a conversion."""
+    if not text or len(text) > TRIGGER_MAX_CHARS:
+        return None
+    match = CONVERT_RE.search(text)
+    if match is None:
+        return None
+    word = next(v for k, v in match.groupdict().items() if v)
+    return _CONVERT_NAMES[word.lower()]
+
+
+async def _download_media(context, target_message, target: str):
+    """(kind, bytes) of the media to convert; raises convert.Unsupported / TooBig."""
+    found = convert.media_of(target_message)
+    if found is None:
+        raise convert.Unsupported("no media")
+    kind, file_id, size = found
+    convert.check(target, kind, size)
+    file = await context.bot.get_file(file_id)
+    convert.check(target, kind, file.file_size or 0)
+    return kind, bytes(await file.download_as_bytearray())
+
+
+def _named(data: bytes, ext: str) -> io.BytesIO:
+    """Bytes with a file name, which is how Telegram tells a .webm sticker from a .webp."""
+    buf = io.BytesIO(data)
+    buf.name = f"quoto.{ext}"
+    return buf
+
+
+async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             target: str) -> None:
+    message = update.effective_message
+    if not await _require_start(update, context):
+        return
+    if not await _require_channel(update, context):
+        return
+    if _too_soon(context):
+        log.info("ignoring a burst from %s", update.effective_user.id)
+        return
+    source = message.reply_to_message
+    lang = i18n.resolve(update, context.user_data)
+    if source is None or convert.media_of(source) is None:
+        await message.reply_text(i18n.t("convert_need_reply", lang))
+        return
+    action = {"gif": ChatAction.UPLOAD_VIDEO, "video": ChatAction.UPLOAD_VIDEO,
+              "sticker": ChatAction.CHOOSE_STICKER, "photo": ChatAction.UPLOAD_PHOTO}[target]
+    await message.chat.send_action(action)
+    try:
+        kind, data = await _download_media(context, source, target)
+        result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data)
+        reply = source.message_id
+        if target == "gif":
+            await message.reply_animation(_named(result, ext), reply_to_message_id=reply)
+        elif target == "video":
+            await message.reply_video(_named(result, ext), supports_streaming=True,
+                                      reply_to_message_id=reply)
+        elif target == "sticker":
+            await message.reply_sticker(_named(result, ext), reply_to_message_id=reply)
+        else:
+            await message.reply_photo(_named(result, ext), reply_to_message_id=reply)
+        admin.note(context, "convert")
+    except convert.Unsupported:
+        await message.reply_text(i18n.t("convert_unsupported", lang).format(
+            target=i18n.t(f"convert_name_{target}", lang)))
+    except convert.TooBig:
+        await message.reply_text(i18n.t("convert_too_big", lang))
+    except throttle.Busy:
+        await message.reply_text(i18n.t("busy", lang))
+    except TelegramError:
+        raise
+    except Exception:  # noqa: BLE001
+        log.exception("conversion to %s failed", target)
+        await message.reply_text(i18n.t("failed", lang))
+
+
+async def on_convert_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    target = convert_target(update.effective_message.text or "")
+    if target is not None:
+        await _convert_and_reply(update, context, target)
+
+
+def _convert_command(target: str):
+    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await _convert_and_reply(update, context, target)
+    return handler
+
+
 # ------------------------------------------------------------------ guest mode
 # Mentioned in a chat the bot is not in: "@getquoto_bot" as a reply to a
 # message, maybe with a phrase - «گیفش کن», /sticker - or "@getquoto_bot some
@@ -1533,14 +1639,17 @@ def _guest_text(lang: str, key: str, start_with: str | None = None, **fields):
 async def _guest_upload(context, kind: str, data, user_id: int) -> str:
     """Put a picture up to get a file_id, and take the message down again."""
     store = STORAGE_CHAT or context.bot_data.get("storage_chat") or user_id
-    send = {"card": context.bot.send_photo, "shot": context.bot.send_photo,
-            "sticker": context.bot.send_sticker, "gif": context.bot.send_animation}[kind]
-    extra = {"filename": "quote.mp4"} if kind == "gif" else {}
+    send = getattr(context.bot, {"card": "send_photo", "shot": "send_photo",
+                                 "sticker": "send_sticker", "gif": "send_animation",
+                                 "video": "send_video"}[kind])
+    extra = {"filename": "quote.mp4"} if kind in ("gif", "video") else {}
     message = await send(store, data, disable_notification=True, **extra)
     if kind in ("card", "shot"):
         file_id = message.photo[-1].file_id
     elif kind == "sticker":
         file_id = message.sticker.file_id
+    elif kind == "video":
+        file_id = (message.video or message.document).file_id
     else:
         file_id = (message.animation or message.document).file_id
     try:
@@ -1548,6 +1657,33 @@ async def _guest_upload(context, kind: str, data, user_id: int) -> str:
     except TelegramError:
         pass
     return file_id
+
+
+async def _guest_convert(context, source, target: str, user_id: int, lang: str):
+    """The one guest answer for a conversion: the converted file, or why not."""
+    from telegram import (InlineQueryResultCachedMpeg4Gif, InlineQueryResultCachedPhoto,
+                          InlineQueryResultCachedSticker, InlineQueryResultCachedVideo)
+    try:
+        kind, data = await _download_media(context, source, target)
+        result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data)
+    except convert.Unsupported:
+        return _guest_text(lang, "convert_unsupported",
+                           target=i18n.t(f"convert_name_{target}", lang))
+    except convert.TooBig:
+        return _guest_text(lang, "convert_too_big")
+    admin.note(context, "convert")
+    uid = uuid.uuid4().hex[:16]
+    if target == "gif":
+        file_id = await _guest_upload(context, "gif", _named(result, ext), user_id)
+        return InlineQueryResultCachedMpeg4Gif(id=f"g{uid}", mpeg4_file_id=file_id)
+    if target == "video":
+        file_id = await _guest_upload(context, "video", _named(result, ext), user_id)
+        return InlineQueryResultCachedVideo(id=f"v{uid}", video_file_id=file_id, title="Quoto")
+    if target == "sticker":
+        file_id = await _guest_upload(context, "sticker", _named(result, ext), user_id)
+        return InlineQueryResultCachedSticker(id=f"s{uid}", sticker_file_id=file_id)
+    file_id = await _guest_upload(context, "card", _named(result, ext), user_id)
+    return InlineQueryResultCachedPhoto(id=f"p{uid}", photo_file_id=file_id)
 
 
 async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1581,6 +1717,10 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         kind, own = guest_request(message.text or message.caption or "", username)
         target = message.reply_to_message
+        wanted = convert_target(own) if kind == "quote" else None
+        if wanted is not None and target is not None and convert.media_of(target) is not None:
+            await answer(await _guest_convert(context, target, wanted, user.id, lang))
+            return
         if target is not None:
             text = extract.quote_text(target)
             author = authors.resolve(target)
@@ -1827,6 +1967,10 @@ def register(app: Application) -> None:
         ["sticker", "stiker", "stickr", "sticekr", "stcker"], cmd_quote_sticker))
     app.add_handler(CommandHandler(["gif", "gfi"], cmd_quote_gif))
     app.add_handler(CommandHandler(["fire", "fier", "fir"], cmd_fire))
+    app.add_handler(CommandHandler(["togif"], _convert_command("gif")))
+    app.add_handler(CommandHandler(["tosticker"], _convert_command("sticker")))
+    app.add_handler(CommandHandler(["tovideo"], _convert_command("video")))
+    app.add_handler(CommandHandler(["tophoto"], _convert_command("photo")))
     app.add_handler(CommandHandler(
         ["screenshot", "screenshoot", "screanshot", "screnshot", "sceenshot"],
         cmd_screenshot))
@@ -1834,6 +1978,8 @@ def register(app: Application) -> None:
     # messages, so in a group they only reach the bot once it is an admin.
     handlers = {"quote": cmd_quote, "sticker": cmd_quote_sticker, "gif": cmd_quote_gif,
                 "shot": cmd_screenshot, "fire": cmd_fire}
+    app.add_handler(MessageHandler(
+        filters.REPLY & _ShortText() & filters.Regex(CONVERT_RE), on_convert_phrase))
     for name, pattern in TRIGGERS.items():
         app.add_handler(MessageHandler(
             filters.REPLY & _ShortText() & filters.Regex(pattern), handlers[name]

@@ -60,3 +60,5 @@ class Gate:
 RENDER = Gate(slots=2, queue=10)
 # The fire clip takes both cores for seconds on its own: one at a time.
 FIRE = Gate(slots=1, queue=3)
+# Turning a video into a GIF or a sticker: ffmpeg on someone's whole video.
+MEDIA = Gate(slots=1, queue=4)

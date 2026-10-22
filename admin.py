@@ -35,7 +35,7 @@ BROADCAST_PAUSE = 0.05            # ~20 messages a second, well inside the limit
 GROUP_TYPES = ("group", "supergroup")
 
 KINDS = (("quote", "کارت"), ("sticker", "استیکر"),
-         ("gif", "گیف"), ("screenshot", "اسکرین‌شات"), ("fire", "آتیش"))
+         ("gif", "گیف"), ("screenshot", "اسکرین‌شات"), ("fire", "آتیش"), ("convert", "تبدیل"))
 
 
 # ---------------------------------------------------------------- bookkeeping
