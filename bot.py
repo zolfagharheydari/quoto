@@ -790,9 +790,10 @@ def _card_webp(scene) -> bytes:
     return render.to_sticker_webp(scene.render()).getvalue()
 
 
-def _screenshot_files(*args):
-    image = screenshot.render(*args)
-    return screenshot.to_png(image), render.to_sticker_webp(image).getvalue()
+def _screenshot_sticker(*args) -> bytes:
+    """The message as a sticker: the bubble alone, on a transparent background."""
+    image = screenshot.render(*args, transparent=True)
+    return render.to_sticker_webp(image).getvalue()
 
 
 async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1365,11 +1366,11 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         badge, badge_is_admin = marked if marked else (None, False)
         seen = reactions.for_message(
             context.bot_data, message.chat_id, target.message_id)
-        buf, webp = await throttle.RENDER.run(
-            _screenshot_files, avatar, author.name, text,
+        webp = await throttle.RENDER.run(
+            _screenshot_sticker, avatar, author.name, text,
             _clock(target.date), badge, author.seed, seen, badge_is_admin,
         )
-        await message.reply_photo(buf, reply_to_message_id=target.message_id)
+        await message.reply_sticker(io.BytesIO(webp), reply_to_message_id=target.message_id)
         admin.note(context, "screenshot")
     except throttle.Busy:
         await message.reply_text(_t("busy", update, context))
@@ -1919,6 +1920,31 @@ async def _guest_convert(context, source, target: str, user_id: int, lang: str):
     return InlineQueryResultCachedPhoto(id=f"p{uid}", photo_file_id=file_id)
 
 
+# "@getquoto_bot /pack" - or «پک», «لینک پک» - for the group's pack link.
+_PACK_LINK_RE = re.compile(r"/pack(?:@\w+)?|پک(?:\s*گروه)?|لینک\s*پک(?:\s*گروه)?", re.IGNORECASE)
+
+
+async def _group_pack_text(context, chat, lang: str) -> str:
+    """What /pack says, for a guest asking from a chat the bot is not in."""
+    if chat is None or chat.type not in stickerpack.GROUP_TYPES:
+        return i18n.t("pack_groups_only", lang)
+    link = await stickerpack.link_for_adopting(context.bot, chat, OWNER_ID)
+    if link is None:
+        return i18n.t("pack_none", lang)
+    return i18n.t("pack_link", lang).format(link=link)
+
+
+async def _guest_into_group_pack(context, chat, webp: bytes) -> None:
+    """A sticker made as a guest in a group joins that group's pack, as it would
+    if the bot were a member. After the answer, so the answer does not wait."""
+    if chat is None or chat.type not in stickerpack.GROUP_TYPES:
+        return
+    try:
+        await stickerpack.add_quote(context.bot, chat, webp, OWNER_ID)
+    except TelegramError as exc:
+        log.info("could not file a guest sticker in its group's pack: %s", exc)
+
+
 async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """A guest summoning: make what was asked for and answer with it, once."""
     from telegram import (InlineQueryResultCachedMpeg4Gif, InlineQueryResultCachedPhoto,
@@ -1956,6 +1982,9 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         kind, own = guest_request(message.text or message.caption or "", username)
+        if kind == "quote" and _PACK_LINK_RE.fullmatch(own.strip()):
+            await answer(_guest_said(await _group_pack_text(context, message.chat, lang)))
+            return
         target = message.reply_to_message
         if kind == "quote" and is_add_phrase(own) and target is not None:
             await answer(_guest_said(await _add_replied(context, target, user, lang)))
@@ -2001,13 +2030,14 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         avatar = await authors.fetch_avatar(context.bot, author, *_avatar_choice(context, author))
         if kind == "shot":
-            png, _ = await throttle.RENDER.run(
-                _screenshot_files, avatar, author.name, text,
+            webp = await throttle.RENDER.run(
+                _screenshot_sticker, avatar, author.name, text,
                 _clock(target.date if target else message.date), None, author.seed, [], False)
-            result = InlineQueryResultCachedPhoto(
-                id=f"p{uuid.uuid4().hex[:16]}",
-                photo_file_id=await _guest_upload(context, "shot", png, user.id))
+            result = InlineQueryResultCachedSticker(
+                id=f"s{uuid.uuid4().hex[:16]}",
+                sticker_file_id=await _guest_upload(context, "sticker", webp, user.id))
             admin.note(context, "screenshot")
+            context.application.create_task(_guest_into_group_pack(context, message.chat, webp))
         else:
             scene = await throttle.RENDER.run(
                 render.build_scene, avatar, text, author.name, WATERMARK, _template(context))
@@ -2016,6 +2046,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 result = InlineQueryResultCachedSticker(
                     id=f"s{uuid.uuid4().hex[:16]}",
                     sticker_file_id=await _guest_upload(context, "sticker", webp, user.id))
+                context.application.create_task(
+                    _guest_into_group_pack(context, message.chat, webp))
             elif kind == "gif":
                 buf, _ = await throttle.RENDER.run(animate.to_animation, scene)
                 file_id = await _guest_upload(context, "gif", buf, user.id)

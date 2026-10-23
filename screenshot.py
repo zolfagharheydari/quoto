@@ -176,7 +176,7 @@ def _bubble_shape(draw: ImageDraw.ImageDraw, box, radius: int, tail: int, fill) 
 def render(avatar: Image.Image, name: str, text: str, time_str: str,
            badge: str | None = None, seed: str = "",
            reactions: list[tuple[str, int]] | None = None,
-           badge_is_admin: bool = True) -> Image.Image:
+           badge_is_admin: bool = True, transparent: bool = False) -> Image.Image:
     theme = THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
     name = textkit.normalize_display(name)
@@ -263,7 +263,10 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     width = pad + avatar_size + gap + bubble_w + pad
     height = pad + bubble_h + pad
 
-    img = _wallpaper((width, height))
+    # As a sticker it is the message alone, on nothing; as a picture it sits
+    # on the chat's wallpaper, the way it looks in the app.
+    img = (Image.new("RGBA", (width, height), (0, 0, 0, 0)) if transparent
+           else _wallpaper((width, height)))
 
     bubble_x = pad + avatar_size + gap
     bubble_y = pad
@@ -275,7 +278,9 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     offset = [box[0], box[1] + _px(1), box[2], box[3] + _px(1)]
     _bubble_shape(ImageDraw.Draw(layer), offset, radius, tail, (0, 0, 0, 40))
     layer = layer.filter(ImageFilter.GaussianBlur(_px(1.6)))
-    img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
+    img = Image.alpha_composite(img.convert("RGBA"), layer)
+    if not transparent:
+        img = img.convert("RGB")
 
     draw = ImageDraw.Draw(img)
     _bubble_shape(draw, box, radius, tail, theme["bubble"])

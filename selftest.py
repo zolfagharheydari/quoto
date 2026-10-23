@@ -2273,8 +2273,43 @@ def test_guest() -> None:
     b, _, _, _ = run_guest("@getquoto_bot /sticker", "قهوه‌ی سوم")
     check("/sticker makes a sticker", getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id")
 
-    b, _, _, _ = run_guest("@getquoto_bot شاتش کن", "اینترنت قطع شد")
-    check("«شاتش کن» makes a screenshot", getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+    b, _, _, tasks = run_guest("@getquoto_bot شاتش کن", "اینترنت قطع شد")
+    check("«شاتش کن» makes a screenshot, as a sticker",
+          getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id")
+    check("which joins the group's pack, after the answer", len(tasks) == 1)
+    b, _, _, tasks = run_guest("@getquoto_bot /sticker", "قهوه‌ی سوم")
+    check("a guest sticker in a group joins the group's pack too", len(tasks) == 1)
+
+    # "@getquoto_bot /pack" in a group: the pack's link.
+    class LinkBot(GuestBot):
+        async def get_sticker_set(self, name):
+            return types.SimpleNamespace(name=name, stickers=[])
+    for typed in ("@getquoto_bot /pack", "@getquoto_bot پک", "@getquoto_bot لینک پک گروه"):
+        lb = LinkBot()
+        ctx = types.SimpleNamespace(bot=lb, user_data={}, bot_data={},
+                                    application=types.SimpleNamespace(create_task=lambda c: c.close()))
+        saved_store, saved_owner = bot.STORAGE_CHAT, bot.OWNER_ID
+        bot.STORAGE_CHAT, bot.OWNER_ID = -100555, 42
+        try:
+            asyncio.run(bot.on_guest(guest_update(typed), ctx))
+        except _Stop:
+            pass
+        finally:
+            bot.STORAGE_CHAT, bot.OWNER_ID = saved_store, saved_owner
+        said = lb.answers[0][1].input_message_content.message_text if lb.answers else ""
+        check(f"{typed!r} answers with the group's pack link",
+              "t.me/addstickers/" + stickerpack.pack_name(chat.id, "getquoto_bot") in said, said[:80])
+
+    # A screenshot is a sticker now: the bubble alone, nothing behind it.
+    webp = bot._screenshot_sticker(_avatar(), "SEP", "سلام", "3:47 PM", None, "s", [], False)
+    shot = Image.open(io.BytesIO(webp))
+    check("a screenshot sticker is a 512 px WebP", shot.format == "WEBP" and max(shot.size) == 512)
+    check("with a transparent background", shot.mode == "RGBA" and shot.getpixel((1, 1))[3] == 0)
+    bot_source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    body = bot_source[bot_source.index("async def cmd_screenshot"):]
+    body = body[:body.index("\nasync def ", 10)]
+    check("«شاتش کن» replies with a sticker, not a photo",
+          "reply_sticker(" in body and "reply_photo(" not in body)
 
     b, _, _, _ = run_guest("@getquoto_bot حرف خودم")
     check("with no reply, their own words are quoted",

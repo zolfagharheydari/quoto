@@ -128,7 +128,7 @@ Full guide: /help""",
 <code>/quote</code> یا «کوتش کن» — کارت نقل‌قول
 <code>/sticker</code> یا «استیکرش کن» — همان کارت، به شکل استیکر
 <code>/gif</code> یا «گیفش کن» — گیفی که جمله را جلوی چشم تایپ می‌کند
-<code>/screenshot</code> یا «شاتش کن» — اسکرین‌شات تلگرامی، با ساعت و ریکشن‌ها
+<code>/screenshot</code> یا «شاتش کن» — پیام به شکل اسکرین‌شات تلگرامی، به صورت استیکر
 <code>/fire</code> یا «آتیشش کن» — گیف سینمایی: جمله با خط نستعلیق روی کاغذ نوشته می‌شود و آتش می‌گیرد (تا ۱۰۰ حرف)
 
 بدون ریپلای هم می‌شود: <code>/quote متن دلخواه</code> — کارت به نام خودت ساخته می‌شود.
@@ -144,6 +144,7 @@ Full guide: /help""",
 <code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code>، <code>@BOT شاتش کن</code>…
 جواب را خودم در همان چت می‌فرستم، با اسم و عکس همان آدم.
 بدون ریپلای: <code>@BOT متن</code> — از حرف خودت.
+استیکرهایی که در یک گروه می‌سازی به پک همان گروه می‌روند؛ <code>@BOT /pack</code> لینکش را می‌دهد.
 
 ➌ <b>در گروه</b>
 مرا به گروه اضافه کن و <b>ادمین</b> کن؛ تا ادمین نباشم، تلگرام ریپلای‌ها و ریکشن‌ها را به من نمی‌دهد.
@@ -183,7 +184,7 @@ I turn Telegram messages into quote cards, stickers, GIFs and screenshots, with 
 <code>/quote</code> — a quote card
 <code>/sticker</code> — the same card, as a sticker
 <code>/gif</code> — a GIF that types the words out
-<code>/screenshot</code> — a Telegram-style screenshot, with the time and reactions
+<code>/screenshot</code> — the message as a Telegram-style screenshot, as a sticker
 <code>/fire</code> — a cinematic GIF: the words written on paper in Nastaliq script, catching fire (up to 100 characters)
 The Persian phrases work too: «کوتش کن» «استیکرش کن» «گیفش کن» «شاتش کن» «آتیشش کن»
 
@@ -200,6 +201,7 @@ Your friends' chats, other groups — no need to add me. Reply to a message with
 <code>@BOT /gif</code>, <code>@BOT /fire</code>, <code>@BOT /screenshot</code>…
 I answer in that same chat, with that person's name and photo.
 No reply: <code>@BOT your text</code> quotes your own words.
+Stickers made in a group join that group's pack; <code>@BOT /pack</code> gives its link.
 
 ➌ <b>In a group</b>
 Add me and make me an <b>admin</b>; until then Telegram does not pass me replies or reactions.
