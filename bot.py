@@ -1838,6 +1838,58 @@ _GUEST_COMMANDS = {
 }
 
 
+# Near enough to a command counts as the command when the bot has been
+# mentioned by name: «بشات», «اسکرینش کن», «گیفشش», /scrennshot. The words
+# that only carry the asking - «کن», «لطفا», «اینو» - are set aside, and what
+# is left has to be one of these, give or take a letter or two for a longer
+# word and none for a short one, so «شاد» is not «شات» and «کیف» is not «گیف».
+# Anything longer than a couple of words is a sentence, not a command.
+_FILLER = {"لطفا", "لطفاً", "please", "pls", "plz", "کن", "کنید", "بکن", "بکنش", "بزن",
+           "بزنش", "بده", "بدش", "بساز", "بسازش", "اینو", "این", "رو", "و", "یه", "یک"}
+_KIND_WORDS = {
+    "quote": ("کوت", "کوتش", "کوتشو", "نقلقول", "نقلقولش", "quote", "qoute"),
+    "sticker": ("استیکر", "استیکرش", "استیکرشو", "استیکرکن", "sticker"),
+    "gif": ("گیف", "گیفش", "گیفشو", "gif"),
+    "shot": ("شات", "شاتش", "شاتشو", "بشات", "بشاتش", "اسکرین", "اسکرینش", "اسکرینشات",
+             "اسکرینشاتش", "screenshot", "screen", "shot", "ss"),
+    "fire": ("آتیش", "آتیشش", "آتیششو", "اتیش", "اتیشش", "آتش", "آتشش", "اتش", "fire"),
+}
+
+
+def _distance(a: str, b: str, limit: int) -> int:
+    """Edit distance, giving up once it is past `limit`."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1,
+                               previous[j - 1] + (ca != cb)))
+        if min(current) > limit:
+            return limit + 1
+        previous = current
+    return previous[-1]
+
+
+def fuzzy_kind(text: str) -> str | None:
+    """Which command these few words are near, if they are near one at all."""
+    words = [w for w in gallery.fold(re.sub(r"[.!?؟،,]", " ", text or "")).split()
+             if w not in _FILLER]
+    if not words or len(words) > 2:
+        return None
+    word = "".join(words)
+    best, best_kind = None, None
+    for kind, names in _KIND_WORDS.items():
+        for name in names:
+            name = gallery.fold(name).replace(" ", "")
+            allowed = 0 if len(name) <= 3 else 1 if len(name) <= 6 else 2
+            d = _distance(word, name, allowed)
+            if d <= allowed and (best is None or d < best):
+                best, best_kind = d, kind
+    return best_kind
+
+
 # Marks a client may put around a mention in right-to-left text: invisible,
 # and enough to stop a phrase being recognised.
 _DIRECTION_MARKS = dict.fromkeys(map(ord, "\u200e\u200f\u202a\u202b\u202c\u202d\u202e"
@@ -1858,16 +1910,22 @@ def guest_request(text: str, bot_username: str) -> tuple[str, str]:
     rest = re.sub(rf"@{re.escape(bot_username)}\b", " ", rest, flags=re.IGNORECASE)
     rest = " ".join(rest.split())
     if not rest:
-        return "quote", ""
+        return "unknown", ""          # the name alone asks for nothing in particular
     command = re.match(r"^/([A-Za-z]+)(?:@\w+)?(?:\s+|$)", rest)
     if command:
         name = command.group(1).lower()
         for kind, names in _GUEST_COMMANDS.items():
             if name in names:
                 return kind, rest[command.end():].strip()
+        near = fuzzy_kind(name)
+        if near is not None and not name.startswith(("to", "add", "pack")):
+            return near, rest[command.end():].strip()
     for kind, pattern in TRIGGERS.items():
         if len(rest) <= TRIGGER_MAX_CHARS and pattern.search(rest):
             return kind, ""
+    near = fuzzy_kind(rest)
+    if near is not None:
+        return near, ""
     return "unknown", rest
 
 
@@ -2188,7 +2246,8 @@ TRIGGERS = {
         ("quote", r"(?:کوت|نقل\s*قول|quote)(?:\s*ش)?(?:" + _DO + r")?"),
         ("sticker", r"(?:استیکر|sticker)(?:\s*ش)?" + _DO),
         ("gif", r"(?:گیف|gif)(?:\s*ش)?" + _DO),
-        ("shot", r"(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + _DO),
+        ("shot", r"(?:(?:شات|اسکرین\s*شات|screenshot)(?:\s*ش)?" + _DO
+                 + r"|ب\s*شات(?:\s*ش)?(?:" + _DO + r")?)"),
         # «آتیشش کن», and the ways it gets typed: اتیشش, آتشش, آتیش بزن.
         ("fire", r"(?:آتیش|اتیش|آتش|اتش|fire)(?:\s*ش)?\s*(?:کن|کنید|بزن|بزنید)"),
     )

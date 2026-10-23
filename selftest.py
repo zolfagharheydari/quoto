@@ -2163,7 +2163,7 @@ def test_inline_fire() -> None:
     check("deleting your data removes your fire clips too", set(store["fire_inline"]) == {"8:b"})
     for lang in i18n.SUPPORTED:
         check(f"the {lang} help says how to mention the bot as a guest",
-              "<code>@BOT</code>" in i18n.t("help", lang))
+              "<code>@BOT " in i18n.t("help", lang))
 
 
 def test_guest() -> None:
@@ -2172,7 +2172,16 @@ def test_guest() -> None:
     from telegram import Chat as _Chat, Message as _Message, Update as _Update, User as _User
     from telegram.ext import ApplicationHandlerStop as _Stop
 
-    for typed, expected in (("@getquoto_bot", ("quote", "")),
+    for typed, expected in (("@getquoto_bot", ("unknown", "")),
+                            ("@getquoto_bot کوتش کن", ("quote", "")),
+                            ("@getquoto_bot بشات", ("shot", "")),
+                            ("@getquoto_bot اسکرینش کن", ("shot", "")),
+                            ("@getquoto_bot گیفشش کن", ("gif", "")),
+                            ("@getquoto_bot استیکرشو بده", ("sticker", "")),
+                            ("@getquoto_bot /scrennshot", ("shot", "")),
+                            ("@getquoto_bot شاد", ("unknown", "شاد")),
+                            ("@getquoto_bot کیف", ("unknown", "کیف")),
+                            ("@getquoto_bot این چه وضعشه", ("unknown", "این چه وضعشه")),
                             ("@getquoto_bot گیفش کن", ("gif", "")),
                             ("@GetQuoto_Bot /sticker", ("sticker", "")),
                             ("@getquoto_bot آتیشش کن", ("fire", "")),
@@ -2261,7 +2270,7 @@ def test_guest() -> None:
             bot.STORAGE_CHAT = saved
         return b, ctx, stopped, tasks
 
-    b, ctx, stopped, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن")
+    b, ctx, stopped, _ = run_guest("@getquoto_bot کوتش کن", "آدم‌ها عوض نمی‌شن")
     check("a reply and a mention make a card", len(b.answers) == 1
           and b.answers[0][0] == "GQ" and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
     check("uploaded to the store and taken down again",
@@ -2326,6 +2335,10 @@ def test_guest() -> None:
           b.answers and b.answers[0][1].type == "article" and not b.uploads)
 
     b, _, _, _ = run_guest("@getquoto_bot")
+    check("the name alone, without a reply, makes nothing", not b.uploads)
+    b, _, _, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن")
+    check("nor with a reply: it shows how instead",
+          b.answers and b.answers[0][1].type == "article" and not b.uploads)
     check("nothing to quote gets the how-to", b.answers and b.answers[0][1].type == "article")
 
     import fire as _fire
@@ -2352,7 +2365,7 @@ def test_guest() -> None:
         saved, saved_channel = bot.STORAGE_CHAT, bot.REQUIRED_CHANNEL
         bot.STORAGE_CHAT, bot.REQUIRED_CHANNEL = store, "@somechannel"
         try:
-            asyncio.run(bot.on_guest(guest_update("@getquoto_bot", "آدم‌ها عوض نمی‌شن"), ctx))
+            asyncio.run(bot.on_guest(guest_update("@getquoto_bot کوتش کن", "آدم‌ها عوض نمی‌شن"), ctx))
         except _Stop:
             pass
         finally:
@@ -2360,7 +2373,7 @@ def test_guest() -> None:
         return b
     # Someone posting as a channel, or as an anonymous admin: the sender Telegram
     # gives is a stand-in bot, and the real one is in sender_chat.
-    def run_as_chat(stand_in_id, sender_chat, reply_text="آدم‌ها عوض نمی‌شن", text="@getquoto_bot"):
+    def run_as_chat(stand_in_id, sender_chat, reply_text="آدم‌ها عوض نمی‌شن", text="@getquoto_bot کوتش کن"):
         b = GuestBot()
         ctx = types.SimpleNamespace(bot=b, user_data={}, bot_data={},
                                     application=types.SimpleNamespace(create_task=lambda c: c.close()))
