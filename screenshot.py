@@ -130,16 +130,21 @@ GAP = 9
 BUBBLE_PAD_X = 13
 MAX_BUBBLE_W = 430
 
-# As a sticker, the same message is shown far smaller: Telegram draws a
-# sticker about 200 points wide on a phone, so a bubble laid out like the
-# app's, 430 wide with 17-point text, came out with text a third of the size
-# anyone can read. The sticker gets a narrower bubble - more lines, closer to
-# square, so it is scaled down less - with bigger, heavier type and no
-# wallpaper margin to pay for.
-STICKER_THEME = {"text_size": 25, "name_size": 21, "time_size": 15, "radius": 22,
-                 "avatar": 44}
-STICKER_MAX_BUBBLE_W = 290
+# As a sticker the message keeps the app's own proportions - the same type,
+# the same bubble - and is laid on a transparent canvas 512 wide at one fixed
+# scale, as if the chat were STICKER_VIEW points across. Every sticker then
+# shows its text at the same size: a short message stays a small bubble,
+# a long one wraps, and nothing is blown up or shrunk to fill the width,
+# which is what made text tiny in a long one-line message and huge in a
+# short one. Only a message too tall for 512 is scaled down to fit.
+STICKER_VIEW = 300
 STICKER_PAD = 4
+_AROUND = STICKER_PAD * 2 + 36 + 9          # margins, avatar and the gap beside it
+STICKER_MAX_BUBBLE_W = STICKER_VIEW - _AROUND
+# A message too long for the narrow bubble does not become a tower shrunk to
+# fit: the bubble widens a step at a time - smaller type, fewer lines - until
+# it fits 512 tall, the way a long message reads on a wider screen.
+STICKER_WIDER = (STICKER_MAX_BUBBLE_W, 330, MAX_BUBBLE_W)
 MAX_LINES = 30
 
 
@@ -187,8 +192,9 @@ def _bubble_shape(draw: ImageDraw.ImageDraw, box, radius: int, tail: int, fill) 
 def render(avatar: Image.Image, name: str, text: str, time_str: str,
            badge: str | None = None, seed: str = "",
            reactions: list[tuple[str, int]] | None = None,
-           badge_is_admin: bool = True, transparent: bool = False) -> Image.Image:
-    theme = {**THEME, **STICKER_THEME} if transparent else THEME
+           badge_is_admin: bool = True, transparent: bool = False,
+           max_bubble: int | None = None) -> Image.Image:
+    theme = THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
     name = textkit.normalize_display(name)
     text = textkit.normalize_display(text)
@@ -196,11 +202,12 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     rtl = textkit.is_rtl(text)
 
     name_font = fonts.load("bold", _px(theme["name_size"]))
-    text_font = fonts.load("medium" if transparent else "regular", _px(theme["text_size"]))
+    text_font = fonts.load("regular", _px(theme["text_size"]))
     time_font = fonts.load("regular", _px(theme["time_size"]))
     badge_font = fonts.load("medium", _px(11))
 
-    max_content = _px((STICKER_MAX_BUBBLE_W if transparent else MAX_BUBBLE_W) - 2 * BUBBLE_PAD_X)
+    bubble_limit = max_bubble or (STICKER_MAX_BUBBLE_W if transparent else MAX_BUBBLE_W)
+    max_content = _px(bubble_limit - 2 * BUBBLE_PAD_X)
     lines = _layout(text, text_font, max_content, rtl)
     shaped = [textkit.shape(line, rtl) for line in lines]
 
@@ -371,6 +378,34 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
                           fill=theme["time"], anchor="ra")
 
     return img
+
+
+def sticker(*args, **kwargs) -> bytes:
+    """The message as a sticker, at the narrowest bubble that fits 512 tall."""
+    for bubble in STICKER_WIDER:
+        img = render(*args, transparent=True, max_bubble=bubble, **kwargs)
+        if img.height * 512 / _px(bubble + _AROUND) <= 512:
+            break
+    return to_sticker(img, bubble + _AROUND)
+
+
+def to_sticker(img: Image.Image, view: int = STICKER_VIEW) -> bytes:
+    """A transparent render as a sticker: 512 wide, the bubble at a fixed scale.
+
+    `view` is how many points of chat the 512 pixels stand for.
+    """
+    side = 512
+    factor = side / _px(view)
+    w, h = round(img.width * factor), round(img.height * factor)
+    if h > side:                      # too tall: the one case it is made smaller
+        shrink = side / h
+        w, h = round(w * shrink), side
+    bubble = img.resize((max(1, w), max(1, h)), Image.LANCZOS)
+    canvas = Image.new("RGBA", (side, h), (0, 0, 0, 0))
+    canvas.paste(bubble, (0, 0), bubble)      # an incoming message sits at the left
+    buf = io.BytesIO()
+    canvas.save(buf, "WEBP", quality=90, method=6)
+    return buf.getvalue()
 
 
 def to_png(img: Image.Image) -> io.BytesIO:

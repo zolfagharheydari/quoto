@@ -792,8 +792,7 @@ def _card_webp(scene) -> bytes:
 
 def _screenshot_sticker(*args) -> bytes:
     """The message as a sticker: the bubble alone, on a transparent background."""
-    image = screenshot.render(*args, transparent=True)
-    return render.to_sticker_webp(image).getvalue()
+    return screenshot.sticker(*args)
 
 
 async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
