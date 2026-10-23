@@ -129,6 +129,17 @@ PAD = 18
 GAP = 9
 BUBBLE_PAD_X = 13
 MAX_BUBBLE_W = 430
+
+# As a sticker, the same message is shown far smaller: Telegram draws a
+# sticker about 200 points wide on a phone, so a bubble laid out like the
+# app's, 430 wide with 17-point text, came out with text a third of the size
+# anyone can read. The sticker gets a narrower bubble - more lines, closer to
+# square, so it is scaled down less - with bigger, heavier type and no
+# wallpaper margin to pay for.
+STICKER_THEME = {"text_size": 25, "name_size": 21, "time_size": 15, "radius": 22,
+                 "avatar": 44}
+STICKER_MAX_BUBBLE_W = 290
+STICKER_PAD = 4
 MAX_LINES = 30
 
 
@@ -177,7 +188,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
            badge: str | None = None, seed: str = "",
            reactions: list[tuple[str, int]] | None = None,
            badge_is_admin: bool = True, transparent: bool = False) -> Image.Image:
-    theme = THEME
+    theme = {**THEME, **STICKER_THEME} if transparent else THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
     name = textkit.normalize_display(name)
     text = textkit.normalize_display(text)
@@ -185,11 +196,11 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     rtl = textkit.is_rtl(text)
 
     name_font = fonts.load("bold", _px(theme["name_size"]))
-    text_font = fonts.load("regular", _px(theme["text_size"]))
+    text_font = fonts.load("medium" if transparent else "regular", _px(theme["text_size"]))
     time_font = fonts.load("regular", _px(theme["time_size"]))
     badge_font = fonts.load("medium", _px(11))
 
-    max_content = _px(MAX_BUBBLE_W - 2 * BUBBLE_PAD_X)
+    max_content = _px((STICKER_MAX_BUBBLE_W if transparent else MAX_BUBBLE_W) - 2 * BUBBLE_PAD_X)
     lines = _layout(text, text_font, max_content, rtl)
     shaped = [textkit.shape(line, rtl) for line in lines]
 
@@ -257,7 +268,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     bubble_h = pad_top + name_h + len(lines) * line_h + tail_h + pad_bottom
 
     avatar_size = _px(theme["avatar"])
-    pad = _px(PAD)
+    pad = _px(STICKER_PAD if transparent else PAD)
     gap = _px(GAP)
 
     width = pad + avatar_size + gap + bubble_w + pad
