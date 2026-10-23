@@ -2334,6 +2334,16 @@ def test_guest() -> None:
     check("not even as a reply: a mistyped command shows how instead",
           b.answers and b.answers[0][1].type == "article" and not b.uploads)
 
+    # A reply to the bot's own message that does not name it: Telegram sends
+    # it as a guest message all the same. Only an exact command is taken.
+    b, _, _, _ = run_guest("رفتیم پک", "استیکرپک این گروه: ...")
+    check("a reply to the bot without its name and without a command gets nothing", not b.answers)
+    b, _, _, _ = run_guest("اسکرینش کن", "یه پیام")
+    check("nor a near-command, without the name", not b.answers)
+    b, _, _, _ = run_guest("شاتش کن", "یه پیام")
+    check("but an exact command is still done",
+          b.answers and getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id")
+
     b, _, _, _ = run_guest("@getquoto_bot")
     check("the name alone, without a reply, makes nothing", not b.uploads)
     b, _, _, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن")
@@ -2649,6 +2659,62 @@ def test_convert() -> None:
     check("conversions wait in their own queue", "throttle.MEDIA.run(convert.convert" in source)
     for target in ("gif", "sticker", "video", "photo"):
         check(f"/to{target} is registered", f'["to{target}"], _convert_command("{target}")' in source)
+
+
+def test_group_pack_admins() -> None:
+    section("only admins take stickers out of a group's pack")
+
+    class AdminBot:
+        username = "getquoto_bot"
+
+        def __init__(self, admins):
+            self.admins, self.removed, self.dropped = admins, [], []
+
+        async def get_chat_member(self, chat_id, user_id):
+            status = "administrator" if user_id in self.admins else "member"
+            return types.SimpleNamespace(status=status)
+
+        async def delete_sticker_from_set(self, file_id):
+            self.removed.append(file_id)
+
+    group = types.SimpleNamespace(id=-100777, type="supergroup", title="g")
+    sticker = types.SimpleNamespace(file_id="ST", set_name=stickerpack.pack_name(-100777, "getquoto_bot"))
+
+    def unpack(user_id, is_bot=False, sender_chat=None, admins=(1,)):
+        said = []
+
+        async def reply(text, **kw):
+            said.append(text)
+        message = types.SimpleNamespace(chat=group, sender_chat=sender_chat, reply_text=reply,
+                                        reply_html=reply,
+                                        reply_to_message=types.SimpleNamespace(sticker=sticker))
+        update = types.SimpleNamespace(effective_message=message, effective_chat=group,
+                                       effective_user=types.SimpleNamespace(
+                                           id=user_id, is_bot=is_bot, language_code="fa"))
+        b = AdminBot(set(admins))
+        ctx = types.SimpleNamespace(bot=b, user_data={}, bot_data={})
+        asyncio.run(bot.cmd_unpack(update, ctx))
+        return b, said
+
+    b, said = unpack(1)
+    check("an admin takes a sticker out", b.removed == ["ST"])
+    b, said = unpack(2)
+    check("an ordinary member cannot", not b.removed and said)
+    b, said = unpack(1087968824, is_bot=True, sender_chat=group)
+    check("an anonymous admin, signed as the group, can", b.removed == ["ST"])
+    b, said = unpack(136817688, is_bot=True,
+                     sender_chat=types.SimpleNamespace(id=-100555, type="channel"))
+    check("someone posting as a channel cannot", not b.removed)
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    delpack = source[source.index("async def cmd_delpack"):source.index("async def on_delpack")]
+    check("deleting a group's pack asks the same question", "_runs_group(" in delpack)
+    on_del = source[source.index("async def on_delpack"):]
+    on_del = on_del[:on_del.index("\nasync def ", 10)]
+    check("and the button checks who pressed it", "_is_group_admin(" in on_del)
+    guest = source[source.index("async def on_guest"):]
+    guest = guest[:guest.index("\nasync def ", 10)]
+    check("guest mode can take nothing out of a pack", "delete_sticker" not in guest
+          and "remove_quote" not in guest and "delete_group" not in guest)
 
 
 def test_custom_packs() -> None:
@@ -3763,6 +3829,7 @@ def main() -> int:
     test_guest()
     test_convert()
     test_custom_packs()
+    test_group_pack_admins()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()

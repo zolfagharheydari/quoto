@@ -939,6 +939,20 @@ async def cmd_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def _runs_group(bot, update: Update) -> bool:
+    """Whether whoever sent this runs the group it was sent in.
+
+    An admin who posts anonymously is signed as the group itself, with a
+    stand-in bot as the sender - and only admins can post that way, so that
+    is proof enough. Everyone else is checked by asking Telegram.
+    """
+    message = update.effective_message
+    sender_chat = getattr(message, "sender_chat", None)
+    if sender_chat is not None and message.chat is not None and sender_chat.id == message.chat.id:
+        return True
+    return await _is_group_admin(bot, message.chat, update.effective_user)
+
+
 async def _is_group_admin(bot, chat, user) -> bool:
     """Whether this person runs this group."""
     if user is None:
@@ -973,7 +987,7 @@ async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if message.chat.type not in stickerpack.GROUP_TYPES:
         await message.reply_text(_t("pack_groups_only", update, context))
         return
-    if not await _is_group_admin(context.bot, message.chat, update.effective_user):
+    if not await _runs_group(context.bot, update):
         await message.reply_text(_t("unpack_not_admin", update, context))
         return
 
@@ -1099,7 +1113,7 @@ async def cmd_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if message.chat.type not in stickerpack.GROUP_TYPES:
             await message.reply_text(_t("pack_groups_only", update, context))
             return
-        if not await _is_group_admin(context.bot, message.chat, update.effective_user):
+        if not await _runs_group(context.bot, update):
             await message.reply_text(_t("delpack_not_admin", update, context))
             return
 
@@ -1896,7 +1910,7 @@ _DIRECTION_MARKS = dict.fromkeys(map(ord, "\u200e\u200f\u202a\u202b\u202c\u202d\
                                          "\u2066\u2067\u2068\u2069\ufeff"), " ")
 
 
-def guest_request(text: str, bot_username: str) -> tuple[str, str]:
+def guest_request(text: str, bot_username: str, near: bool = True) -> tuple[str, str]:
     """(what to make, any words of their own) from a guest summoning message.
 
     The mention alone makes a card of what it replies to; anything written
@@ -1917,15 +1931,15 @@ def guest_request(text: str, bot_username: str) -> tuple[str, str]:
         for kind, names in _GUEST_COMMANDS.items():
             if name in names:
                 return kind, rest[command.end():].strip()
-        near = fuzzy_kind(name)
-        if near is not None and not name.startswith(("to", "add", "pack")):
-            return near, rest[command.end():].strip()
+        close = fuzzy_kind(name) if near else None
+        if close is not None and not name.startswith(("to", "add", "pack")):
+            return close, rest[command.end():].strip()
     for kind, pattern in TRIGGERS.items():
         if len(rest) <= TRIGGER_MAX_CHARS and pattern.search(rest):
             return kind, ""
-    near = fuzzy_kind(rest)
-    if near is not None:
-        return near, ""
+    close = fuzzy_kind(rest) if near else None
+    if close is not None:
+        return close, ""
     return "unknown", rest
 
 
@@ -2062,7 +2076,12 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await answer(_guest_text(lang, key, username if key == "need_start" else None))
             return
 
-        kind, own = guest_request(message.text or message.caption or "", username)
+        said_text = message.text or message.caption or ""
+        # Telegram also sends a guest message when someone replies to one of
+        # the bot's own messages without naming it - usually just talking.
+        # Then only an exact command is taken, and nothing else is answered.
+        named = re.search(rf"@{re.escape(username)}\b", said_text, re.IGNORECASE) is not None
+        kind, own = guest_request(said_text, username, near=named)
         target = message.reply_to_message
         if kind == "unknown":
             # Not a command for a card: maybe one of the other things a guest
@@ -2076,8 +2095,10 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 said = (await _guest_convert(context, target, wanted, user.id, lang)
                         if target is not None and convert.media_of(target) is not None
                         else _guest_text(lang, "convert_need_reply"))
-            else:
+            elif named:
                 said = _guest_text(lang, "guest_how")
+            else:
+                return              # a reply to the bot that asked for nothing
             await answer(said)
             return
         if target is not None:
