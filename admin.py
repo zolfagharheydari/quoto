@@ -166,7 +166,16 @@ def make_tracker(owner_id: int | None):
     async def track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = update.effective_user
         chat = update.effective_chat
-        if user is None or user.is_bot:
+        if user is None:
+            return
+        if user.is_bot:
+            # A message sent as a channel, or by an anonymous admin, carries a
+            # stand-in bot as its sender. There is nobody to record or to block,
+            # but a paused bot is paused for them as well.
+            message = update.effective_message
+            if (context.bot_data.get("paused") and message is not None
+                    and message.sender_chat is not None):
+                raise ApplicationHandlerStop
             return
         is_owner = owner_id is not None and user.id == owner_id
 

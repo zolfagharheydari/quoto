@@ -255,6 +255,21 @@ async def _in_channel(bot, user_id: int, cache: dict) -> bool:
     return inside
 
 
+def _as_chat(update: Update) -> bool:
+    """Whether the message was sent as a chat: as a channel, or by an anonymous admin.
+
+    Telegram fills the sender in with a stand-in bot account then - Channel_Bot,
+    GroupAnonymousBot - and puts the real sender in sender_chat. It is a person
+    all the same, just not one with an account the bot can see; treating the
+    stand-in as a bot ignored them, and asking it to press Start asked the
+    impossible.
+    """
+    user = getattr(update, "effective_user", None)
+    message = getattr(update, "effective_message", None)
+    return bool(getattr(user, "is_bot", False)
+                and getattr(message, "sender_chat", None) is not None)
+
+
 async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE,
                            key: str = "need_channel") -> bool:
     """Whether this person may go on, and the asking if they may not.
@@ -263,8 +278,8 @@ async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE,
     everywhere else.
     """
     user = update.effective_user
-    if user is None:
-        return True
+    if user is None or _as_chat(update):
+        return True     # a channel or an anonymous admin has nobody to join with
     # Excused by the owner: either this person, or the whole chat they are in.
     allowed = admin.exempt(context)
     chat = getattr(update, "effective_chat", None)
@@ -284,6 +299,8 @@ async def _require_channel(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 async def _require_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if _as_chat(update):
+        return True     # a channel cannot press Start; its files go where the reply is
     if await _has_started(update, context):
         return True
     lang = i18n.resolve(update, context.user_data)
@@ -1181,7 +1198,9 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         admin.note(context, "gif")
         # Filed under whoever made it, so they can find it again by who is in it.
         made = sent.animation or sent.document
-        if made is not None:
+        # Sent as a channel, the sender is a stand-in shared by every channel:
+        # an archive under it would be everyone's, so there is none.
+        if made is not None and not _as_chat(update):
             gallery.record(context.user_data, made.file_id,
                            authors.resolve(target), text)
     except throttle.Busy:
@@ -1244,7 +1263,7 @@ async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             reply_to_message_id=target.message_id)
         admin.note(context, "fire")
         made = sent.animation or sent.document
-        if made is not None:
+        if made is not None and not _as_chat(update):
             gallery.record(context.user_data, made.file_id, author, text)
     except throttle.Busy:
         await message.reply_text(_t("fire_busy", update, context))
@@ -1504,7 +1523,8 @@ async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: 
             pass
         if author.avatar_key == maker.id:
             inline.fire_remember(context.bot_data, inline.fire_key(maker.id, quote), made.file_id)
-        gallery.record(context.user_data, made.file_id, author, quote)
+        if not getattr(maker, "is_bot", False):
+            gallery.record(context.user_data, made.file_id, author, quote)
         admin.note(context, "fire")
     except throttle.Busy:
         await say("fire_busy")
@@ -1906,7 +1926,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.guest_message
     user = update.effective_user
     query_id = getattr(message, "guest_query_id", None)
-    if query_id is None or user is None or user.is_bot:
+    as_chat = _as_chat(update)
+    if query_id is None or user is None or (user.is_bot and not as_chat):
         raise ApplicationHandlerStop
     lang = i18n.resolve(update, context.user_data)
     username = context.bot.username
@@ -1948,8 +1969,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             author = authors.resolve(target)
         else:
             text = textkit.normalize_display(own)[:extract.MAX_QUOTE_CHARS] if own else None
-            author = authors.Author(user.full_name, user.username or "", user.id, "user",
-                                    str(user.id))
+            # Whoever sent the mention - a person, or the channel they posted as.
+            author = authors.resolve(message)
         if not text:
             await answer(_guest_text(lang, "guest_how"))
             return
@@ -2000,7 +2021,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 file_id = await _guest_upload(context, "gif", buf, user.id)
                 result = InlineQueryResultCachedMpeg4Gif(
                     id=f"g{uuid.uuid4().hex[:16]}", mpeg4_file_id=file_id)
-                gallery.record(context.user_data, file_id, author, text)
+                if not as_chat:     # a stand-in account is shared; it keeps no archive
+                    gallery.record(context.user_data, file_id, author, text)
             else:
                 png = await throttle.RENDER.run(_card_png, scene)
                 result = InlineQueryResultCachedPhoto(

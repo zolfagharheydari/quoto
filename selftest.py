@@ -2313,6 +2313,61 @@ def test_guest() -> None:
         finally:
             bot.STORAGE_CHAT, bot.REQUIRED_CHANNEL = saved, saved_channel
         return b
+    # Someone posting as a channel, or as an anonymous admin: the sender Telegram
+    # gives is a stand-in bot, and the real one is in sender_chat.
+    def run_as_chat(stand_in_id, sender_chat, reply_text="آدم‌ها عوض نمی‌شن", text="@getquoto_bot"):
+        b = GuestBot()
+        ctx = types.SimpleNamespace(bot=b, user_data={}, bot_data={},
+                                    application=types.SimpleNamespace(create_task=lambda c: c.close()))
+        stand_in = _User(stand_in_id, "Channel", True)
+        replied = (_Message(5, now, chat, from_user=friend, text=reply_text) if reply_text else None)
+        message = _Message(9, now, chat, from_user=stand_in, sender_chat=sender_chat, text=text,
+                           reply_to_message=replied, guest_query_id="GQ")
+        saved = bot.STORAGE_CHAT
+        bot.STORAGE_CHAT = -100555
+        try:
+            asyncio.run(bot.on_guest(_Update(1, guest_message=message), ctx))
+        except _Stop:
+            pass
+        finally:
+            bot.STORAGE_CHAT = saved
+        return b, ctx
+    channel = _Chat(-100999, "channel", title="کانال من")
+    b, ctx = run_as_chat(136817688, channel)
+    check("someone posting as a channel gets their card",
+          b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+    b, ctx = run_as_chat(136817688, channel, reply_text=None, text="@getquoto_bot از طرف کانال")
+    check("with no reply, the channel's own words are quoted under the channel",
+          b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+    b, ctx = run_as_chat(1087968824, chat, text="@getquoto_bot گیفش کن")
+    check("an anonymous admin gets theirs", b.answers
+          and getattr(b.answers[0][1], "mpeg4_file_id", None) == "animation-id")
+    check("and nothing is filed under the shared stand-in account", not ctx.user_data.get("gifs"))
+    b = GuestBot()
+    ctx = types.SimpleNamespace(bot=b, user_data={}, bot_data={})
+    lone_bot = _Message(9, now, chat, from_user=_User(55, "SomeBot", True), text="@getquoto_bot",
+                        reply_to_message=_Message(5, now, chat, from_user=friend, text="hi"),
+                        guest_query_id="GQ")
+    try:
+        asyncio.run(bot.on_guest(_Update(1, guest_message=lone_bot), ctx))
+    except _Stop:
+        pass
+    check("another bot is still ignored", not b.answers)
+
+    # In a group the bot is in, a channel is not asked to press Start.
+    asked = []
+
+    async def as_channel_gate():
+        message = types.SimpleNamespace(sender_chat=channel,
+                                        reply_text=lambda *a, **k: asked.append(a))
+        update = types.SimpleNamespace(effective_user=_User(136817688, "Channel", True),
+                                       effective_message=message,
+                                       effective_chat=types.SimpleNamespace(id=-100777))
+        ctx = types.SimpleNamespace(bot=None, user_data={}, bot_data={})
+        return (await bot._require_start(update, ctx), await bot._require_channel(update, ctx))
+    check("a channel sender passes the Start and channel gates", asyncio.run(as_channel_gate()) == (True, True)
+          and not asked)
+
     b = run_stranger(-100555)
     check("someone who never started the bot, outside the channel, still gets the card",
           b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
