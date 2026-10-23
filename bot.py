@@ -812,6 +812,8 @@ async def _announce_pack(update: Update, context: ContextTypes.DEFAULT_TYPE,
         result = await stickerpack.add_quote(context.bot, message.chat, webp, OWNER_ID)
         created_key = "pack_created"
     else:
+        if not context.user_data.get("auto_pack", True):
+            return              # they asked for only the stickers they choose
         result = await stickerpack.add_personal(
             context.bot, update.effective_user, webp, OWNER_ID)
         created_key = "mypack_created"
@@ -860,11 +862,15 @@ async def cmd_mypack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await message.reply_html(_t("mypack_none", update, context))
         return
     lang = i18n.resolve(update, context.user_data)
+    auto = context.user_data.get("auto_pack", True)
     await message.reply_text(
         _t("mypack_link", update, context).format(link=link),
         disable_web_page_preview=True,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-            i18n.t("btn_pack_rename", lang), callback_data="mypack:rename")]]),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(i18n.t("btn_pack_rename", lang), callback_data="mypack:rename")],
+            [InlineKeyboardButton(i18n.t("btn_auto_on" if auto else "btn_auto_off", lang),
+                                  callback_data="cpk:auto")],
+        ]),
     )
 
 
@@ -937,8 +943,9 @@ async def cmd_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     message = update.effective_message
     if message.chat.type == "private":
         target = message.reply_to_message
-        outcome = await stickerpack.remove_personal(
-            context.bot, update.effective_user.id,
+        outcome = await stickerpack.remove_from_own(
+            context.bot,
+            _own_pack_names(context.bot.username, update.effective_user.id, context.user_data),
             target.sticker if target else None)
         await message.reply_text(_t({
             "ok": "mypack_removed",
@@ -1079,6 +1086,17 @@ async def cmd_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await message.reply_text(_t("delpack_not_admin", update, context))
             return
 
+    if private and _own_packs(context.user_data):
+        # Their own packs too: which one goes is theirs to say.
+        rows = [[InlineKeyboardButton(i18n.t("btn_delpack_personal", lang),
+                                      callback_data="delpack:me")]]
+        rows += [[InlineKeyboardButton("🗑 " + p["title"][:40], callback_data=f"delpack:c{p['n']}")]
+                 for p in _own_packs(context.user_data)]
+        rows.append([InlineKeyboardButton(i18n.t("btn_delpack_no", lang),
+                                          callback_data="delpack:no")])
+        await message.reply_html(i18n.t("delpack_choose", lang),
+                                 reply_markup=InlineKeyboardMarkup(rows))
+        return
     what = "me" if private else "group"
     key = "delpack_ask_personal" if private else "delpack_ask_group"
     await message.reply_html(
@@ -1117,6 +1135,21 @@ async def on_delpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                                show_alert=True)
             return
         outcome = await stickerpack.delete_group(context.bot, message.chat)
+    elif what.startswith("c") and what[1:].isdigit():
+        if message.chat.type != "private":
+            await query.answer()
+            return
+        n = int(what[1:])
+        packs = _own_packs(context.user_data)
+        if not any(p["n"] == n for p in packs):
+            await query.answer()
+            return
+        outcome = await stickerpack.delete_named(
+            context.bot, stickerpack.custom_name(update.effective_user.id, n, context.bot.username))
+        if outcome in ("ok", "no_pack"):
+            # Gone from Telegram, or never made it there: either way, gone from the list.
+            packs[:] = [p for p in packs if p["n"] != n]
+            outcome = "ok"
     else:
         if message.chat.type != "private":
             await query.answer()
@@ -1482,6 +1515,181 @@ async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: 
         _fire_inline_running.discard(maker.id)
 
 
+# ------------------------------------------------------------------ packs of one's own
+# /newpack makes a pack; replying to a sticker with «بذارش تو پک» puts that one
+# sticker in it - nothing else goes in. A photo or a video replied to is made
+# into a sticker first. /packs lists them and picks which one stickers go to.
+# The personal pack that fills itself still exists, and can be told to stop.
+_PACK_WORDS = r"(?:تو|توی|به|داخل)?\s*پک(?:\s*م|\s*خودم)?"
+ADD_RE = re.compile(
+    r"^\s*(?:این\s*(?:رو|و)?\s*)?(?:"
+    r"(?:بذار|بزار|ببر|بفرست|اضافه\s*کن|اد\s*کن)(?:\s*ش)?\s*" + _PACK_WORDS
+    + r"|اضافه\s*(?:ش\s*)?(?:کن\s*)?به\s*پک(?:\s*م|\s*خودم)?"
+    r"|add\s+(?:it\s+)?to\s+(?:my\s+)?pack)"
+    r"(?:\s*(?:لطفا|لطفاً|please))?[\s.!?؟،]*$", re.IGNORECASE)
+
+
+def is_add_phrase(text: str) -> bool:
+    return bool(text) and len(text) <= TRIGGER_MAX_CHARS and ADD_RE.search(text) is not None
+
+
+def _own_packs(user_data) -> list[dict]:
+    packs = user_data.get("packs")
+    if not isinstance(packs, list):
+        packs = []
+        user_data["packs"] = packs
+    return packs
+
+
+def _target_pack(user_data) -> dict | None:
+    """The pack stickers go to: the one chosen, or the newest."""
+    packs = _own_packs(user_data)
+    chosen = user_data.get("pack_target")
+    for pack in packs:
+        if pack["n"] == chosen:
+            return pack
+    return packs[-1] if packs else None
+
+
+def _own_pack_names(bot_username: str, user_id: int, user_data) -> set[str]:
+    names = {stickerpack.personal_name(user_id, bot_username)}
+    names |= {stickerpack.custom_name(user_id, p["n"], bot_username)
+              for p in _own_packs(user_data)}
+    return names
+
+
+async def cmd_newpack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A new pack of one's own, named. It exists on Telegram from its first sticker."""
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    title = " ".join(context.args or []).strip()[:stickerpack.MAX_TITLE]
+    if not title:
+        await message.reply_html(i18n.t("newpack_how", lang))
+        return
+    packs = _own_packs(context.user_data)
+    if len(packs) >= stickerpack.MAX_CUSTOM_PACKS:
+        await message.reply_text(i18n.t("newpack_limit", lang).format(
+            max=stickerpack.MAX_CUSTOM_PACKS))
+        return
+    n = max((p["n"] for p in packs), default=0) + 1
+    packs.append({"n": n, "title": title})
+    context.user_data["pack_target"] = n
+    await message.reply_text(i18n.t("newpack_done", lang).format(title=title))
+
+
+def _packs_keyboard(lang: str, user_data) -> InlineKeyboardMarkup:
+    target = _target_pack(user_data)
+    rows = [[InlineKeyboardButton(
+        ("✅ " if target and p["n"] == target["n"] else "🎯 ") + p["title"][:40],
+        callback_data=f"cpk:use:{p['n']}")] for p in _own_packs(user_data)]
+    auto = user_data.get("auto_pack", True)
+    rows.append([InlineKeyboardButton(
+        i18n.t("btn_auto_on" if auto else "btn_auto_off", lang), callback_data="cpk:auto")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def cmd_packs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """This person's packs, with their links, and which one stickers go to."""
+    message = update.effective_message
+    lang = i18n.resolve(update, context.user_data)
+    user_id = update.effective_user.id
+    username = context.bot.username
+    lines = []
+    personal = await stickerpack.personal_link(context.bot, user_id)
+    lines.append(i18n.t("packs_personal", lang).format(
+        link=personal or i18n.t("packs_empty", lang)))
+    target = _target_pack(context.user_data)
+    for p in _own_packs(context.user_data):
+        link = await stickerpack.link_if_exists(
+            context.bot, stickerpack.custom_name(user_id, p["n"], username))
+        mark = " 🎯" if target and p["n"] == target["n"] else ""
+        lines.append(f"• <b>{html.escape(p['title'])}</b>{mark} — "
+                     + (link or i18n.t("packs_empty", lang)))
+    if not _own_packs(context.user_data):
+        lines.append(i18n.t("packs_none", lang))
+    # Titles are theirs, escaped above; the frame around them is the catalogue's.
+    await message.reply_html(i18n.t("packs_list", lang).format(rows=chr(10).join(lines)),
+                             disable_web_page_preview=True,
+                             reply_markup=_packs_keyboard(lang, context.user_data))
+
+
+async def on_packs_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    lang = i18n.resolve(update, context.user_data)
+    parts = query.data.split(":")
+    if parts[1] == "auto":
+        context.user_data["auto_pack"] = not context.user_data.get("auto_pack", True)
+        await query.answer(i18n.t("auto_on" if context.user_data["auto_pack"] else "auto_off", lang),
+                           show_alert=True)
+    elif parts[1] == "use" and len(parts) > 2 and parts[2].isdigit():
+        n = int(parts[2])
+        pack = next((p for p in _own_packs(context.user_data) if p["n"] == n), None)
+        if pack is None:
+            await query.answer()
+            return
+        context.user_data["pack_target"] = n
+        await query.answer(i18n.t("packs_target_set", lang).format(title=pack["title"]))
+    else:
+        await query.answer()
+        return
+    try:
+        await query.edit_message_reply_markup(_packs_keyboard(lang, context.user_data))
+    except TelegramError:
+        pass
+
+
+async def _add_replied(context, source, user, lang: str) -> str:
+    """Put the replied-to sticker (or picture, or video) in this person's pack.
+
+    Returns the text to answer with - the same words in a chat, a group or a
+    guest answer.
+    """
+    pack = _target_pack(context.user_data)
+    if pack is None:
+        return i18n.t("addpack_no_pack", lang)
+    if source is not None and source.sticker is not None:
+        item, fmt, emoji = (source.sticker.file_id, stickerpack.sticker_format(source.sticker),
+                            source.sticker.emoji)
+    elif source is not None and convert.media_of(source) is not None:
+        try:
+            kind, data = await _download_media(context, source, "sticker")
+            made, ext = await throttle.MEDIA.run(convert.convert, "sticker", kind, data)
+        except convert.Unsupported:
+            return i18n.t("addpack_need_reply", lang)
+        except convert.TooBig:
+            return i18n.t("convert_too_big", lang)
+        item, fmt, emoji = _named(made, ext), ("video" if ext == "webm" else "static"), None
+    else:
+        return i18n.t("addpack_need_reply", lang)
+    name = stickerpack.custom_name(user.id, pack["n"], context.bot.username)
+    outcome = await stickerpack.add_sticker(context.bot, name, pack["title"], item, fmt,
+                                            emoji, OWNER_ID)
+    if outcome == "full":
+        return i18n.t("addpack_full", lang).format(title=pack["title"])
+    if isinstance(outcome, str):
+        return i18n.t("failed", lang)
+    link, created = outcome
+    admin.note(context, "sticker")
+    key = "addpack_created" if created else "addpack_done"
+    return i18n.t(key, lang).format(title=pack["title"], link=link)
+
+
+async def on_add_to_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not await _require_start(update, context):
+        return
+    if not await _require_channel(update, context):
+        return
+    if _too_soon(context):
+        return
+    lang = i18n.resolve(update, context.user_data)
+    try:
+        said = await _add_replied(context, message.reply_to_message, update.effective_user, lang)
+    except throttle.Busy:
+        said = i18n.t("busy", lang)
+    await message.reply_text(said, disable_web_page_preview=True)
+
+
 # ------------------------------------------------------------------ conversions
 # «تبدیل به گیف» on a photo or a video, «تبدیل به ویدیو» on a GIF or an animated
 # sticker, «تبدیل به عکس» on a sticker - and the same as /togif, /tosticker,
@@ -1625,15 +1833,20 @@ def _guest_text(lang: str, key: str, start_with: str | None = None, **fields):
     `start_with` is the bot's username, when the answer should carry the button
     that opens it.
     """
-    from telegram import InlineQueryResultArticle, InputTextMessageContent
-    text = i18n.t(key, lang).format(**fields)
     markup = None
     if start_with:
         markup = InlineKeyboardMarkup([[InlineKeyboardButton(
             i18n.t("btn_start", lang), url=f"https://t.me/{start_with}?start=guest")]])
+    return _guest_said(i18n.t(key, lang).format(**fields), markup)
+
+
+def _guest_said(text: str, markup=None):
+    """Plain words as the one guest answer."""
+    from telegram import InlineQueryResultArticle, InputTextMessageContent
     return InlineQueryResultArticle(
         id=f"t{uuid.uuid4().hex[:16]}", title="Quoto",
-        input_message_content=InputTextMessageContent(text), reply_markup=markup)
+        input_message_content=InputTextMessageContent(text, disable_web_page_preview=True),
+        reply_markup=markup)
 
 
 async def _guest_upload(context, kind: str, data, user_id: int) -> str:
@@ -1709,7 +1922,13 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if _too_soon(context):
             log.info("ignoring a guest burst from %s", user.id)
             return
-        refused = await _inline_gate(context, user)
+        # A guest asks nothing of anyone - no Start, no channel: being mentioned
+        # in a chat is the whole of the invitation. That holds while there is
+        # a storage channel for what is made; without one, files go through
+        # the person's own chat with the bot, which needs them to have started it.
+        refused = None
+        if not (STORAGE_CHAT or context.bot_data.get("storage_chat")):
+            refused = await _inline_gate(context, user)
         if refused:
             key = "need_start" if refused == "inline_need_start" else refused
             await answer(_guest_text(lang, key, username if key == "need_start" else None))
@@ -1717,6 +1936,9 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         kind, own = guest_request(message.text or message.caption or "", username)
         target = message.reply_to_message
+        if kind == "quote" and is_add_phrase(own) and target is not None:
+            await answer(_guest_said(await _add_replied(context, target, user, lang)))
+            return
         wanted = convert_target(own) if kind == "quote" else None
         if wanted is not None and target is not None and convert.media_of(target) is not None:
             await answer(await _guest_convert(context, target, wanted, user.id, lang))
@@ -1967,6 +2189,10 @@ def register(app: Application) -> None:
         ["sticker", "stiker", "stickr", "sticekr", "stcker"], cmd_quote_sticker))
     app.add_handler(CommandHandler(["gif", "gfi"], cmd_quote_gif))
     app.add_handler(CommandHandler(["fire", "fier", "fir"], cmd_fire))
+    app.add_handler(CommandHandler(["newpack", "makepack"], cmd_newpack))
+    app.add_handler(CommandHandler(["packs", "mypacks"], cmd_packs))
+    app.add_handler(CommandHandler(["addsticker", "add"], on_add_to_pack))
+    app.add_handler(CallbackQueryHandler(on_packs_button, pattern=r"^cpk:"))
     app.add_handler(CommandHandler(["togif"], _convert_command("gif")))
     app.add_handler(CommandHandler(["tosticker"], _convert_command("sticker")))
     app.add_handler(CommandHandler(["tovideo"], _convert_command("video")))
@@ -1980,6 +2206,8 @@ def register(app: Application) -> None:
                 "shot": cmd_screenshot, "fire": cmd_fire}
     app.add_handler(MessageHandler(
         filters.REPLY & _ShortText() & filters.Regex(CONVERT_RE), on_convert_phrase))
+    app.add_handler(MessageHandler(
+        filters.REPLY & _ShortText() & filters.Regex(ADD_RE), on_add_to_pack))
     for name, pattern in TRIGGERS.items():
         app.add_handler(MessageHandler(
             filters.REPLY & _ShortText() & filters.Regex(pattern), handlers[name]

@@ -2291,9 +2291,34 @@ def test_guest() -> None:
               and b.answers[0][1].reply_markup is not None)
         check("and renders into the message it became", len(tasks) == 1)
 
-    b, ctx, _, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن", started=False)
-    # The gate asks Telegram whether they started the bot; the fake says yes by
-    # not refusing the chat action, so mark the refusal directly.
+    # A guest asks nothing: not Start, not the channel - while there is a store.
+    class NotStarted(GuestBot):
+        async def send_chat_action(self, chat_id, action):
+            from telegram.error import Forbidden as _Forbidden
+            raise _Forbidden("bot was blocked by the user")
+
+        async def get_chat_member(self, chat_id, user_id):
+            return types.SimpleNamespace(status="left")
+
+    def run_stranger(store):
+        b = NotStarted()
+        ctx = types.SimpleNamespace(bot=b, user_data={}, bot_data={},
+                                    application=types.SimpleNamespace(create_task=lambda c: c.close()))
+        saved, saved_channel = bot.STORAGE_CHAT, bot.REQUIRED_CHANNEL
+        bot.STORAGE_CHAT, bot.REQUIRED_CHANNEL = store, "@somechannel"
+        try:
+            asyncio.run(bot.on_guest(guest_update("@getquoto_bot", "آدم‌ها عوض نمی‌شن"), ctx))
+        except _Stop:
+            pass
+        finally:
+            bot.STORAGE_CHAT, bot.REQUIRED_CHANNEL = saved, saved_channel
+        return b
+    b = run_stranger(-100555)
+    check("someone who never started the bot, outside the channel, still gets the card",
+          b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+    b = run_stranger(None)
+    check("without a store, they are asked to start the bot first",
+          b.answers and b.answers[0][1].type == "article")
     source = (ROOT / "bot.py").read_text(encoding="utf-8")
     body = source[source.index("async def on_guest"):]
     body = body[:body.index("\nasync def ", 10)]
@@ -2511,6 +2536,141 @@ def test_convert() -> None:
     check("conversions wait in their own queue", "throttle.MEDIA.run(convert.convert" in source)
     for target in ("gif", "sticker", "video", "photo"):
         check(f"/to{target} is registered", f'["to{target}"], _convert_command("{target}")' in source)
+
+
+def test_custom_packs() -> None:
+    section("packs of one's own")
+    stickerpack.set_salt("a-salt")
+    uid = 123456789
+    a = stickerpack.custom_name(uid, 1, "getquoto_bot")
+    check("a custom pack name says nothing about its owner", str(uid) not in a, a)
+    check("and is a name Telegram accepts", re.fullmatch(r"[A-Za-z0-9_]+", a)
+          and len(a) <= stickerpack.MAX_NAME and a.endswith("_by_getquoto_bot"))
+    check("each pack of the same person differs", a != stickerpack.custom_name(uid, 2, "getquoto_bot"))
+    check("and from the personal pack", a != stickerpack.personal_name(uid, "getquoto_bot"))
+    for said, ok in (("بذارش تو پک", True), ("اضافه کن به پک", True), ("ببرش تو پک خودم", True),
+                     ("add to pack", True), ("پک خوبیه", False), ("بذار بریم", False)):
+        check(f"«{said}» {'adds' if ok else 'does not add'}", bot.is_add_phrase(said) == ok)
+
+    class PackBot:
+        username = "getquoto_bot"
+
+        def __init__(self, full=False):
+            self.sets, self.full, self.calls = {}, full, []
+
+        async def get_sticker_set(self, name):
+            from telegram.error import TelegramError as _TE
+            if name not in self.sets:
+                raise _TE("STICKERSET_INVALID")
+            return types.SimpleNamespace(name=name)
+
+        async def create_new_sticker_set(self, user_id, name, title, stickers):
+            self.calls.append(("create", name, title, stickers[0].format))
+            self.sets[name] = [stickers[0]]
+
+        async def add_sticker_to_set(self, user_id, name, sticker):
+            from telegram.error import BadRequest as _BR
+            if self.full:
+                raise _BR("Stickers_too_much")
+            self.calls.append(("add", name, sticker.format))
+            self.sets[name].append(sticker)
+
+    def reply_to(sticker_kind="static"):
+        st = types.SimpleNamespace(file_id="ST1", emoji="😂", is_animated=sticker_kind == "animated",
+                                   is_video=sticker_kind == "video", set_name="x")
+        return types.SimpleNamespace(sticker=st, animation=None, photo=None, video=None,
+                                     video_note=None, document=None)
+
+    user = types.SimpleNamespace(id=uid)
+    saved = bot.OWNER_ID
+    bot.OWNER_ID = 42
+    try:
+        b = PackBot()
+        ctx = types.SimpleNamespace(bot=b, user_data={}, bot_data={})
+        said = asyncio.run(bot._add_replied(ctx, reply_to(), user, "fa"))
+        check("with no pack yet, they are told to make one", "/newpack" in said)
+
+        ctx.user_data["packs"] = [{"n": 1, "title": "میم‌ها"}, {"n": 2, "title": "رفقا"}]
+        ctx.user_data["pack_target"] = 1
+        said = asyncio.run(bot._add_replied(ctx, reply_to("video"), user, "fa"))
+        name1 = stickerpack.custom_name(uid, 1, "getquoto_bot")
+        check("the first sticker makes the chosen pack", b.calls and b.calls[0][:2] == ("create", name1)
+              and b.calls[0][3] == "video", str(b.calls))
+        check("and the answer carries its link", "t.me/addstickers/" + name1 in said)
+        said = asyncio.run(bot._add_replied(ctx, reply_to("animated"), user, "fa"))
+        check("the next one is added to it", b.calls[-1] == ("add", name1, "animated"))
+        ctx.user_data["pack_target"] = 2
+        asyncio.run(bot._add_replied(ctx, reply_to(), user, "fa"))
+        check("switching the target sends stickers to the other pack",
+              b.calls[-1][1] == stickerpack.custom_name(uid, 2, "getquoto_bot"))
+
+        full = PackBot(full=True)
+        full.sets[name1] = []
+        ctx_full = types.SimpleNamespace(bot=full, bot_data={},
+                                         user_data={"packs": [{"n": 1, "title": "میم‌ها"}],
+                                                    "pack_target": 1})
+        said = asyncio.run(bot._add_replied(ctx_full, reply_to(), user, "fa"))
+        check("a full pack is said, not raised", "۱۲۰" in said)
+        said = asyncio.run(bot._add_replied(ctx, types.SimpleNamespace(
+            sticker=None, animation=None, photo=None, video=None, video_note=None, document=None),
+            user, "fa"))
+        check("text cannot go in a pack", "ریپلای" in said)
+    finally:
+        bot.OWNER_ID = saved
+
+    # /newpack.
+    def newpack(args, user_data):
+        said = []
+
+        async def reply(text, **kw):
+            said.append(text)
+        message = types.SimpleNamespace(reply_text=reply, reply_html=reply)
+        update = types.SimpleNamespace(effective_message=message,
+                                       effective_user=types.SimpleNamespace(id=uid, language_code="fa"))
+        asyncio.run(bot.cmd_newpack(update, types.SimpleNamespace(args=args, user_data=user_data)))
+        return said
+    data = {}
+    check("/newpack with no name says how", "/newpack" in newpack([], data)[0] and not data.get("packs"))
+    newpack(["میم‌های", "گروه"], data)
+    check("/newpack makes the pack and aims at it",
+          data["packs"] == [{"n": 1, "title": "میم‌های گروه"}] and data["pack_target"] == 1)
+    for i in range(stickerpack.MAX_CUSTOM_PACKS):
+        newpack([f"p{i}"], data)
+    check("there is a ceiling on packs per person", len(data["packs"]) == stickerpack.MAX_CUSTOM_PACKS)
+
+    # Their own packs are theirs to take stickers out of, and nobody else's.
+    names = bot._own_pack_names("getquoto_bot", uid, {"packs": [{"n": 3, "title": "t"}]})
+    check("/unpack reaches a custom pack", stickerpack.custom_name(uid, 3, "getquoto_bot") in names)
+    check("and the personal one", stickerpack.personal_name(uid, "getquoto_bot") in names)
+    check("but not another person's", stickerpack.custom_name(uid + 1, 3, "getquoto_bot") not in names)
+
+    # The personal pack can stop filling itself.
+    filed = []
+
+    async def announce(auto):
+        message = types.SimpleNamespace(chat=types.SimpleNamespace(type="private"))
+        update = types.SimpleNamespace(effective_message=message, effective_user=types.SimpleNamespace(id=uid))
+        real = stickerpack.add_personal
+
+        async def fake(*a, **kw):
+            filed.append(1)
+            return None
+        stickerpack.add_personal = fake
+        try:
+            await bot._announce_pack(update, types.SimpleNamespace(
+                bot=None, user_data={} if auto is None else {"auto_pack": auto}), b"webp")
+        finally:
+            stickerpack.add_personal = real
+    asyncio.run(announce(None))
+    check("by default what is made in private still joins the personal pack", filed == [1])
+    asyncio.run(announce(False))
+    check("switched off, it does not", filed == [1])
+
+    source = (ROOT / "bot.py").read_text(encoding="utf-8")
+    check("a custom pack can be deleted from /delpack", 'callback_data=f"delpack:c{p[\'n\']}"' in source)
+    for lang in i18n.SUPPORTED:
+        names_ = {n for n, _ in i18n.PRIVATE_ONLY[lang]}
+        check(f"/newpack and /packs in the {lang} menu", {"newpack", "packs"} <= names_)
 
 
 def test_review_fixes() -> None:
@@ -3489,6 +3649,7 @@ def main() -> int:
     test_review_fixes()
     test_guest()
     test_convert()
+    test_custom_packs()
     test_no_double_shaping()
     test_fallback_fonts()
     test_security()

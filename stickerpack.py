@@ -369,3 +369,72 @@ async def link_for_adopting(bot: Bot, chat: Chat, owner_id: int | None) -> str |
     if await _adopt_legacy(bot, chat, owner_id):
         return pack_link(pack_name(chat.id, bot.username))
     return None
+
+
+# ------------------------------------------------------------------ packs of one's own
+# Beyond the personal pack that fills itself, anyone can make packs of their
+# own and choose what goes in: a sticker they reply to, nothing else. Every
+# pack belongs to OWNER_ID's account, so there is a ceiling on how many.
+MAX_CUSTOM_PACKS = 10
+
+
+def custom_name(user_id: int, n: int, bot_username: str) -> str:
+    """The n-th pack this person made: a digest, like every other pack name."""
+    suffix = f"_by_{bot_username}"
+    return f"c{_digest(f'{user_id}:{n}')}"[: MAX_NAME - len(suffix)] + suffix
+
+
+def sticker_format(sticker) -> str:
+    """What Telegram calls a sticker's kind when it goes into a set."""
+    if getattr(sticker, "is_animated", False):
+        return "animated"
+    if getattr(sticker, "is_video", False):
+        return "video"
+    return "static"
+
+
+async def add_sticker(bot: Bot, name: str, title: str, sticker, fmt: str, emoji: str | None,
+                      owner_id: int | None) -> tuple[str, bool] | str:
+    """Put one sticker - a file_id or a file - in a pack, making the pack if it is new.
+
+    Returns (link, just_created), or what went wrong: "full", "no_owner", "failed".
+    """
+    if owner_id is None:
+        return "no_owner"
+    item = InputSticker(sticker=sticker, emoji_list=[emoji or EMOJI], format=fmt)
+    try:
+        if await _exists(bot, name):
+            await bot.add_sticker_to_set(user_id=owner_id, name=name, sticker=item)
+            return pack_link(name), False
+        await bot.create_new_sticker_set(user_id=owner_id, name=name,
+                                         title=title[:MAX_TITLE] or "Quoto", stickers=[item])
+        return pack_link(name), True
+    except TelegramError as exc:
+        text = str(exc).lower()
+        log.warning("could not add a sticker to %s: %s", name, exc)
+        if "too_much" in text or "too much" in text or "full" in text:
+            return "full"
+        return "failed"
+
+
+async def remove_from_own(bot: Bot, names: set[str], sticker) -> str:
+    """Take a sticker out of whichever of this person's packs it is in."""
+    if sticker is None:
+        return "no_sticker"
+    if sticker.set_name not in names:
+        return "not_ours"
+    try:
+        await bot.delete_sticker_from_set(sticker.file_id)
+    except TelegramError as exc:
+        log.warning("could not remove a sticker from %s: %s", sticker.set_name, exc)
+        return "failed"
+    return "ok"
+
+
+async def delete_named(bot: Bot, name: str) -> str:
+    """Delete one of a person's own packs by its name."""
+    return await _drop(bot, name)
+
+
+async def link_if_exists(bot: Bot, name: str) -> str | None:
+    return pack_link(name) if await _exists(bot, name) else None

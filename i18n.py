@@ -161,7 +161,9 @@ Full guide: /help""",
 <code>/template</code> — قالب کارت‌ها: کلاسیک، رنگی، تمام‌قاب یا کارت
 
 ➏ <b>مال خودت</b>
-<code>/mypack</code> — استیکرپک شخصی‌ات؛ هر استیکری که اینجا بسازی به آن اضافه می‌شود
+<code>/mypack</code> — استیکرپک شخصی‌ات؛ هر استیکری که اینجا بسازی به آن اضافه می‌شود (قابل خاموش کردن)
+<code>/newpack اسم</code> — پکی که فقط استیکرهای انتخابی خودت داخلش است: روی هر استیکر، عکس یا ویدیویی ریپلای کن و بنویس «بذارش تو پک»
+<code>/packs</code> — پک‌هایت، و اینکه استیکرها به کدام بروند
 <code>/unpack</code> — روی استیکری از پکت ریپلای کن تا حذف شود
 <code>/mygifs</code> — گیف‌هایی که ساخته‌ای؛ <code>/mygifs اسم</code> برای گیف‌های یک نفر
 <code>/delpack</code> — حذف کامل پک شخصی‌ات
@@ -215,7 +217,9 @@ Each group's stickers and screenshots collect in that group's own sticker pack:
 <code>/template</code> — the card design: classic, tinted, full frame or card
 
 ➏ <b>Your own</b>
-<code>/mypack</code> — your personal sticker pack; every sticker you make here joins it
+<code>/mypack</code> — your personal sticker pack; every sticker you make here joins it (can be switched off)
+<code>/newpack name</code> — a pack with only the stickers you choose: reply to any sticker, photo or video with <code>/addsticker</code>
+<code>/packs</code> — your packs, and which one stickers go to
 <code>/unpack</code> — reply to a sticker from your pack to remove it
 <code>/mygifs</code> — the GIFs you have made; <code>/mygifs name</code> for one person's
 <code>/delpack</code> — delete your personal pack entirely
@@ -559,7 +563,7 @@ Meanwhile you can type: /quote any text you like""",
 • آرشیو گیف‌هایی که ساخته‌ای
 • اسم و یوزرنیمی که ربات از تو دیده
 
-این‌ها می‌مانند: تعداد دفعاتی که عکس دلخواه گذاشته‌ای (برای سهمیه)، و استیکرپک شخصی‌ات — برای پاک کردن پک از /delpack استفاده کن.
+این‌ها می‌مانند: تعداد دفعاتی که عکس دلخواه گذاشته‌ای (برای سهمیه)، و استیکرپک‌هایت — اگر می‌خواهی آن‌ها هم بروند، <b>اول</b> با /delpack پاکشان کن؛ بعد از این کار دیگر نمی‌دانم کدام پک‌ها مال تو بوده‌اند.
 
 این کار برگشت ندارد. مطمئنی؟""",
         "en": """🗑 <b>Delete your data</b>
@@ -569,7 +573,7 @@ This deletes:
 • the archive of GIFs you have made
 • the name and username the bot has seen you under
 
-This stays: how many times you have set a picture (for the allowance), and your sticker pack - use /delpack to delete that.
+This stays: how many times you have set a picture (for the allowance), and your sticker packs - to delete those too, use /delpack <b>first</b>; after this I no longer know which packs were yours.
 
 This cannot be undone. Are you sure?""",
     },
@@ -582,6 +586,68 @@ This cannot be undone. Are you sure?""",
         "en": "OK, nothing was deleted.",
     },
     "btn_forget_yes": {"fa": "🗑 بله، پاک کن", "en": "🗑 Yes, delete"},
+    "newpack_how": {
+        "fa": "اسم پک را بعد از دستور بنویس، مثلاً:\n<code>/newpack میم‌های گروه</code>",
+        "en": "Put the pack's name after the command, for example:\n<code>/newpack Group memes</code>",
+    },
+    "newpack_limit": {
+        "fa": "هر نفر حداکثر {max} پک می‌تواند داشته باشد. با /delpack یکی را پاک کن.",
+        "en": "Each person can have at most {max} packs. Delete one with /delpack.",
+    },
+    "newpack_done": {
+        "fa": """✅ پک «{title}» آماده است.
+حالا روی هر استیکری (یا عکس و ویدیو) ریپلای کن و بنویس «بذارش تو پک» تا به این پک اضافه شود. فقط همان‌هایی که خودت بفرستی داخلش می‌روند.""",
+        "en": """✅ The pack “{title}” is ready.
+Now reply to any sticker (or photo, or video) with /addsticker and it goes in. Only what you send there goes in.""",
+    },
+    "addpack_need_reply": {
+        "fa": "روی یک استیکر، عکس یا ویدیو ریپلای کن و بنویس «بذارش تو پک».",
+        "en": "Reply to a sticker, photo or video with /addsticker.",
+    },
+    "addpack_no_pack": {
+        "fa": "اول با /newpack یک پک بساز، مثلاً: /newpack میم‌های گروه",
+        "en": "Make a pack first with /newpack, e.g. /newpack Group memes",
+    },
+    "addpack_done": {"fa": "✅ به پک «{title}» اضافه شد.", "en": "✅ Added to “{title}”."},
+    "addpack_created": {
+        "fa": """✅ پک «{title}» ساخته شد و این اولین استیکرش است:
+{link}
+
+(ممکن است تا چند دقیقه طول بکشد تا تلگرام استیکرهای تازه را در پک نشان دهد.)""",
+        "en": """✅ “{title}” is made, and this is its first sticker:
+{link}
+
+(Telegram can take a few minutes to show new stickers in a pack.)""",
+    },
+    "addpack_full": {
+        "fa": "پک «{title}» پر است (۱۲۰ استیکر). با /newpack یک پک تازه بساز.",
+        "en": "“{title}” is full (120 stickers). Make another with /newpack.",
+    },
+    "packs_list": {"fa": """📦 <b>پک‌های تو</b>
+{rows}""", "en": """📦 <b>Your packs</b>
+{rows}"""},
+    "packs_personal": {"fa": "• <b>پک شخصی</b> (خودکار) — {link}", "en": "• <b>Personal pack</b> (automatic) — {link}"},
+    "packs_empty": {"fa": "هنوز خالی", "en": "still empty"},
+    "packs_none": {
+        "fa": "\nبرای پکی که فقط استیکرهای انتخابی خودت داخلش باشد: <code>/newpack اسم</code>",
+        "en": "\nFor a pack with only the stickers you choose: <code>/newpack name</code>",
+    },
+    "packs_target_set": {"fa": "از این به بعد استیکرها به «{title}» می‌روند.", "en": "Stickers now go to “{title}”."},
+    "btn_auto_on": {"fa": "🔁 افزودن خودکار به پک شخصی: روشن", "en": "🔁 Auto-add to personal pack: on"},
+    "btn_auto_off": {"fa": "🔁 افزودن خودکار به پک شخصی: خاموش", "en": "🔁 Auto-add to personal pack: off"},
+    "auto_on": {
+        "fa": "از این به بعد استیکرهایی که می‌سازی خودکار به پک شخصی‌ات اضافه می‌شوند.",
+        "en": "Stickers you make now join your personal pack automatically.",
+    },
+    "auto_off": {
+        "fa": "دیگر چیزی خودکار به پک شخصی‌ات اضافه نمی‌شود؛ فقط آن‌هایی که خودت با «بذارش تو پک» بفرستی.",
+        "en": "Nothing joins your personal pack by itself now; only what you send with /addsticker.",
+    },
+    "btn_delpack_personal": {"fa": "🗑 پک شخصی", "en": "🗑 Personal pack"},
+    "delpack_choose": {
+        "fa": "کدام پک پاک شود؟ پاک کردن برگشت ندارد و پک از لیست استیکر همه حذف می‌شود.",
+        "en": "Which pack should go? It cannot be undone, and the pack disappears for everyone.",
+    },
     "convert_need_reply": {
         "fa": """روی یه عکس، ویدیو، گیف یا استیکر ریپلای کن و بنویس:
 «تبدیل به گیف» • «تبدیل به استیکر» • «تبدیل به ویدیو» • «تبدیل به عکس»""",
@@ -699,6 +765,8 @@ GROUP_ONLY = ("pack",)
 PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     "fa": [
         ("mypack", "استیکرپک شخصی خودت"),
+        ("newpack", "ساختن پک جدید با استیکرهای انتخابی"),
+        ("packs", "پک‌هایت و انتخاب پک مقصد"),
         ("unpack", "حذف یک استیکر از پک شخصی‌ات (روی استیکر ریپلای کن)"),
         ("avatar", "انتخاب عکس دلخواه برای کوت‌هایت"),
         ("settings", "انتخاب اینکه چه عکسی روی کوت‌هایت بنشیند"),
@@ -711,6 +779,8 @@ PRIVATE_ONLY: dict[str, list[tuple[str, str]]] = {
     ],
     "en": [
         ("mypack", "Your own sticker pack"),
+        ("newpack", "Make a new pack of stickers you choose"),
+        ("packs", "Your packs, and which one stickers go to"),
         ("unpack", "Remove one sticker from your own pack (reply to it)"),
         ("avatar", "Pick your own picture for your quotes"),
         ("settings", "Choose which picture stands for you"),
