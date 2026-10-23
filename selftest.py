@@ -2177,7 +2177,10 @@ def test_guest() -> None:
                             ("@GetQuoto_Bot /sticker", ("sticker", "")),
                             ("@getquoto_bot آتیشش کن", ("fire", "")),
                             ("@getquoto_bot شاتش کن", ("shot", "")),
-                            ("@getquoto_bot سلام دنیا", ("quote", "سلام دنیا")),
+                            ("@getquoto_bot سلام دنیا", ("unknown", "سلام دنیا")),
+                            ("@getquoto_bot /quote سلام دنیا", ("quote", "سلام دنیا")),
+                            ("\u2068@getquoto_bot\u2069 شاتش کن", ("shot", "")),
+                            ("شاتش کن @getquoto_bot", ("shot", "")),
                             ("/fire@getquoto_bot از شنبه", ("fire", "از شنبه"))):
         check(f"guest {typed!r}", bot.guest_request(typed, "getquoto_bot") == expected,
               str(bot.guest_request(typed, "getquoto_bot")))
@@ -2304,16 +2307,23 @@ def test_guest() -> None:
     webp = bot._screenshot_sticker(_avatar(), "SEP", "سلام", "3:47 PM", None, "s", [], False)
     shot = Image.open(io.BytesIO(webp))
     check("a screenshot sticker is a 512 px WebP", shot.format == "WEBP" and max(shot.size) == 512)
-    check("with a transparent background", shot.mode == "RGBA" and shot.getpixel((1, 1))[3] == 0)
+    check("on the chat's wallpaper, like the app", shot.convert("RGB").getpixel((1, 1)) != (0, 0, 0)
+          and (shot.mode != "RGBA" or shot.getpixel((1, 1))[3] == 255))
     bot_source = (ROOT / "bot.py").read_text(encoding="utf-8")
     body = bot_source[bot_source.index("async def cmd_screenshot"):]
     body = body[:body.index("\nasync def ", 10)]
     check("«شاتش کن» replies with a sticker, not a photo",
           "reply_sticker(" in body and "reply_photo(" not in body)
 
-    b, _, _, _ = run_guest("@getquoto_bot حرف خودم")
-    check("with no reply, their own words are quoted",
+    b, _, _, _ = run_guest("@getquoto_bot /quote حرف خودم")
+    check("with no reply, /quote quotes their own words",
           getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
+    b, _, _, _ = run_guest("@getquoto_bot حرف خودم")
+    check("anything else written after the name is not made into a card",
+          b.answers and b.answers[0][1].type == "article" and not b.uploads)
+    b, _, _, _ = run_guest("@getquoto_bot کن", "آدم‌ها عوض نمی‌شن")
+    check("not even as a reply: a mistyped command shows how instead",
+          b.answers and b.answers[0][1].type == "article" and not b.uploads)
 
     b, _, _, _ = run_guest("@getquoto_bot")
     check("nothing to quote gets the how-to", b.answers and b.answers[0][1].type == "article")
@@ -2371,7 +2381,7 @@ def test_guest() -> None:
     b, ctx = run_as_chat(136817688, channel)
     check("someone posting as a channel gets their card",
           b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
-    b, ctx = run_as_chat(136817688, channel, reply_text=None, text="@getquoto_bot از طرف کانال")
+    b, ctx = run_as_chat(136817688, channel, reply_text=None, text="@getquoto_bot /quote از طرف کانال")
     check("with no reply, the channel's own words are quoted under the channel",
           b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
     b, ctx = run_as_chat(1087968824, chat, text="@getquoto_bot گیفش کن")

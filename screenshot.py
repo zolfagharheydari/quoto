@@ -37,7 +37,9 @@ THEME = {
     "bg": (170, 195, 150),   # only seen if the wallpaper cannot be built
     "bubble": (255, 255, 255),
     "text": (0, 0, 0),
-    "time": (161, 170, 179),
+    # Darker than the app's own grey: at the size a sticker or a forwarded
+    # picture is seen, the app's shade all but disappeared on white.
+    "time": (112, 121, 131),
     "radius": 18,
     "avatar": 36,
     "name_size": 15,
@@ -131,14 +133,14 @@ BUBBLE_PAD_X = 13
 MAX_BUBBLE_W = 430
 
 # As a sticker the message keeps the app's own proportions - the same type,
-# the same bubble - and is laid on a transparent canvas 512 wide at one fixed
-# scale, as if the chat were STICKER_VIEW points across. Every sticker then
-# shows its text at the same size: a short message stays a small bubble,
-# a long one wraps, and nothing is blown up or shrunk to fill the width,
-# which is what made text tiny in a long one-line message and huge in a
-# short one. Only a message too tall for 512 is scaled down to fit.
+# the same bubble, on the same wallpaper - and the picture is always a strip
+# of chat STICKER_VIEW points across, scaled to 512 wide. Every sticker then
+# shows its text at the same size: a short message is a small bubble with
+# wallpaper beside it, a long one wraps, and nothing is blown up or shrunk
+# to fill the width - which is what made text tiny in a long one-line message
+# and huge in a short one. Only a message too tall for 512 is scaled down.
 STICKER_VIEW = 300
-STICKER_PAD = 4
+STICKER_PAD = 10
 _AROUND = STICKER_PAD * 2 + 36 + 9          # margins, avatar and the gap beside it
 STICKER_MAX_BUBBLE_W = STICKER_VIEW - _AROUND
 # A message too long for the narrow bubble does not become a tower shrunk to
@@ -193,7 +195,13 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
            badge: str | None = None, seed: str = "",
            reactions: list[tuple[str, int]] | None = None,
            badge_is_admin: bool = True, transparent: bool = False,
-           max_bubble: int | None = None) -> Image.Image:
+           max_bubble: int | None = None, strip: int | None = None) -> Image.Image:
+    """The message as the app draws it.
+
+    `strip` is for a sticker: the picture is at least that many points wide,
+    the bubble at its left and wallpaper across the rest, so every sticker is
+    the same width of chat and shows its text at the same size.
+    """
     theme = THEME
     # Decorative Unicode in a name or a message would draw as empty boxes.
     name = textkit.normalize_display(name)
@@ -275,10 +283,12 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
     bubble_h = pad_top + name_h + len(lines) * line_h + tail_h + pad_bottom
 
     avatar_size = _px(theme["avatar"])
-    pad = _px(STICKER_PAD if transparent else PAD)
+    pad = _px(STICKER_PAD if (transparent or strip) else PAD)
     gap = _px(GAP)
 
     width = pad + avatar_size + gap + bubble_w + pad
+    if strip:
+        width = max(width, _px(strip))
     height = pad + bubble_h + pad
 
     # As a sticker it is the message alone, on nothing; as a picture it sits
@@ -383,7 +393,7 @@ def render(avatar: Image.Image, name: str, text: str, time_str: str,
 def sticker(*args, **kwargs) -> bytes:
     """The message as a sticker, at the narrowest bubble that fits 512 tall."""
     for bubble in STICKER_WIDER:
-        img = render(*args, transparent=True, max_bubble=bubble, **kwargs)
+        img = render(*args, max_bubble=bubble, strip=bubble + _AROUND, **kwargs)
         if img.height * 512 / _px(bubble + _AROUND) <= 512:
             break
     return to_sticker(img, bubble + _AROUND)
@@ -401,8 +411,11 @@ def to_sticker(img: Image.Image, view: int = STICKER_VIEW) -> bytes:
         shrink = side / h
         w, h = round(w * shrink), side
     bubble = img.resize((max(1, w), max(1, h)), Image.LANCZOS)
-    canvas = Image.new("RGBA", (side, h), (0, 0, 0, 0))
-    canvas.paste(bubble, (0, 0), bubble)      # an incoming message sits at the left
+    if bubble.mode == "RGBA":
+        canvas = Image.new("RGBA", (side, h), (0, 0, 0, 0))
+        canvas.paste(bubble, (0, 0), bubble)  # an incoming message sits at the left
+    else:
+        canvas = bubble                       # a strip of chat, already the full width
     buf = io.BytesIO()
     canvas.save(buf, "WEBP", quality=90, method=6)
     return buf.getvalue()

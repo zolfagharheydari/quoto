@@ -1550,7 +1550,11 @@ ADD_RE = re.compile(
 
 
 def is_add_phrase(text: str) -> bool:
-    return bool(text) and len(text) <= TRIGGER_MAX_CHARS and ADD_RE.search(text) is not None
+    if not text or len(text) > TRIGGER_MAX_CHARS:
+        return False
+    if re.fullmatch(r"/(?:addsticker|add)(?:@\w+)?", text.strip(), re.IGNORECASE):
+        return True                   # the command, as a guest writes it
+    return ADD_RE.search(text) is not None
 
 
 def _own_packs(user_data) -> list[dict]:
@@ -1731,6 +1735,9 @@ def convert_target(text: str) -> str | None:
     """What a phrase asks the replied-to media to become, if it is a conversion."""
     if not text or len(text) > TRIGGER_MAX_CHARS:
         return None
+    command = re.fullmatch(r"/to(gif|sticker|video|photo)(?:@\w+)?", text.strip(), re.IGNORECASE)
+    if command:                       # the commands, as a guest writes them
+        return command.group(1).lower()
     match = CONVERT_RE.search(text)
     if match is None:
         return None
@@ -1831,10 +1838,27 @@ _GUEST_COMMANDS = {
 }
 
 
+# Marks a client may put around a mention in right-to-left text: invisible,
+# and enough to stop a phrase being recognised.
+_DIRECTION_MARKS = dict.fromkeys(map(ord, "\u200e\u200f\u202a\u202b\u202c\u202d\u202e"
+                                         "\u2066\u2067\u2068\u2069\ufeff"), " ")
+
+
 def guest_request(text: str, bot_username: str) -> tuple[str, str]:
-    """(what to make, any words of their own) from a guest summoning message."""
-    rest = re.sub(rf"@{re.escape(bot_username)}\b", " ", text or "", flags=re.IGNORECASE)
+    """(what to make, any words of their own) from a guest summoning message.
+
+    The mention alone makes a card of what it replies to; anything written
+    after it has to be one of the commands or phrases - "unknown" otherwise,
+    and the caller decides what that might still be (a pack link, adding to a
+    pack, a conversion) before showing how it is used. It used to make a card
+    of whatever had been written, which is how a mistyped command became a
+    card nobody asked for.
+    """
+    rest = (text or "").translate(_DIRECTION_MARKS)
+    rest = re.sub(rf"@{re.escape(bot_username)}\b", " ", rest, flags=re.IGNORECASE)
     rest = " ".join(rest.split())
+    if not rest:
+        return "quote", ""
     command = re.match(r"^/([A-Za-z]+)(?:@\w+)?(?:\s+|$)", rest)
     if command:
         name = command.group(1).lower()
@@ -1844,7 +1868,7 @@ def guest_request(text: str, bot_username: str) -> tuple[str, str]:
     for kind, pattern in TRIGGERS.items():
         if len(rest) <= TRIGGER_MAX_CHARS and pattern.search(rest):
             return kind, ""
-    return "quote", rest
+    return "unknown", rest
 
 
 def _guest_text(lang: str, key: str, start_with: str | None = None, **fields):
@@ -1981,16 +2005,22 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         kind, own = guest_request(message.text or message.caption or "", username)
-        if kind == "quote" and _PACK_LINK_RE.fullmatch(own.strip()):
-            await answer(_guest_said(await _group_pack_text(context, message.chat, lang)))
-            return
         target = message.reply_to_message
-        if kind == "quote" and is_add_phrase(own) and target is not None:
-            await answer(_guest_said(await _add_replied(context, target, user, lang)))
-            return
-        wanted = convert_target(own) if kind == "quote" else None
-        if wanted is not None and target is not None and convert.media_of(target) is not None:
-            await answer(await _guest_convert(context, target, wanted, user.id, lang))
+        if kind == "unknown":
+            # Not a command for a card: maybe one of the other things a guest
+            # can ask for, and if not, how it is used - never a card of it.
+            wanted = convert_target(own)
+            if _PACK_LINK_RE.fullmatch(own):
+                said = _guest_said(await _group_pack_text(context, message.chat, lang))
+            elif is_add_phrase(own):
+                said = _guest_said(await _add_replied(context, target, user, lang))
+            elif wanted is not None:
+                said = (await _guest_convert(context, target, wanted, user.id, lang)
+                        if target is not None and convert.media_of(target) is not None
+                        else _guest_text(lang, "convert_need_reply"))
+            else:
+                said = _guest_text(lang, "guest_how")
+            await answer(said)
             return
         if target is not None:
             text = extract.quote_text(target)

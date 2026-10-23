@@ -143,7 +143,7 @@ Full guide: /help""",
 <code>@BOT</code> — کارت کوت
 <code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code>، <code>@BOT شاتش کن</code>…
 جواب را خودم در همان چت می‌فرستم، با اسم و عکس همان آدم.
-بدون ریپلای: <code>@BOT متن</code> — از حرف خودت.
+بدون ریپلای: <code>@BOT /quote متن</code> — از حرف خودت.
 استیکرهایی که در یک گروه می‌سازی به پک همان گروه می‌روند؛ <code>@BOT /pack</code> لینکش را می‌دهد.
 
 ➌ <b>در گروه</b>
@@ -200,7 +200,7 @@ Your friends' chats, other groups — no need to add me. Reply to a message with
 <code>@BOT</code> — a quote card
 <code>@BOT /gif</code>, <code>@BOT /fire</code>, <code>@BOT /screenshot</code>…
 I answer in that same chat, with that person's name and photo.
-No reply: <code>@BOT your text</code> quotes your own words.
+No reply: <code>@BOT /quote your text</code> quotes your own words.
 Stickers made in a group join that group's pack; <code>@BOT /pack</code> gives its link.
 
 ➌ <b>In a group</b>
@@ -675,10 +675,22 @@ Sticker → photo""",
     "convert_name_video": {"fa": "ویدیو", "en": "a video"},
     "convert_name_photo": {"fa": "عکس", "en": "a photo"},
     "guest_how": {
-        "fa": """روی یه پیام ریپلای کن و منو صدا بزن، یا بعد از اسمم متنت رو بنویس.
-مثلاً: @getquoto_bot گیفش کن""",
-        "en": """Reply to a message and mention me, or write your text after my name.
-For example: @getquoto_bot /gif""",
+        "fa": """روی یه پیام ریپلای کن و بنویس:
+@getquoto_bot — کارت کوت
+@getquoto_bot استیکرش کن / گیفش کن / شاتش کن / آتیشش کن
+@getquoto_bot تبدیل به گیف / استیکر / ویدیو / عکس
+@getquoto_bot بذارش تو پک
+
+بدون ریپلای: @getquoto_bot /quote متن — از حرف خودت
+لینک پک گروه: @getquoto_bot /pack""",
+        "en": """Reply to a message with:
+@getquoto_bot — a quote card
+@getquoto_bot /sticker, /gif, /screenshot, /fire
+@getquoto_bot /togif, /tosticker, /tovideo, /tophoto
+@getquoto_bot /addsticker
+
+No reply: @getquoto_bot /quote your text
+The group's pack: @getquoto_bot /pack""",
     },
     "inline_fire_title": {"fa": "🔥 آتیشش کن", "en": "🔥 Write it in fire"},
     "inline_fire_caption": {"fa": "🔥 داره با آتیش نوشته می‌شه…", "en": "🔥 Being written in fire…"},
