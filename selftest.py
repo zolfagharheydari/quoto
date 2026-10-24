@@ -2930,6 +2930,15 @@ def test_review_fixes() -> None:
         bot.log.removeHandler(handler)
     check("a network error is logged as a warning",
           records and all(r.levelno == _logging.WARNING and not r.exc_info for r in records))
+    records.clear()
+    bot.log.addHandler(handler)
+    try:
+        asyncio.run(error_run(_BadRequest(
+            "Query is too old and response timeout expired or query id is invalid")))
+    finally:
+        bot.log.removeHandler(handler)
+    check("a button answered too late is not an error",
+          records and all(r.levelno < _logging.WARNING and not r.exc_info for r in records))
 
     # Waiting for a pack title does not last for ever.
     renamed = []

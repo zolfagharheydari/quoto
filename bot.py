@@ -1406,6 +1406,12 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(error, NetworkError) and not isinstance(error, BadRequest):
         log.warning("network trouble talking to Telegram: %s", error)
         return
+    # A button or a query answered after Telegram stopped waiting - most often
+    # on the heels of a slow connection. Nothing is broken and nobody is left
+    # without an answer they could still use.
+    if isinstance(error, BadRequest) and inline._closed(error):
+        log.info("answered after Telegram had stopped waiting: %s", error)
+        return
     where = "no update"
     if isinstance(update, Update):
         message = update.effective_message
