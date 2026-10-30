@@ -25,7 +25,7 @@ from telegram import (
     Message,
     Update,
 )
-from telegram.constants import ChatAction, ChatMemberStatus
+from telegram.constants import ChatAction, ChatMemberStatus, MessageEntityType
 from telegram.error import (
     BadRequest,
     Forbidden,
@@ -2189,6 +2189,48 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         raise ApplicationHandlerStop
 
 
+# Named in a group the bot is a member of. There is no guest message then:
+# «@getquoto_bot /pack» arrives as an ordinary message, and nothing read it -
+# CommandHandler only sees a command at the very start of a message, and the
+# phrases are anchored to the start too. So the words the help teaches did
+# nothing in exactly the groups that had added the bot. They are read here the
+# way on_guest reads them, after every handler that already understood one.
+async def on_group_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«@getquoto_bot پک», «@getquoto_bot /sticker» and the rest, from a member."""
+    message = update.effective_message
+    username = context.bot.username
+    text = (message.text or "").translate(_DIRECTION_MARKS)
+    mention = re.compile(rf"@{re.escape(username)}\b", re.IGNORECASE)
+    if not mention.search(text):
+        return                  # someone else's name
+    rest = " ".join(mention.sub(" ", text).split())
+    command = re.match(r"^/([A-Za-z_]+)(?:@\w+)?(?:\s+|$)", rest)
+    if command:
+        # Any of the bot's commands, as if it had been typed on its own.
+        name = command.group(1).lower()
+        for handler in context.application.handlers.get(0, []):
+            if isinstance(handler, CommandHandler) and name in handler.commands:
+                context.args = rest[command.end():].split()
+                await handler.callback(update, context)
+                return
+    kind, own = guest_request(text, username)
+    makers = {"quote": cmd_quote, "sticker": cmd_quote_sticker, "gif": cmd_quote_gif,
+              "shot": cmd_screenshot, "fire": cmd_fire}
+    if kind in makers:
+        context.args = own.split()
+        await makers[kind](update, context)
+    elif _PACK_LINK_RE.fullmatch(own):
+        await cmd_pack(update, context)
+    elif is_add_phrase(own):
+        await on_add_to_pack(update, context)
+    elif convert_target(own) is not None:
+        await _convert_and_reply(update, context, convert_target(own))
+    elif text.lstrip().lower().startswith("@" + username.lower()) and not _too_soon(context):
+        # Spoken to, but asked for nothing it knows: how it is used. Named in
+        # passing, in the middle of someone's sentence, it stays out of it.
+        await message.reply_text(_t("guest_how", update, context))
+
+
 async def on_fire_wait(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """The button on a placeholder: nothing to do but say it is coming."""
     await update.callback_query.answer(_t("fire_wait_alert", update, context))
@@ -2381,6 +2423,11 @@ def register(app: Application) -> None:
         app.add_handler(MessageHandler(
             filters.REPLY & _ShortText() & filters.Regex(pattern), handlers[name]
         ))
+    # The bot named in a group it is in, with what a guest would write after
+    # it. Last in the group, so it only sees what nothing above understood.
+    app.add_handler(MessageHandler(
+        filters.ChatType.GROUPS & filters.TEXT & filters.Entity(MessageEntityType.MENTION),
+        on_group_mention))
     # A group of its own: the owner's panel already takes private text in group
     # 0, and only the first matching handler in a group runs, so sharing one
     # would mean the owner could never rename their own pack.

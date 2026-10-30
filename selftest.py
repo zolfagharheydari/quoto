@@ -1502,6 +1502,36 @@ def test_handler_groups() -> None:
     check("and the handlers proper come after everything",
           max(app.handlers) >= 0 and min(app.handlers) < 0)
 
+    # A group the bot is a member of: which handler a message reaches.
+    import datetime as _dt
+
+    from telegram import Chat, Message, MessageEntity, Update, User
+    app.bot._bot_user = User(99, "Quoto", True, username="getquoto_bot")
+    now = _dt.datetime.now(_dt.timezone.utc)
+    room = Chat(-100777, "supergroup")
+    sender = User(7, "SAli", False)
+
+    def reached(text, reply=False):
+        entities = [MessageEntity("mention" if w.startswith("@") else "bot_command",
+                                  text.index(w), len(w))
+                    for w in text.split() if w.startswith(("@", "/"))]
+        replied = Message(1, now, room, from_user=sender, text="سلام") if reply else None
+        message = Message(2, now, room, from_user=sender, text=text, entities=entities,
+                          reply_to_message=replied)
+        message.set_bot(app.bot)
+        update = Update(10, message=message)
+        for handler in app.handlers[0]:
+            if handler.check_update(update):
+                return handler.callback
+        return None
+
+    check("/pack in a group is the command", reached("/pack") is bot.cmd_pack)
+    check("«@getquoto_bot /pack» in a group the bot is in reaches it",
+          reached("@getquoto_bot /pack") is bot.on_group_mention)
+    check("so does «@getquoto_bot پک»", reached("@getquoto_bot پک") is bot.on_group_mention)
+    check("a plain «استیکرش کن» reply is still the phrase handler",
+          reached("استیکرش کن", reply=True) is bot.cmd_quote_sticker)
+
 
 def test_wallpaper() -> None:
     section("screenshot wallpaper")
@@ -2311,6 +2341,67 @@ def test_guest() -> None:
         said = lb.answers[0][1].input_message_content.message_text if lb.answers else ""
         check(f"{typed!r} answers with the group's pack link",
               "t.me/addstickers/" + stickerpack.pack_name(chat.id, "getquoto_bot") in said, said[:80])
+
+    # The same words in a group the bot is a member of arrive as ordinary
+    # messages, and on_group_mention sends each where its command would go.
+    from telegram.ext import CommandHandler as _CommandHandler
+
+    calls = []
+
+    def recorder(name):
+        async def record(update, context, *extra):
+            calls.append((name, list(getattr(context, "args", None) or []), extra))
+        return record
+
+    def run_member(text):
+        calls.clear()
+        replies = []
+
+        async def reply_text(said, **kw):
+            replies.append(said)
+
+        message = types.SimpleNamespace(text=text, chat=chat, reply_text=reply_text,
+                                        reply_to_message=None)
+        update = types.SimpleNamespace(effective_message=message, effective_user=caller)
+        ctx = types.SimpleNamespace(
+            bot=GuestBot(), user_data={}, bot_data={}, args=None,
+            application=types.SimpleNamespace(handlers={0: [
+                _CommandHandler("pack", recorder("/pack")),
+                _CommandHandler(["quote", "qoute"], recorder("/quote"))]}))
+        asyncio.run(bot.on_group_mention(update, ctx))
+        return list(calls), replies
+
+    patched = {name: getattr(bot, name) for name in
+               ("cmd_pack", "cmd_quote_sticker", "on_add_to_pack", "_convert_and_reply")}
+    for name in patched:
+        setattr(bot, name, recorder(name))
+    try:
+        got, _ = run_member("@getquoto_bot /pack")
+        check("member group: «@getquoto_bot /pack» runs /pack", got == [("/pack", [], ())], str(got))
+        got, _ = run_member("@getquoto_bot /quote سلام دنیا")
+        check("member group: a command keeps its words",
+              got == [("/quote", ["سلام", "دنیا"], ())], str(got))
+        got, _ = run_member("@getquoto_bot پک")
+        check("member group: «@getquoto_bot پک» gives the pack link", got[:1] == [("cmd_pack", [], ())],
+              str(got))
+        got, _ = run_member("@getquoto_bot استیکرش کن")
+        check("member group: «@getquoto_bot استیکرش کن» makes a sticker",
+              [c[0] for c in got] == ["cmd_quote_sticker"], str(got))
+        got, _ = run_member("@getquoto_bot بذارش تو پک")
+        check("member group: «بذارش تو پک» adds to a pack", [c[0] for c in got] == ["on_add_to_pack"])
+        got, _ = run_member("@getquoto_bot تبدیل به گیف")
+        check("member group: «تبدیل به گیف» converts",
+              got == [("_convert_and_reply", [], ("gif",))], str(got))
+        got, said = run_member("@getquoto_bot سلام")
+        check("member group: spoken to with nothing it knows, how it is used",
+              not got and said == [i18n.t("guest_how", "fa")], str(said)[:60])
+        got, said = run_member("دوستان از @getquoto_bot استفاده کنید")
+        check("member group: named in passing, it says nothing", not got and not said, str(said)[:60])
+        got, said = run_member("@otherbot /pack")
+        check("member group: another bot's name is not its own", not got and not said)
+    finally:
+        for name, original in patched.items():
+            setattr(bot, name, original)
 
     # A screenshot is a sticker now: the bubble alone, nothing behind it.
     webp = bot._screenshot_sticker(_avatar(), "SEP", "سلام", "3:47 PM", None, "s", [], False)
