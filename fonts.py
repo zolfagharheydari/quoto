@@ -315,8 +315,10 @@ class FontSet:
         out.append((current, font))
         return out
 
-    def draw_on(self, draw, xy, text: str, fill=None, anchor: str = "la") -> None:
+    def draw_on(self, draw, xy, text: str, fill=None, anchor: str = "la", **style) -> None:
         """Draw `text`, using a different font for any character the first lacks.
+
+        `style` goes to Pillow as it is: an outline, as stroke_width and stroke_fill.
 
         Every piece is placed on one baseline, taken from the primary font, so a
         Chinese word inside a Persian sentence sits on the line with it instead
@@ -328,7 +330,7 @@ class FontSet:
             # It is not always the primary - a name written entirely in Hindi
             # is one run in a font the primary knows nothing about.
             font = runs[0][1] if runs else self.primary
-            draw.text(xy, text, font=font, fill=fill, anchor=anchor)
+            draw.text(xy, text, font=font, fill=fill, anchor=anchor, **style)
             return
 
         x, y = xy
@@ -351,7 +353,7 @@ class FontSet:
             baseline = y
 
         for part, font in runs:
-            draw.text((x, baseline), part, font=font, fill=fill, anchor="ls")
+            draw.text((x, baseline), part, font=font, fill=fill, anchor="ls", **style)
             x += font.getlength(part)
 
 

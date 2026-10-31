@@ -72,6 +72,7 @@ Anything new, anything fixed, I say it there. Joining is up to you - only if you
 
 <b>تبدیل</b>
 روی عکس یا ویدیو بنویسید «تبدیل به گیف» یا «تبدیل به استیکر»؛ برای فقط یک تکه از ویدیو: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵».
+روی گیف یا استیکر بنویسید «روش بنویس: …» تا متن رویش نوشته شود.
 
 <b>عکس دلخواه</b>
 هر کس می‌تواند در چت خصوصی من با <code>/avatar</code> عکسی انتخاب کند که روی کوت‌هایش بنشیند (۲ بار)، و با <code>/settings</code> بگوید کدام عکس نماینده‌اش باشد.
@@ -106,6 +107,7 @@ As a reply, instead of a command:
 
 <b>Converting</b>
 Reply to a photo or a video with <code>/togif</code> or <code>/tosticker</code>; for just part of a video, <code>/togif 1:20 1:35</code>.
+Reply to a GIF or a sticker with <code>/text your words</code> to write on it.
 
 <b>Your own picture</b>
 Anyone can set a picture for their quotes with <code>/avatar</code> in my private chat (twice), and choose which picture stands for them with <code>/settings</code>.
@@ -150,13 +152,17 @@ Full guide: /help""",
 «تبدیل به استیکر از ۰:۴۵» — استیکر ویدیویی از همان لحظه
 گیف تا ۳۰ ثانیه می‌شود و استیکر تا ۳ ثانیه. ویدیو باید زیر ۲۰ مگابایت باشد؛ تلگرام فایل بزرگ‌تر را به ربات نمی‌دهد.
 
+✍️ <b>متن روی گیف و استیکر</b> — روی گیف یا هر استیکری ریپلای کن:
+«روش بنویس: متن دلخواه» یا <code>/text متن دلخواه</code>
+متن پایینش نوشته می‌شود، مثل میم؛ گیف گیف می‌ماند و استیکر استیکر (تا ۱۲۰ حرف).
+
 ➋ <b>در چتی که عضوش نیستم</b>
 پیوی دوستانت، گروه‌های دیگر — لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس:
 <code>@BOT کوتش کن</code> — کارت کوت
 <code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code>، <code>@BOT شاتش کن</code>…
 جواب را خودم در همان چت می‌فرستم، با اسم و عکس همان آدم.
 بدون ریپلای: <code>@BOT /quote متن</code> — از حرف خودت.
-تبدیل هم همین‌طور: <code>@BOT تبدیل به گیف ۱:۲۰ تا ۱:۳۵</code>
+تبدیل هم همین‌طور: <code>@BOT تبدیل به گیف ۱:۲۰ تا ۱:۳۵</code>، <code>@BOT روش بنویس: سلام</code>
 استیکرهایی که در یک گروه می‌سازی به پک همان گروه می‌روند؛ <code>@BOT /pack</code> لینکش را می‌دهد.
 
 ➌ <b>در گروه</b>
@@ -215,13 +221,16 @@ No reply needed: <code>/quote any text</code> makes a card credited to you.
 <code>/tosticker 0:45</code> — a video sticker from that moment
 A GIF can be up to 30 seconds and a sticker up to 3. The video has to be under 20 MB; Telegram does not hand bigger files to bots.
 
+✍️ <b>Words on a GIF or a sticker</b> — reply to a GIF or any sticker:
+<code>/text your words</code> — written along the bottom, meme style; a GIF stays a GIF and a sticker a sticker (up to 120 characters)
+
 ➋ <b>In a chat I'm not in</b>
 Your friends' chats, other groups — no need to add me. Reply to a message with:
 <code>@BOT /quote</code> — a quote card
 <code>@BOT /gif</code>, <code>@BOT /fire</code>, <code>@BOT /screenshot</code>…
 I answer in that same chat, with that person's name and photo.
 No reply: <code>@BOT /quote your text</code> quotes your own words.
-Converting works the same way: <code>@BOT /togif 1:20 1:35</code>
+Converting works the same way: <code>@BOT /togif 1:20 1:35</code>, <code>@BOT /text hello</code>
 Stickers made in a group join that group's pack; <code>@BOT /pack</code> gives its link.
 
 ➌ <b>In a group</b>
@@ -713,6 +722,21 @@ Sticker → photo""",
         "en": """Give the part of the video like this:
 /togif 1:20 1:35""",
     },
+    "caption_how": {
+        "fa": """روی یه گیف یا استیکر ریپلای کن و بنویس:
+«روش بنویس: متن دلخواه»
+یا /text متن دلخواه""",
+        "en": """Reply to a GIF or a sticker with:
+/text your words""",
+    },
+    "caption_unsupported": {
+        "fa": "متن رو فقط روی گیف و استیکر می‌تونم بنویسم.",
+        "en": "I can only write on a GIF or a sticker.",
+    },
+    "caption_too_long": {
+        "fa": "متن حداکثر {max} حرف می‌تونه باشه.",
+        "en": "The words can be {max} characters at most.",
+    },
     "convert_name_gif": {"fa": "گیف", "en": "a GIF"},
     "convert_name_sticker": {"fa": "استیکر", "en": "a sticker"},
     "convert_name_video": {"fa": "ویدیو", "en": "a video"},
@@ -723,6 +747,7 @@ Sticker → photo""",
 @getquoto_bot استیکرش کن / گیفش کن / شاتش کن / آتیشش کن
 @getquoto_bot تبدیل به گیف / استیکر / ویدیو / عکس
 @getquoto_bot تبدیل به گیف ۱:۲۰ تا ۱:۳۵ — فقط همون تیکه از ویدیو
+@getquoto_bot روش بنویس: متن — روی گیف یا استیکر
 @getquoto_bot بذارش تو پک
 
 بدون ریپلای: @getquoto_bot /quote متن — از حرف خودت
@@ -732,6 +757,7 @@ Sticker → photo""",
 @getquoto_bot /sticker, /gif, /screenshot, /fire
 @getquoto_bot /togif, /tosticker, /tovideo, /tophoto
 @getquoto_bot /togif 1:20 1:35 — just that part of a video
+@getquoto_bot /text your words — on a GIF or a sticker
 @getquoto_bot /addsticker
 
 No reply: @getquoto_bot /quote your text
@@ -859,6 +885,8 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("gif", "همان کارت، به شکل گیف"),
         ("fire", "متن را با آتش روی کاغذ می‌نویسد"),
         ("screenshot", "پیام به شکل اسکرین‌شات تلگرام"),
+        ("togif", "تبدیل ویدیو یا عکس به گیف؛ با زمان، فقط همان تکه"),
+        ("text", "نوشتن متن روی گیف یا استیکر"),
         ("pack", "استیکرپک این گروه"),
         ("unpack", "حذف یک استیکر از پک گروه (ادمین)"),
         ("delpack", "حذف کامل پک گروه (ادمین)"),
@@ -869,6 +897,8 @@ COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("gif", "The same card, animated"),
         ("fire", "The text, written in fire"),
         ("screenshot", "The message as a Telegram screenshot"),
+        ("togif", "Video or photo into a GIF; add times for just a part"),
+        ("text", "Write words on a GIF or a sticker"),
         ("pack", "This group's sticker pack"),
         ("unpack", "Remove one sticker from the pack (admins)"),
         ("delpack", "Delete the group's pack entirely (admins)"),

@@ -1533,6 +1533,12 @@ def test_handler_groups() -> None:
           reached("استیکرش کن", reply=True) is bot.cmd_quote_sticker)
     check("«تبدیل به گیف ۱:۲۰ تا ۱:۳۵» on a reply is a conversion",
           reached("تبدیل به گیف ۱:۲۰ تا ۱:۳۵", reply=True) is bot.on_convert_phrase)
+    check("«روش بنویس: سلام» on a reply writes on it",
+          reached("روش بنویس: سلام", reply=True) is bot.on_caption_phrase)
+    check("/text is the command for it", reached("/text سلام", reply=True) is bot.cmd_text)
+    for lang in ("fa", "en"):
+        menu = {name for name, _ in i18n.COMMANDS[lang]}
+        check(f"/togif and /text in the {lang} menu", {"togif", "text"} <= menu)
 
 
 def test_wallpaper() -> None:
@@ -2374,7 +2380,8 @@ def test_guest() -> None:
         return list(calls), replies
 
     patched = {name: getattr(bot, name) for name in
-               ("cmd_pack", "cmd_quote_sticker", "on_add_to_pack", "_convert_and_reply")}
+               ("cmd_pack", "cmd_quote_sticker", "on_add_to_pack", "_convert_and_reply",
+                "_caption_and_reply")}
     for name in patched:
         setattr(bot, name, recorder(name))
     try:
@@ -2397,6 +2404,9 @@ def test_guest() -> None:
         got, _ = run_member("@getquoto_bot تبدیل به گیف ۱۰ تا ۲۰")
         check("member group: and keeps the stretch of video asked for",
               got == [("_convert_and_reply", [], ("gif", (10, 20)))], str(got))
+        got, _ = run_member("@getquoto_bot روش بنویس: سلام")
+        check("member group: «روش بنویس» writes on it",
+              got == [("_caption_and_reply", [], ("سلام",))], str(got))
         got, said = run_member("@getquoto_bot سلام")
         check("member group: spoken to with nothing it knows, how it is used",
               not got and said == [i18n.t("guest_how", "fa")], str(said)[:60])
@@ -2630,6 +2640,21 @@ def test_convert() -> None:
     for bad in ("1" * 59, "1 " * 30, "از " * 20, "1:" * 30, "1 تا " * 12):
         bot.take_span(bad * 100)
     check("a stretch of time cannot be made to backtrack", time.perf_counter() - started < 0.05)
+    # Words on a GIF or a sticker.
+    for said, expected in (("روش بنویس: سلام دنیا", "سلام دنیا"), ("روش بنویس سلام", "سلام"),
+                           ("بنویس روش سلام", "سلام"), ("متن بذار سلام", "سلام"),
+                           ("روش بنویسید: سلام", "سلام"), ("روش بنویس", ""),
+                           ("/text سلام", "سلام"), ("/text@getquoto_bot سلام\nدنیا", "سلام\nدنیا"),
+                           ("/caption hi", "hi"), ("روش بنویسی کد رو یاد بگیر", None),
+                           ("روشن بنویس", None), ("سلام", None), ("x" * 400, None)):
+        check(f"«{said[:30]}» -> {expected!r}", bot.caption_request(said) == expected,
+              repr(bot.caption_request(said)))
+    for lang in ("fa", "en"):
+        guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
+        for example in (re.findall(r"«(روش بنویس[^»]*)»", guide)
+                        + re.findall(r"(/text [^\n—]+?)\s*(?:—|\n)", guide)):
+            check(f"{lang} help: «{example}» writes on it", bool(bot.caption_request(example)))
+
     # Every example the help gives has to be one the bot understands.
     for lang in ("fa", "en"):
         guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
@@ -2673,6 +2698,14 @@ def test_convert() -> None:
     except convert.TooBig:
         refused = True
     check("a file past the download limit is refused before fetching", refused)
+    for kind, ok in (("animation", True), ("sticker", True), ("video_sticker", True),
+                     ("animated_sticker", True), ("photo", False), ("video", False)):
+        try:
+            convert.check("caption", kind, 1000)
+            allowed = True
+        except convert.Unsupported:
+            allowed = False
+        check(f"words on {kind} {'allowed' if ok else 'refused'}", allowed == ok)
 
     def ns(**kw):
         base = dict(sticker=None, animation=None, photo=None, video=None, video_note=None,
@@ -2789,6 +2822,35 @@ def test_convert() -> None:
             said = (exc.reason, exc.seconds)
         check("a start past the end says how long the video is", said == ("past", 12), str(said))
 
+        # Words on each kind: the same kind back, within Telegram's rules.
+        for kind, ext_wanted in (("sticker", "webp"), ("video_sticker", "webm"),
+                                 ("animated_sticker", "webm"), ("animation", "mp4")):
+            try:
+                data, ext = convert.caption(kind, samples[kind], "وقتی می‌گن جلسه پنج دقیقه‌ست")
+                ok = ext == ext_wanted
+                if ext == "webp":
+                    size = Image.open(io.BytesIO(data)).size
+                    ok = ok and max(size) == 512
+                elif ext == "webm":
+                    (tmp / "w.webm").write_bytes(data)
+                    size = convert._dimensions(tmp / "w.webm")
+                    ok = ok and len(data) <= convert.VIDEO_STICKER_BYTES and max(size) == 512
+                else:
+                    (tmp / "w.mp4").write_bytes(data)
+                    size = convert._dimensions(tmp / "w.mp4")
+                    ok = ok and max(size) >= convert.CAPTION_MIN_SIDE
+                detail = f"{len(data)} bytes .{ext} {size}"
+            except Exception as exc:  # noqa: BLE001
+                ok, detail = False, repr(exc)
+            check(f"words on a {kind}", ok, detail)
+        layer = convert._caption_layer((512, 512), "سلام دنیا")
+        inked = layer.getchannel("A").getbbox()
+        check("the words sit at the bottom", inked is not None and inked[1] > 300
+              and inked[3] <= 512 - 10, str(inked))
+        layer = convert._caption_layer((480, 270), "من بعد از دیدن قیمت دلار امروز")
+        rows = [y for y in range(270) if layer.getchannel("A").crop((0, y, 480, y + 1)).getbbox()]
+        check("the words still fit a small GIF", rows and rows[0] > 100, str(rows[:1]))
+
         big = _gzip.compress(b"{" + b" " * (convert.TGS_MAX_JSON + 10) + b"}")
         try:
             convert.convert("video", "animated_sticker", big)
@@ -2858,6 +2920,30 @@ def test_convert() -> None:
     asyncio.run(run("gif", (0, 45)))
     check("one too long says how long it may be",
           len(said_texts) == 1 and "30" in said_texts[0], str(said_texts)[:80])
+    said_texts.clear()
+
+    async def write_on(words):
+        message = Reply()
+
+        async def reply_text(text, **kw):
+            said_texts.append(text)
+        message.reply_text = reply_text
+        update = types.SimpleNamespace(effective_message=message,
+                                       effective_user=types.SimpleNamespace(id=7, language_code="fa"),
+                                       effective_chat=types.SimpleNamespace(id=7))
+        ctx = types.SimpleNamespace(bot=ConvertBot(), user_data={"started": True},
+                                    bot_data={"exempt": {7}})
+        await bot._caption_and_reply(update, ctx, words)
+    asyncio.run(write_on("سلام"))
+    check("words on a photo are refused, and it says so",
+          said_texts == [i18n.t("caption_unsupported", "fa")], str(said_texts)[:80])
+    said_texts.clear()
+    asyncio.run(write_on("😂😂"))
+    check("with nothing it can draw, it says how", said_texts == [i18n.t("caption_how", "fa")],
+          str(said_texts)[:80])
+    said_texts.clear()
+    asyncio.run(write_on("ا" * 200))
+    check("too many words says how many may go", len(said_texts) == 1 and "120" in said_texts[0])
     said_texts.clear()
     asyncio.run(run("gif", args=["از", "اول"]))
     check("/togif with words that are not a time says how to give one",

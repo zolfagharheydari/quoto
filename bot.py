@@ -1933,6 +1933,99 @@ def _convert_command(target: str):
     return handler
 
 
+# ------------------------------------------------------------------ words on it
+# «روش بنویس سلام» on a GIF or a sticker - or «بنویس روش ...», «متن بذار ...»,
+# /text - and the words go along its bottom, the way a meme carries them. A GIF
+# stays a GIF and a sticker a sticker. The verb has to end where it ends: «روش
+# بنویسی کد» is somebody talking about a way of writing code, not an order.
+CAPTION_RE = re.compile(
+    r"^\s*(?:(?:رو\s*ش|روی\s*(?:ش|این|اینو))\s*(?:بنویس(?:ید)?|متن\s*(?:بذار|بزار|بنویس)(?:ید)?)"
+    r"|بنویس(?:ید)?\s*رو\s*ش|متن\s*(?:رو\s*ش\s*)?(?:بذار|بزار)(?:ید)?)(?!\w)"
+    r"(?:\s*[:：])?(?P<words>.*)$", re.IGNORECASE | re.DOTALL)
+CAPTION_COMMAND_RE = re.compile(r"^\s*/(?:text|caption)(?:@\w+)?(?:\s+|$)(?P<words>.*)$",
+                                re.IGNORECASE | re.DOTALL)
+CAPTION_MESSAGE_CHARS = 300
+
+
+def caption_request(text: str) -> str | None:
+    """The words someone wants written on what they replied to, or None if this
+    is not that. An empty string is the asking without the words."""
+    if not text or len(text) > CAPTION_MESSAGE_CHARS:
+        return None
+    found = CAPTION_COMMAND_RE.match(text) or CAPTION_RE.match(text)
+    return found.group("words").strip() if found else None
+
+
+class _CaptionPhrase(filters.MessageFilter):
+    """A message asking for words on a GIF or a sticker."""
+
+    def filter(self, message: Message) -> bool:
+        return caption_request(message.text or "") is not None
+
+
+def _caption_words(words: str | None) -> str:
+    """What can be drawn of them: emoji go, as on a card."""
+    return textkit.normalize_display(words or "")
+
+
+async def _caption_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             words: str | None) -> None:
+    message = update.effective_message
+    if not await _require_start(update, context):
+        return
+    if not await _require_channel(update, context):
+        return
+    if _too_soon(context):
+        log.info("ignoring a burst from %s", update.effective_user.id)
+        return
+    lang = i18n.resolve(update, context.user_data)
+    source = message.reply_to_message
+    words = _caption_words(words)
+    if source is None or convert.media_of(source) is None or not words:
+        await message.reply_text(i18n.t("caption_how", lang))
+        return
+    if len(words) > convert.CAPTION_MAX_CHARS:
+        await message.reply_text(i18n.t("caption_too_long", lang).format(
+            max=convert.CAPTION_MAX_CHARS))
+        return
+    await message.chat.send_action(ChatAction.CHOOSE_STICKER)
+    try:
+        kind, data = await _download_media(context, source, "caption")
+        result, ext = await throttle.MEDIA.run(convert.caption, kind, data, words)
+        if ext == "mp4":
+            await message.reply_animation(_named(result, ext),
+                                          reply_to_message_id=source.message_id)
+        else:
+            await message.reply_sticker(_named(result, ext),
+                                        reply_to_message_id=source.message_id)
+        admin.note(context, "convert")
+    except convert.Unsupported:
+        await message.reply_text(i18n.t("caption_unsupported", lang))
+    except convert.TooBig:
+        await message.reply_text(i18n.t("convert_too_big", lang))
+    except throttle.Busy:
+        await message.reply_text(i18n.t("busy", lang))
+    except TelegramError:
+        raise
+    except Exception:  # noqa: BLE001
+        log.exception("writing on a %s failed", convert.media_of(source)[0])
+        await message.reply_text(i18n.t("failed", lang))
+
+
+async def cmd_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/text, on a reply to a GIF or a sticker. The words are taken as typed,
+    line breaks and all, rather than from args, which loses them."""
+    found = CAPTION_COMMAND_RE.match(update.effective_message.text or "")
+    words = found.group("words") if found else " ".join(context.args or [])
+    await _caption_and_reply(update, context, words)
+
+
+async def on_caption_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    words = caption_request(update.effective_message.text or "")
+    if words is not None:
+        await _caption_and_reply(update, context, words)
+
+
 # ------------------------------------------------------------------ guest mode
 # Mentioned in a chat the bot is not in: "@getquoto_bot" as a reply to a
 # message, maybe with a phrase - «گیفش کن», /sticker - or "@getquoto_bot some
@@ -2114,6 +2207,30 @@ async def _guest_convert(context, source, target: str, user_id: int, lang: str, 
     return InlineQueryResultCachedPhoto(id=f"p{uid}", photo_file_id=file_id)
 
 
+async def _guest_caption(context, source, words: str, user_id: int, lang: str):
+    """The one guest answer for words on a GIF or a sticker: the result, or why not."""
+    from telegram import InlineQueryResultCachedMpeg4Gif, InlineQueryResultCachedSticker
+    words = _caption_words(words)
+    if source is None or convert.media_of(source) is None or not words:
+        return _guest_text(lang, "caption_how")
+    if len(words) > convert.CAPTION_MAX_CHARS:
+        return _guest_text(lang, "caption_too_long", max=convert.CAPTION_MAX_CHARS)
+    try:
+        kind, data = await _download_media(context, source, "caption")
+        result, ext = await throttle.MEDIA.run(convert.caption, kind, data, words)
+    except convert.Unsupported:
+        return _guest_text(lang, "caption_unsupported")
+    except convert.TooBig:
+        return _guest_text(lang, "convert_too_big")
+    admin.note(context, "convert")
+    uid = uuid.uuid4().hex[:16]
+    if ext == "mp4":
+        file_id = await _guest_upload(context, "gif", _named(result, ext), user_id)
+        return InlineQueryResultCachedMpeg4Gif(id=f"g{uid}", mpeg4_file_id=file_id)
+    file_id = await _guest_upload(context, "sticker", _named(result, ext), user_id)
+    return InlineQueryResultCachedSticker(id=f"s{uid}", sticker_file_id=file_id)
+
+
 # "@getquoto_bot /pack" - or «پک», «لینک پک» - for the group's pack link.
 _PACK_LINK_RE = re.compile(r"/pack(?:@\w+)?|پک(?:\s*گروه)?|لینک\s*پک(?:\s*گروه)?", re.IGNORECASE)
 
@@ -2186,10 +2303,13 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             # Not a command for a card: maybe one of the other things a guest
             # can ask for, and if not, how it is used - never a card of it.
             wanted = convert_request(own)
+            words = caption_request(own)
             if _PACK_LINK_RE.fullmatch(own):
                 said = _guest_said(await _group_pack_text(context, message.chat, lang))
             elif is_add_phrase(own):
                 said = _guest_said(await _add_replied(context, target, user, lang))
+            elif words is not None:
+                said = await _guest_caption(context, target, words, user.id, lang)
             elif wanted is not None:
                 said = (await _guest_convert(context, target, wanted[0], user.id, lang, wanted[1])
                         if target is not None and convert.media_of(target) is not None
@@ -2316,6 +2436,8 @@ async def on_group_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await cmd_pack(update, context)
     elif is_add_phrase(own):
         await on_add_to_pack(update, context)
+    elif caption_request(own) is not None:
+        await _caption_and_reply(update, context, caption_request(own))
     elif convert_request(own) is not None:
         await _convert_and_reply(update, context, *convert_request(own))
     elif text.lstrip().lower().startswith("@" + username.lower()) and not _too_soon(context):
@@ -2501,6 +2623,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler(["tosticker"], _convert_command("sticker")))
     app.add_handler(CommandHandler(["tovideo"], _convert_command("video")))
     app.add_handler(CommandHandler(["tophoto"], _convert_command("photo")))
+    app.add_handler(CommandHandler(["text", "caption"], cmd_text))
     app.add_handler(CommandHandler(
         ["screenshot", "screenshoot", "screanshot", "screnshot", "sceenshot"],
         cmd_screenshot))
@@ -2510,6 +2633,7 @@ def register(app: Application) -> None:
                 "shot": cmd_screenshot, "fire": cmd_fire}
     app.add_handler(MessageHandler(
         filters.REPLY & _ConvertPhrase(), on_convert_phrase))
+    app.add_handler(MessageHandler(filters.REPLY & _CaptionPhrase(), on_caption_phrase))
     app.add_handler(MessageHandler(
         filters.REPLY & _ShortText() & filters.Regex(ADD_RE), on_add_to_pack))
     for name, pattern in TRIGGERS.items():

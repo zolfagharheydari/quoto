@@ -3,6 +3,7 @@
 Reply to a photo or a video with «تبدیل به گیف» or «تبدیل به استیکر», to a GIF
 or an animated sticker with «تبدیل به ویدیو», to a sticker with «تبدیل به عکس».
 A GIF or a sticker can be made of one stretch of a video: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵».
+And words can be written on a GIF or any sticker: «روش بنویس سلام» (caption()).
 
 Everything here runs in a worker thread behind its own gate and works on
 bytes in a temporary directory; ffmpeg does the video and runs under a
@@ -22,7 +23,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 log = logging.getLogger(__name__)
 
@@ -131,8 +132,12 @@ def media_of(message):
 
 
 def check(target: str, kind: str, size: int) -> None:
-    """Raise if `target` cannot be made from `kind`, or the file is too big to fetch."""
-    if kind not in TARGETS.get(target, ()):
+    """Raise if `target` cannot be made from `kind`, or the file is too big to fetch.
+
+    "caption" is words written on it, which only a GIF or a sticker can take.
+    """
+    allowed = CAPTION_KINDS if target == "caption" else TARGETS.get(target, ())
+    if kind not in allowed:
         raise Unsupported(f"{target} from {kind}")
     if size > MAX_INPUT_BYTES:
         raise TooBig(size)
@@ -173,6 +178,29 @@ def _window(src: Path, span, limit: float) -> tuple[list[str], str]:
     if length is not None:
         stop = min(stop, length)
     return ["-ss", f"{start:g}"], f"{stop - start:g}"
+
+
+def _vp9(bitrate: str, out: Path) -> list[str]:
+    """How a video sticker is written: VP9 with its transparency, no sound."""
+    return ["-an", "-c:v", "libvpx-vp9", "-b:v", bitrate, "-crf", "34", "-deadline", "good",
+            "-row-mt", "1", "-pix_fmt", "yuva420p", str(out)]
+
+
+def _webm_within(encode, webm: Path) -> bytes:
+    """A video sticker at the first bitrate that keeps it to Telegram's 256 KB."""
+    for bitrate in ("700k", "450k", "280k", "160k", "90k"):
+        encode(bitrate)
+        if webm.stat().st_size <= VIDEO_STICKER_BYTES:
+            return webm.read_bytes()
+    raise Unsupported("could not fit a video sticker in 256 KB")
+
+
+def _dimensions(src: Path) -> tuple[int, int] | None:
+    """A video's width and height, from what ffmpeg says about it."""
+    done = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(src)],
+                          capture_output=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
+    found = re.search(rb"Video: .*?, (\d{2,5})x(\d{2,5})[, \[]", done.stderr)
+    return (int(found.group(1)), int(found.group(2))) if found else None
 
 
 def _even_scale(longest: int) -> str:
@@ -287,13 +315,9 @@ def convert(target: str, kind: str, data: bytes, span=None) -> tuple[bytes, str]
             scale = (f"scale='if(gte(iw,ih),{STICKER_SIDE},-2)':'if(gte(iw,ih),-2,{STICKER_SIDE})'"
                      ":flags=area,fps=30")
             seek, seconds = _window(src, span, VIDEO_STICKER_SECONDS)
-            for bitrate in ("700k", "450k", "280k", "160k", "90k"):
-                _run([*seek, "-i", str(src), "-t", seconds, "-an", "-vf", scale,
-                      "-c:v", "libvpx-vp9", "-b:v", bitrate, "-crf", "34", "-deadline", "good",
-                      "-row-mt", "1", "-pix_fmt", "yuva420p", str(webm)])
-                if webm.stat().st_size <= VIDEO_STICKER_BYTES:
-                    return webm.read_bytes(), "webm"
-            raise Unsupported("could not fit a video sticker in 256 KB")
+            return _webm_within(lambda bitrate: _run(
+                [*seek, "-i", str(src), "-t", seconds, "-vf", scale, *_vp9(bitrate, webm)]),
+                webm), "webm"
 
         mp4 = out.with_suffix(".mp4")
         if target == "gif":
@@ -336,3 +360,123 @@ def convert(target: str, kind: str, data: bytes, span=None) -> tuple[bytes, str]
             return mp4.read_bytes(), "mp4"
 
     raise Unsupported(target)
+
+
+# ------------------------------------------------------------------ words on it
+# «روش بنویس ...» on a GIF or a sticker: the words at the bottom, white with a
+# dark outline, the way a caption sits on a meme - it reads on any picture and
+# on a sticker's transparency alike. The words are drawn once, as a transparent
+# picture the size of the result, and laid over every frame: by ffmpeg for a
+# GIF or a video sticker, by Pillow for a still sticker and for the frames
+# rlottie draws from an animated one.
+CAPTION_KINDS = ("sticker", "video_sticker", "animated_sticker", "animation")
+CAPTION_MAX_CHARS = 120
+CAPTION_MIN_SIDE = 480          # a small GIF is enlarged first, or its words would blur
+
+
+def _caption_layer(size: tuple[int, int], text: str) -> Image.Image:
+    """The words alone, on a transparent picture of `size`."""
+    import fonts
+    import textkit
+
+    width, height = size
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    margin = round(width * 0.05)
+    rtl = textkit.is_rtl(text)
+    top = max(14, height // 6)
+    sizes = range(top, max(12, height // 22) - 1, -2)
+    lines, font, line_height = textkit.fit(
+        text, lambda s: fonts.load("bold", s), width - 2 * margin, height * 0.4, sizes,
+        line_spacing=1.22, rtl=rtl)
+    # Wrapping greedily leaves one word alone on the last line; the narrowest
+    # width that still takes as many lines shares the words out evenly.
+    limit = width - 2 * margin
+    while len(lines) > 1 and limit > width * 0.45:
+        tried = textkit.wrap(text, font, limit * 0.95, rtl)
+        if len(tried) != len(lines):
+            break
+        lines, limit = tried, limit * 0.95
+    most = max(1, int(height * 0.4) // line_height)
+    if len(lines) > most:
+        lines = lines[:most]
+        lines[-1] = lines[-1].rstrip() + "…"
+    stroke = max(2, round(font.size / 11))
+    draw = ImageDraw.Draw(layer)
+    first = height - margin - len(lines) * line_height + line_height // 2
+    for i, line in enumerate(lines):
+        font.draw_on(draw, (width / 2, first + i * line_height), textkit.shape(line, rtl),
+                     fill=(255, 255, 255, 255), anchor="mm",
+                     stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+    return layer
+
+
+def _fit_side(size: tuple[int, int], longest: int, at_least: int = 0) -> tuple[int, int]:
+    """`size` scaled so its long side is `longest` at most (and `at_least` at
+    least), both sides even."""
+    w, h = size
+    scale = min(longest / max(w, h), max(1.0, at_least / max(w, h)))
+    return max(2, round(w * scale / 2) * 2), max(2, round(h * scale / 2) * 2)
+
+
+def caption(kind: str, data: bytes, text: str) -> tuple[bytes, str]:
+    """`text` written on a GIF or a sticker. Returns (bytes, file extension):
+    an mp4 for a GIF, a sticker otherwise - .webp for a still one, .webm for
+    one that moves, which an animated (.tgs) sticker becomes too."""
+    if kind not in CAPTION_KINDS:
+        raise Unsupported(f"words on {kind}")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        src = tmp / "in"
+        src.write_bytes(data)
+        layer_png = tmp / "words.png"
+
+        if kind == "sticker":
+            image = _open_picture(data).convert("RGBA")
+            # A sticker's long side is exactly 512, so a smaller one grows to it.
+            scale = STICKER_SIDE / max(image.size)
+            size = (round(image.width * scale), round(image.height * scale))
+            image = image.resize(size, Image.LANCZOS)
+            image.alpha_composite(_caption_layer(size, text))
+            buf = io.BytesIO()
+            image.save(buf, "WEBP", quality=90, method=6)
+            return buf.getvalue(), "webp"
+
+        webm = tmp / "out.webm"
+        if kind == "animated_sticker":
+            frames, fps = _tgs_frames(data, max_seconds=VIDEO_STICKER_SECONDS)
+            layer = _caption_layer(frames[0].size, text)
+            raw = tmp / "frames.rgba"
+            with raw.open("wb") as out:
+                for frame in frames:
+                    frame = frame.convert("RGBA")
+                    frame.alpha_composite(layer)
+                    out.write(frame.tobytes())
+            w, h = frames[0].size
+            del frames
+            return _webm_within(lambda bitrate: _run(
+                ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-r", f"{fps:.3f}",
+                 "-i", str(raw), "-t", str(VIDEO_STICKER_SECONDS), *_vp9(bitrate, webm)]),
+                webm), "webm"
+
+        found = _dimensions(src)
+        if found is None:
+            raise Unsupported("no picture in it")
+        if kind == "video_sticker":
+            size = _fit_side(found, STICKER_SIDE, STICKER_SIDE)
+        else:
+            size = _fit_side(found, MAX_SIDE, CAPTION_MIN_SIDE)
+        _caption_layer(size, text).save(layer_png)
+        w, h = size
+        if kind == "video_sticker":
+            graph = (f"[0:v]scale={w}:{h}:flags=area,setsar=1,fps=30,format=rgba[v];"
+                     "[v][1:v]overlay=0:0:format=auto[out]")
+            return _webm_within(lambda bitrate: _run(
+                ["-c:v", "libvpx-vp9", "-i", str(src), "-i", str(layer_png),
+                 "-filter_complex", graph, "-map", "[out]", "-t", str(VIDEO_STICKER_SECONDS),
+                 *_vp9(bitrate, webm)]), webm), "webm"
+        mp4 = tmp / "out.mp4"
+        graph = f"[0:v]scale={w}:{h}:flags=bicubic,setsar=1[v];[v][1:v]overlay=0:0[out]"
+        _run(["-i", str(src), "-i", str(layer_png), "-filter_complex", graph, "-map", "[out]",
+              "-t", str(GIF_SECONDS), "-an", "-c:v", "libx264", "-preset", "veryfast",
+              "-crf", "22", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4)])
+        return mp4.read_bytes(), "mp4"
