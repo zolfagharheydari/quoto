@@ -766,8 +766,14 @@ async def _prepare(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target.message_id if target else None,
         len(getattr(context, "args", None) or []),
     )
+    typed = " ".join(getattr(context, "args", None) or []).strip()
+    # Words for the result can follow the command. With a reply the rest of
+    # the command is otherwise unused; without one it is the quote itself,
+    # so there the words have to be set apart, with a comma or a new line.
+    typed, words = split_caption(typed, loose=target is not None)
+    if words is not None:
+        context.caption_words = words
     if target is None:
-        typed = " ".join(getattr(context, "args", None) or []).strip()
         if typed:
             return message, typed[:extract.MAX_QUOTE_CHARS]
         # In a group the usual cause is privacy mode eating the reply, so say so.
@@ -805,6 +811,8 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         scene = await _build_scene(update, context, target, text)
         buf = await throttle.RENDER.run(_card_png, scene)
+        if _words_for(context):
+            buf = io.BytesIO(await _with_words("photo", buf.getvalue(), _words_for(context)))
         await message.reply_photo(buf, reply_to_message_id=target.message_id)
         admin.note(context, "quote")
     except throttle.Busy:
@@ -851,6 +859,7 @@ async def cmd_quote_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         scene = await _build_scene(update, context, target, text)
         webp = await throttle.RENDER.run(_card_webp, scene)
+        webp = await _with_words("sticker", webp, _words_for(context))
         await message.reply_sticker(io.BytesIO(webp),
                                     reply_to_message_id=target.message_id)
         admin.note(context, "sticker")
@@ -1206,6 +1215,8 @@ async def cmd_quote_gif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         scene = await _build_scene(update, context, target, text)
         buf, ext = await throttle.RENDER.run(animate.to_animation, scene)
+        if ext == "mp4" and _words_for(context):
+            buf = io.BytesIO(await _with_words("animation", buf.getvalue(), _words_for(context)))
         sent = await message.reply_animation(
             buf, filename=f"quote.{ext}", reply_to_message_id=target.message_id
         )
@@ -1272,6 +1283,7 @@ async def cmd_fire(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         data = await throttle.FIRE.run(
             fire.render, quote, author.name, f"@{context.bot.username}")
+        data = await _with_words("animation", data, _words_for(context))
         sent = await message.reply_animation(
             io.BytesIO(data), filename="fire.mp4",
             reply_to_message_id=target.message_id)
@@ -1383,6 +1395,7 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             _screenshot_sticker, avatar, author.name, text,
             _clock(target.date), badge, author.seed, seen, badge_is_admin,
         )
+        webp = await _with_words("sticker", webp, _words_for(context))
         await message.reply_sticker(io.BytesIO(webp), reply_to_message_id=target.message_id)
         admin.note(context, "screenshot")
     except throttle.Busy:
@@ -1501,7 +1514,7 @@ async def _fire_inline(context: ContextTypes.DEFAULT_TYPE, chosen, lang: str) ->
 
 
 async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: str,
-                     author: authors.Author, maker, lang: str) -> None:
+                     author: authors.Author, maker, lang: str, words: str | None = None) -> None:
     """Render `text` in fire, credited to `author`, and swap it into an inline message.
 
     Inline mode and guest mode both send a placeholder first - an answer cannot
@@ -1527,6 +1540,7 @@ async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: 
     try:
         data = await throttle.FIRE.run(
             fire.render, quote, author.name, f"@{context.bot.username}")
+        data = await _with_words("animation", data, words)
         store = STORAGE_CHAT or context.bot_data.get("storage_chat")
         upload = await context.bot.send_animation(
             store or maker.id, io.BytesIO(data), filename="fire.mp4",
@@ -1541,7 +1555,7 @@ async def _fire_into(context: ContextTypes.DEFAULT_TYPE, message_id: str, text: 
             await upload.delete()
         except TelegramError:
             pass
-        if author.avatar_key == maker.id:
+        if author.avatar_key == maker.id and not words:   # a clip with words is that one's own
             inline.fire_remember(context.bot_data, inline.fire_key(maker.id, quote), made.file_id)
         if not getattr(maker, "is_bot", False):
             gallery.record(context.user_data, made.file_id, author, quote)
@@ -1887,6 +1901,9 @@ async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         kind, data = await _download_media(context, source, target, span)
         result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data, span)
+        if target in convert.SPAN_LIMIT:            # a GIF or a sticker: words go on those
+            result = await _with_words(_MADE_KIND.get(ext, ""), result, _words_for(context),
+                                       own=False)
         reply = source.message_id
         if target == "gif":
             await message.reply_animation(_named(result, ext), reply_to_message_id=reply)
@@ -1914,6 +1931,10 @@ async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await message.reply_text(i18n.t("failed", lang))
 
 
+# What a conversion's result is, by its extension, for writing on it.
+_MADE_KIND = {"mp4": "animation", "webp": "sticker", "webm": "video_sticker"}
+
+
 async def on_convert_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     request = convert_request(update.effective_message.text or "")
     if request is not None:
@@ -1922,7 +1943,11 @@ async def on_convert_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 def _convert_command(target: str):
     async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        words = " ".join(context.args or [])
+        words, caption = split_caption(" ".join(context.args or []))
+        if caption is not None and target in convert.SPAN_LIMIT:
+            context.caption_words = caption     # /togif 1:20 1:35 روش بنویس: سلام
+        else:
+            words = " ".join(context.args or [])
         span = args_span(words)
         if words and span is None and target in convert.SPAN_LIMIT:
             # Words that were meant as a time and are not one: better to say
@@ -1938,10 +1963,17 @@ def _convert_command(target: str):
 # /text - and the words go along its bottom, the way a meme carries them. A GIF
 # stays a GIF and a sticker a sticker. The verb has to end where it ends: «روش
 # بنویسی کد» is somebody talking about a way of writing code, not an order.
-CAPTION_RE = re.compile(
-    r"^\s*(?:(?:رو\s*ش|روی\s*(?:ش|این|اینو))\s*(?:بنویس(?:ید)?|متن\s*(?:بذار|بزار|بنویس)(?:ید)?)"
-    r"|بنویس(?:ید)?\s*رو\s*ش|متن\s*(?:رو\s*ش\s*)?(?:بذار|بزار)(?:ید)?)(?!\w)"
-    r"(?:\s*[:：])?(?P<words>.*)$", re.IGNORECASE | re.DOTALL)
+_CAPTION_VERB = (
+    r"(?:(?:رو\s*ش|روی\s*(?:ش|این|اینو))\s*(?:بنویس(?:ید)?|متن\s*(?:بذار|بزار|بنویس)(?:ید)?)"
+    r"|بنویس(?:ید)?\s*رو\s*ش|متن\s*(?:رو\s*ش\s*)?(?:بذار|بزار)(?:ید)?"
+    # In English, "caption:" or "text:" - the colon is what makes it an ask.
+    r"|(?:caption|text)(?=\s*[:：]))(?!\w)")
+CAPTION_RE = re.compile(r"^\s*" + _CAPTION_VERB + r"(?:\s*[:：])?(?P<words>.*)$",
+                        re.IGNORECASE | re.DOTALL)
+# The same, after something else that was asked for: «استیکرش کن، روش بنویس: سلام».
+_CAPTION_CLAUSE_RE = re.compile(r"(?:^|(?<=[\s،,\-–—]))" + _CAPTION_VERB
+                                + r"(?:\s*[:：])?(?P<words>.*)$", re.IGNORECASE | re.DOTALL)
+_JOINT = " \t\n،,-–—"
 CAPTION_COMMAND_RE = re.compile(r"^\s*/(?:text|caption)(?:@\w+)?(?:\s+|$)(?P<words>.*)$",
                                 re.IGNORECASE | re.DOTALL)
 CAPTION_MESSAGE_CHARS = 300
@@ -1954,6 +1986,100 @@ def caption_request(text: str) -> str | None:
         return None
     found = CAPTION_COMMAND_RE.match(text) or CAPTION_RE.match(text)
     return found.group("words").strip() if found else None
+
+
+def split_caption(text: str, loose: bool = True) -> tuple[str, str | None]:
+    """«استیکرش کن، روش بنویس: سلام» -> ("استیکرش کن", "سلام"): what to make,
+    and the words to write on it - (text, None) when none were asked for.
+
+    `loose` takes the words wherever they start. Not loose, they need a comma,
+    a dash, a new line or a «و» before them, or nothing at all: that is for
+    someone's own words being quoted, where «یه روش بنویس که...» is a sentence.
+    """
+    if not text or len(text) > CAPTION_MESSAGE_CHARS:
+        return text, None
+    found = _CAPTION_CLAUSE_RE.search(text)
+    if found is None:
+        return text, None
+    before = text[:found.start()]
+    rest = before.rstrip(_JOINT)
+    if rest == "و" or rest.endswith((" و", "\nو")):
+        rest = rest[:-1].rstrip(_JOINT)
+    joined = len(before.rstrip()) != len(rest) or not rest
+    if not loose and not joined:
+        return text, None
+    return rest, found.group("words").strip()
+
+
+def _made_with_caption(text: str):
+    """(how, what, words) for something to make with words on it - «استیکرش کن،
+    روش بنویس: سلام», «تبدیل به گیف ۱:۲۰ تا ۱:۳۵، روش بنویس: ...» - or None.
+
+    `how` is "make", with the kind of card to make, or "convert", with the
+    conversion asked for: only a GIF or a sticker, which is what words go on.
+    """
+    rest, words = split_caption(text)
+    if words is None or not rest or len(rest) > TRIGGER_MAX_CHARS:
+        return None
+    for kind, pattern in TRIGGERS.items():
+        if pattern.search(rest):
+            return "make", kind, words
+    request = convert_request(rest)
+    if request is not None and request[0] in convert.SPAN_LIMIT:
+        return "convert", request, words
+    return None
+
+
+def _maker(kind: str):
+    """The handler that makes a `kind`, looked up when it is needed."""
+    return {"quote": cmd_quote, "sticker": cmd_quote_sticker, "gif": cmd_quote_gif,
+            "shot": cmd_screenshot, "fire": cmd_fire}[kind]
+
+
+async def _with_words(kind: str, data: bytes, words: str | None, own: bool = True) -> bytes:
+    """`data` with the words asked for along with it, or as it was.
+
+    `own` is the bot's own card, sticker or clip, which is mostly words already:
+    the caption goes in a band above it (convert.caption_above). Otherwise -
+    someone's video made into a GIF - it is written over the picture, as on
+    any GIF. `kind` is "photo" for a card, or one of convert.CAPTION_KINDS.
+    Too many words are cut short rather than refused: the thing itself was
+    asked for too, and is worth more than the last of a long caption.
+    """
+    words = _caption_words(words)
+    if not words:
+        return data
+    if len(words) > convert.CAPTION_MAX_CHARS:
+        words = words[:convert.CAPTION_MAX_CHARS - 1].rstrip() + "…"
+    if kind == "photo":
+        return await throttle.RENDER.run(convert.caption_picture, data, words)
+    write = convert.caption_above if own else convert.caption
+    result, _ = await throttle.MEDIA.run(write, kind, data, words)
+    return result
+
+
+def _words_for(context) -> str | None:
+    """The words asked for along with this update's request, if any."""
+    return getattr(context, "caption_words", None)
+
+
+class _MadeWithCaption(filters.MessageFilter):
+    """A reply asking for a card, a GIF or a sticker with words on it."""
+
+    def filter(self, message: Message) -> bool:
+        return _made_with_caption(message.text or "") is not None
+
+
+async def on_made_with_caption(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    found = _made_with_caption(update.effective_message.text or "")
+    if found is None:
+        return
+    how, what, words = found
+    context.caption_words = words
+    if how == "make":
+        await _maker(what)(update, context)
+    else:
+        await _convert_and_reply(update, context, *what)
 
 
 class _CaptionPhrase(filters.MessageFilter):
@@ -2178,13 +2304,16 @@ async def _guest_upload(context, kind: str, data, user_id: int) -> str:
     return file_id
 
 
-async def _guest_convert(context, source, target: str, user_id: int, lang: str, span=None):
+async def _guest_convert(context, source, target: str, user_id: int, lang: str, span=None,
+                         words: str | None = None):
     """The one guest answer for a conversion: the converted file, or why not."""
     from telegram import (InlineQueryResultCachedMpeg4Gif, InlineQueryResultCachedPhoto,
                           InlineQueryResultCachedSticker, InlineQueryResultCachedVideo)
     try:
         kind, data = await _download_media(context, source, target, span)
         result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data, span)
+        if target in convert.SPAN_LIMIT:
+            result = await _with_words(_MADE_KIND.get(ext, ""), result, words, own=False)
     except convert.BadSpan as exc:
         return _guest_said(_span_problem(exc, target, lang))
     except convert.Unsupported:
@@ -2299,6 +2428,17 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         named = re.search(rf"@{re.escape(username)}\b", said_text, re.IGNORECASE) is not None
         kind, own = guest_request(said_text, username, near=named)
         target = message.reply_to_message
+        # «@getquoto_bot استیکرش کن، روش بنویس: سلام»: what to make, and words
+        # for it. Without a reply, «/quote ...» is their own words, so the
+        # words for the result need a comma or a new line before them there.
+        made_words = None
+        rest, asked = split_caption(said_text, loose=target is not None)
+        if asked is not None:
+            asked_kind, asked_own = guest_request(rest, username, near=named)
+            asked_convert = convert_request(asked_own) if asked_kind == "unknown" else None
+            if asked_kind != "unknown" or (asked_convert is not None
+                                           and asked_convert[0] in convert.SPAN_LIMIT):
+                kind, own, made_words = asked_kind, asked_own, asked
         if kind == "unknown":
             # Not a command for a card: maybe one of the other things a guest
             # can ask for, and if not, how it is used - never a card of it.
@@ -2311,7 +2451,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             elif words is not None:
                 said = await _guest_caption(context, target, words, user.id, lang)
             elif wanted is not None:
-                said = (await _guest_convert(context, target, wanted[0], user.id, lang, wanted[1])
+                said = (await _guest_convert(context, target, wanted[0], user.id, lang, wanted[1],
+                                             made_words)
                         if target is not None and convert.media_of(target) is not None
                         else _guest_text(lang, "convert_need_reply"))
             elif named:
@@ -2352,7 +2493,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     i18n.t("btn_fire_wait", lang), callback_data="fire:wait")]])))
             if sent is not None:
                 context.application.create_task(
-                    _fire_into(context, sent.inline_message_id, quote, author, user, lang))
+                    _fire_into(context, sent.inline_message_id, quote, author, user, lang,
+                               made_words))
             return
 
         avatar = await authors.fetch_avatar(context.bot, author, *_avatar_choice(context, author))
@@ -2360,6 +2502,7 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             webp = await throttle.RENDER.run(
                 _screenshot_sticker, avatar, author.name, text,
                 _clock(target.date if target else message.date), None, author.seed, [], False)
+            webp = await _with_words("sticker", webp, made_words)
             result = InlineQueryResultCachedSticker(
                 id=f"s{uuid.uuid4().hex[:16]}",
                 sticker_file_id=await _guest_upload(context, "sticker", webp, user.id))
@@ -2370,13 +2513,16 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 render.build_scene, avatar, text, author.name, WATERMARK, _template(context))
             if kind == "sticker":
                 webp = await throttle.RENDER.run(_card_webp, scene)
+                webp = await _with_words("sticker", webp, made_words)
                 result = InlineQueryResultCachedSticker(
                     id=f"s{uuid.uuid4().hex[:16]}",
                     sticker_file_id=await _guest_upload(context, "sticker", webp, user.id))
                 context.application.create_task(
                     _guest_into_group_pack(context, message.chat, webp))
             elif kind == "gif":
-                buf, _ = await throttle.RENDER.run(animate.to_animation, scene)
+                buf, ext = await throttle.RENDER.run(animate.to_animation, scene)
+                if ext == "mp4" and made_words:
+                    buf = io.BytesIO(await _with_words("animation", buf.getvalue(), made_words))
                 file_id = await _guest_upload(context, "gif", buf, user.id)
                 result = InlineQueryResultCachedMpeg4Gif(
                     id=f"g{uuid.uuid4().hex[:16]}", mpeg4_file_id=file_id)
@@ -2384,6 +2530,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     gallery.record(context.user_data, file_id, author, text)
             else:
                 png = await throttle.RENDER.run(_card_png, scene)
+                if made_words:
+                    png = io.BytesIO(await _with_words("photo", png.getvalue(), made_words))
                 result = InlineQueryResultCachedPhoto(
                     id=f"p{uuid.uuid4().hex[:16]}",
                     photo_file_id=await _guest_upload(context, "card", png, user.id))
@@ -2416,6 +2564,11 @@ async def on_group_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     mention = re.compile(rf"@{re.escape(username)}\b", re.IGNORECASE)
     if not mention.search(text):
         return                  # someone else's name
+    # «@getquoto_bot استیکرش کن، روش بنویس: سلام»: the words go with what is made.
+    before, asked = split_caption(text, loose=message.reply_to_message is not None)
+    if asked is not None and mention.sub(" ", before).strip():
+        context.caption_words = asked
+        text = before
     rest = " ".join(mention.sub(" ", text).split())
     command = re.match(r"^/([A-Za-z_]+)(?:@\w+)?(?:\s+|$)", rest)
     if command:
@@ -2427,11 +2580,9 @@ async def on_group_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 await handler.callback(update, context)
                 return
     kind, own = guest_request(text, username)
-    makers = {"quote": cmd_quote, "sticker": cmd_quote_sticker, "gif": cmd_quote_gif,
-              "shot": cmd_screenshot, "fire": cmd_fire}
-    if kind in makers:
+    if kind in ("quote", "sticker", "gif", "shot", "fire"):
         context.args = own.split()
-        await makers[kind](update, context)
+        await _maker(kind)(update, context)
     elif _PACK_LINK_RE.fullmatch(own):
         await cmd_pack(update, context)
     elif is_add_phrase(own):
@@ -2634,6 +2785,7 @@ def register(app: Application) -> None:
     app.add_handler(MessageHandler(
         filters.REPLY & _ConvertPhrase(), on_convert_phrase))
     app.add_handler(MessageHandler(filters.REPLY & _CaptionPhrase(), on_caption_phrase))
+    app.add_handler(MessageHandler(filters.REPLY & _MadeWithCaption(), on_made_with_caption))
     app.add_handler(MessageHandler(
         filters.REPLY & _ShortText() & filters.Regex(ADD_RE), on_add_to_pack))
     for name, pattern in TRIGGERS.items():

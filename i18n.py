@@ -141,6 +141,10 @@ Full guide: /help""",
 
 بدون ریپلای هم می‌شود: <code>/quote متن دلخواه</code> — کارت به نام خودت ساخته می‌شود.
 
+✍️ <b>همراه با متن</b> — متن دلخواهت را هم بنویس تا در نواری بالای کارت، استیکر یا گیف بیاید:
+«استیکرش کن، روش بنویس: وقتی می‌گن جلسه پنج دقیقه‌ست»
+«گیفش کن، روش بنویس: …» یا <code>/sticker روش بنویس: …</code>
+
 🔄 <b>تبدیل</b> — روی عکس، ویدیو، گیف یا استیکر ریپلای کن:
 «تبدیل به گیف» یا «تبدیل به استیکر» — از عکس و ویدیو
 «تبدیل به ویدیو» — از گیف و استیکر متحرک
@@ -210,6 +214,9 @@ The Persian phrases work too: «کوتش کن» «استیکرش کن» «گیف
 
 No reply needed: <code>/quote any text</code> makes a card credited to you.
 
+✍️ <b>With words of your own</b> — add them and they go in a band above the card, sticker or GIF:
+<code>/sticker caption: hello</code>
+
 🔄 <b>Converting</b> — reply to a photo, video, GIF or sticker:
 <code>/togif</code> or <code>/tosticker</code> — from a photo or a video
 <code>/tovideo</code> — from a GIF or an animated sticker
@@ -219,10 +226,10 @@ No reply needed: <code>/quote any text</code> makes a card credited to you.
 <code>/togif 1:20 1:35</code> — that stretch only
 <code>/togif 2:05</code> — from that moment, up to 30 seconds
 <code>/tosticker 0:45</code> — a video sticker from that moment
-A GIF can be up to 30 seconds and a sticker up to 3. The video has to be under 20 MB; Telegram does not hand bigger files to bots.
+Up to 30 seconds for a GIF, 3 for a sticker; the video has to be under 20 MB.
 
 ✍️ <b>Words on a GIF or a sticker</b> — reply to a GIF or any sticker:
-<code>/text your words</code> — written along the bottom, meme style; a GIF stays a GIF and a sticker a sticker (up to 120 characters)
+<code>/text your words</code> — written along the bottom, meme style (up to 120 characters)
 
 ➋ <b>In a chat I'm not in</b>
 Your friends' chats, other groups — no need to add me. Reply to a message with:
@@ -235,7 +242,7 @@ Stickers made in a group join that group's pack; <code>@BOT /pack</code> gives i
 
 ➌ <b>In a group</b>
 Add me and make me an <b>admin</b>; until then Telegram does not pass me replies or reactions.
-Calling me by name works here too, as in chats I'm not in: <code>@BOT /screenshot</code>, <code>@BOT /pack</code>
+Calling me by name works here too: <code>@BOT /screenshot</code>, <code>@BOT /pack</code>
 Each group's stickers and screenshots collect in that group's own sticker pack:
 <code>/pack</code> — the pack's link
 <code>/unpack</code> — reply to a sticker to take it out of the pack (admins)
@@ -745,6 +752,7 @@ Sticker → photo""",
         "fa": """روی یه پیام ریپلای کن و بنویس:
 @getquoto_bot کوتش کن — کارت کوت
 @getquoto_bot استیکرش کن / گیفش کن / شاتش کن / آتیشش کن
+@getquoto_bot استیکرش کن، روش بنویس: سلام — با متن بالاش
 @getquoto_bot تبدیل به گیف / استیکر / ویدیو / عکس
 @getquoto_bot تبدیل به گیف ۱:۲۰ تا ۱:۳۵ — فقط همون تیکه از ویدیو
 @getquoto_bot روش بنویس: متن — روی گیف یا استیکر
@@ -755,6 +763,7 @@ Sticker → photo""",
         "en": """Reply to a message with:
 @getquoto_bot /quote — a quote card
 @getquoto_bot /sticker, /gif, /screenshot, /fire
+@getquoto_bot /sticker caption: hello — with words above it
 @getquoto_bot /togif, /tosticker, /tovideo, /tophoto
 @getquoto_bot /togif 1:20 1:35 — just that part of a video
 @getquoto_bot /text your words — on a GIF or a sticker

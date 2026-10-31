@@ -1536,6 +1536,8 @@ def test_handler_groups() -> None:
     check("«روش بنویس: سلام» on a reply writes on it",
           reached("روش بنویس: سلام", reply=True) is bot.on_caption_phrase)
     check("/text is the command for it", reached("/text سلام", reply=True) is bot.cmd_text)
+    check("«استیکرش کن، روش بنویس: سلام» makes a sticker with words",
+          reached("استیکرش کن، روش بنویس: سلام", reply=True) is bot.on_made_with_caption)
     for lang in ("fa", "en"):
         menu = {name for name, _ in i18n.COMMANDS[lang]}
         check(f"/togif and /text in the {lang} menu", {"togif", "text"} <= menu)
@@ -2323,6 +2325,27 @@ def test_guest() -> None:
     b, _, _, _ = run_guest("@getquoto_bot /sticker", "قهوه‌ی سوم")
     check("/sticker makes a sticker", getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id")
 
+    # «استیکرش کن، روش بنویس: ...» as a guest: the sticker, with the words on it.
+    written = []
+    real_with_words = bot._with_words
+
+    async def with_words(kind, data, words, own=True):
+        written.append((kind, words, own))
+        return data
+    bot._with_words = with_words
+    try:
+        b, _, _, _ = run_guest("@getquoto_bot استیکرش کن، روش بنویس: وقتی می‌گن پنج دقیقه", "قهوه‌ی سوم")
+        check("a guest «استیکرش کن، روش بنویس» makes a sticker with the words",
+              getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id"
+              and written == [("sticker", "وقتی می‌گن پنج دقیقه", True)], str(written))
+        written.clear()
+        b, _, _, _ = run_guest("@getquoto_bot /quote حرف خودم، روش بنویس: سلام")
+        check("and «/quote حرف خودم، روش بنویس: سلام» a card of their words, with these",
+              getattr(b.answers[0][1], "photo_file_id", None) == "photo-id"
+              and written == [("photo", "سلام", True)], str(written))
+    finally:
+        bot._with_words = real_with_words
+
     b, _, _, tasks = run_guest("@getquoto_bot شاتش کن", "اینترنت قطع شد")
     check("«شاتش کن» makes a screenshot, as a sticker",
           getattr(b.answers[0][1], "sticker_file_id", None) == "sticker-id")
@@ -2357,9 +2380,11 @@ def test_guest() -> None:
     calls = []
 
     def recorder(name):
-        async def record(update, context, *extra):
+        async def record(update, context, *extra, **kw):
             calls.append((name, list(getattr(context, "args", None) or []), extra))
+            words_seen.append(getattr(context, "caption_words", None))
         return record
+    words_seen = []
 
     def run_member(text):
         calls.clear()
@@ -2404,6 +2429,11 @@ def test_guest() -> None:
         got, _ = run_member("@getquoto_bot تبدیل به گیف ۱۰ تا ۲۰")
         check("member group: and keeps the stretch of video asked for",
               got == [("_convert_and_reply", [], ("gif", (10, 20)))], str(got))
+        words_seen.clear()
+        got, _ = run_member("@getquoto_bot استیکرش کن، روش بنویس: سلام")
+        check("member group: «استیکرش کن، روش بنویس» makes it with the words",
+              [c[0] for c in got] == ["cmd_quote_sticker"] and words_seen == ["سلام"],
+              f"{got} {words_seen}")
         got, _ = run_member("@getquoto_bot روش بنویس: سلام")
         check("member group: «روش بنویس» writes on it",
               got == [("_caption_and_reply", [], ("سلام",))], str(got))
@@ -2655,6 +2685,36 @@ def test_convert() -> None:
                         + re.findall(r"(/text [^\n—]+?)\s*(?:—|\n)", guide)):
             check(f"{lang} help: «{example}» writes on it", bool(bot.caption_request(example)))
 
+    for said, expected in (("استیکرش کن، روش بنویس: سلام", ("make", "sticker", "سلام")),
+                           ("گیفش کن و روش بنویس سلام دنیا", ("make", "gif", "سلام دنیا")),
+                           ("شاتش کن\nروش بنویس: هه", ("make", "shot", "هه")),
+                           ("آتیشش کن - روش بنویس: x", ("make", "fire", "x")),
+                           ("کوتش کن روش بنویس: سلام", ("make", "quote", "سلام")),
+                           ("تبدیل به گیف ۱:۲۰ تا ۱:۳۵، روش بنویس: سلام",
+                            ("convert", ("gif", (80, 95)), "سلام")),
+                           ("تبدیل به ویدیو، روش بنویس: سلام", None),
+                           ("روش بنویس: سلام", None), ("سلام، روش بنویس: x", None),
+                           ("استیکرش کن", None)):
+        check(f"«{said[:34]}» -> {expected}", bot._made_with_caption(said) == expected,
+              str(bot._made_with_caption(said)))
+    for said, loose, expected in (("متن خودم، روش بنویس: سلام", False, ("متن خودم", "سلام")),
+                                  ("یه روش بنویس که همه بفهمن", False,
+                                   ("یه روش بنویس که همه بفهمن", None)),
+                                  ("روش بنویس: سلام", False, ("", "سلام")),
+                                  ("متن و روش بنویس: x", False, ("متن", "x")),
+                                  ("/sticker caption: hi", True, ("/sticker", "hi")),
+                                  ("the text is long", True, ("the text is long", None))):
+        check(f"split {said[:30]!r} ({'loose' if loose else 'strict'})",
+              bot.split_caption(said, loose) == expected, str(bot.split_caption(said, loose)))
+    for lang in ("fa", "en"):
+        guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
+        for example in re.findall(r"«([^»]+، روش بنویس[^»]*)»", guide):
+            check(f"{lang} help: «{example[:30]}» makes it with words",
+                  bot._made_with_caption(example) is not None)
+        for example in re.findall(r"(/sticker (?:روش بنویس|caption)[^\n]*)", guide):
+            check(f"{lang} help: {example[:30]!r} splits off its words",
+                  bot.split_caption(example.split(" ", 1)[1], True)[1] is not None)
+
     # Every example the help gives has to be one the bot understands.
     for lang in ("fa", "en"):
         guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
@@ -2843,6 +2903,29 @@ def test_convert() -> None:
             except Exception as exc:  # noqa: BLE001
                 ok, detail = False, repr(exc)
             check(f"words on a {kind}", ok, detail)
+        # The bot's own: the words in a band above, the thing itself untouched.
+        card_buf = io.BytesIO()
+        Image.new("RGB", (800, 450), (0, 0, 0)).save(card_buf, "PNG")
+        banded = Image.open(io.BytesIO(convert.caption_picture(card_buf.getvalue(), "سلام دنیا")))
+        check("a card gets a band above it", banded.height > 450 and banded.width == 800
+              and banded.getpixel((2, 2)) == (255, 255, 255)
+              and banded.getpixel((400, banded.height - 5)) == (0, 0, 0), str(banded.size))
+        data, ext = convert.caption_above("sticker", still_sticker, "سلام دنیا")
+        banded = Image.open(io.BytesIO(data))
+        check("a sticker with a band stays a 512 px sticker",
+              ext == "webp" and max(banded.size) == 512, f"{ext} {banded.size}")
+        data, ext = convert.caption_above("animation", video, "سلام دنیا")
+        (tmp / "band.mp4").write_bytes(data)
+        size = convert._dimensions(tmp / "band.mp4")
+        check("a GIF with a band is taller than it was, and as wide",
+              ext == "mp4" and size and size[1] > 360 * size[0] / 640, str(size))
+        try:
+            convert.caption_above("video_sticker", video_sticker, "x")
+            refused = False
+        except convert.Unsupported:
+            refused = True
+        check("the band is only for what the bot makes itself", refused)
+
         layer = convert._caption_layer((512, 512), "سلام دنیا")
         inked = layer.getchannel("A").getbbox()
         check("the words sit at the bottom", inked is not None and inked[1] > 300

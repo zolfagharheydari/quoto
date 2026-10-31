@@ -372,34 +372,46 @@ def convert(target: str, kind: str, data: bytes, span=None) -> tuple[bytes, str]
 CAPTION_KINDS = ("sticker", "video_sticker", "animated_sticker", "animation")
 CAPTION_MAX_CHARS = 120
 CAPTION_MIN_SIDE = 480          # a small GIF is enlarged first, or its words would blur
+CAPTION_MAX_SIDE = 960          # and a big one kept big enough: the fire clip is 854 wide
+
+
+def _lay_out(text: str, width: float, height: float, sizes: range):
+    """(lines, font, line height, rtl) for `text` in a box, as big as it fits.
+
+    Wrapping greedily leaves one word alone on the last line; the narrowest
+    width that still takes as many lines shares the words out evenly. What
+    still does not fit is cut short.
+    """
+    import fonts
+    import textkit
+
+    rtl = textkit.is_rtl(text)
+    lines, font, line_height = textkit.fit(
+        text, lambda s: fonts.load("bold", s), width, height, sizes,
+        line_spacing=1.22, rtl=rtl)
+    limit = width
+    while len(lines) > 1 and limit > width * 0.5:
+        tried = textkit.wrap(text, font, limit * 0.95, rtl)
+        if len(tried) != len(lines):
+            break
+        lines, limit = tried, limit * 0.95
+    most = max(1, int(height) // line_height)
+    if len(lines) > most:
+        lines = lines[:most]
+        lines[-1] = lines[-1].rstrip() + "…"
+    return lines, font, line_height, rtl
 
 
 def _caption_layer(size: tuple[int, int], text: str) -> Image.Image:
     """The words alone, on a transparent picture of `size`."""
-    import fonts
     import textkit
 
     width, height = size
     layer = Image.new("RGBA", size, (0, 0, 0, 0))
     margin = round(width * 0.05)
-    rtl = textkit.is_rtl(text)
-    top = max(14, height // 6)
-    sizes = range(top, max(12, height // 22) - 1, -2)
-    lines, font, line_height = textkit.fit(
-        text, lambda s: fonts.load("bold", s), width - 2 * margin, height * 0.4, sizes,
-        line_spacing=1.22, rtl=rtl)
-    # Wrapping greedily leaves one word alone on the last line; the narrowest
-    # width that still takes as many lines shares the words out evenly.
-    limit = width - 2 * margin
-    while len(lines) > 1 and limit > width * 0.45:
-        tried = textkit.wrap(text, font, limit * 0.95, rtl)
-        if len(tried) != len(lines):
-            break
-        lines, limit = tried, limit * 0.95
-    most = max(1, int(height * 0.4) // line_height)
-    if len(lines) > most:
-        lines = lines[:most]
-        lines[-1] = lines[-1].rstrip() + "…"
+    lines, font, line_height, rtl = _lay_out(
+        text, width - 2 * margin, height * 0.4,
+        range(max(14, height // 6), max(12, height // 22) - 1, -2))
     stroke = max(2, round(font.size / 11))
     draw = ImageDraw.Draw(layer)
     first = height - margin - len(lines) * line_height + line_height // 2
@@ -416,6 +428,87 @@ def _fit_side(size: tuple[int, int], longest: int, at_least: int = 0) -> tuple[i
     w, h = size
     scale = min(longest / max(w, h), max(1.0, at_least / max(w, h)))
     return max(2, round(w * scale / 2) * 2), max(2, round(h * scale / 2) * 2)
+
+
+def caption_picture(data: bytes, text: str) -> bytes:
+    """`text` above a picture of the bot's own making - a quote card - as PNG.
+
+    Only ever the bot's own: a photo someone sends is not something words go
+    on (CAPTION_KINDS), but a card made with words asked for alongside is.
+    """
+    image = Image.open(io.BytesIO(data), formats=("PNG",)).convert("RGB")
+    band = _caption_band(image.width, text).convert("RGB")
+    out = Image.new("RGB", (image.width, band.height + image.height))
+    out.paste(band, (0, 0))
+    out.paste(image, (0, band.height))
+    buf = io.BytesIO()
+    out.save(buf, "PNG", compress_level=6)
+    return buf.getvalue()
+
+
+# The bot's own cards, stickers and clips are mostly words already: a quote, a
+# name, a handle. Written over them the caption buries what was made, so on
+# those it goes above instead, in black on a white band of its own - the way a
+# meme carries a caption over a picture that has words in it.
+BAND_PAPER = (255, 255, 255, 255)
+BAND_INK = (17, 17, 17, 255)
+
+
+def _caption_band(width: int, text: str) -> Image.Image:
+    """The words in a white band `width` wide and as tall as they need, at most
+    three lines."""
+    import textkit
+
+    pad = max(8, round(width * 0.045))
+    size = max(16, width // 13)
+    lines, font, line_height, rtl = _lay_out(
+        text, width - 2 * pad, int(size * 1.22) * 3,
+        range(size, max(12, width // 30) - 1, -2))
+    height = len(lines) * line_height + 2 * pad
+    height += height % 2                     # even, for the video it may top
+    band = Image.new("RGBA", (width, height), BAND_PAPER)
+    draw = ImageDraw.Draw(band)
+    for i, line in enumerate(lines):
+        font.draw_on(draw, (width / 2, pad + i * line_height + line_height / 2),
+                     textkit.shape(line, rtl), fill=BAND_INK, anchor="mm")
+    return band
+
+
+def caption_above(kind: str, data: bytes, text: str) -> tuple[bytes, str]:
+    """`text` in a band above a sticker ("sticker", .webp) or a GIF ("animation",
+    .mp4) of the bot's own making. Returns (bytes, file extension)."""
+    if kind == "sticker":
+        image = _open_picture(data).convert("RGBA")
+        band = _caption_band(image.width, text)
+        out = Image.new("RGBA", (image.width, band.height + image.height), (0, 0, 0, 0))
+        out.paste(band, (0, 0))
+        out.alpha_composite(image, (0, band.height))
+        scale = STICKER_SIDE / max(out.size)
+        out = out.resize((max(1, round(out.width * scale)), max(1, round(out.height * scale))),
+                         Image.LANCZOS)
+        buf = io.BytesIO()
+        out.save(buf, "WEBP", quality=90, method=6)
+        return buf.getvalue(), "webp"
+    if kind != "animation":
+        raise Unsupported(f"a band above {kind}")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        src = tmp / "in"
+        src.write_bytes(data)
+        found = _dimensions(src)
+        if found is None:
+            raise Unsupported("no picture in it")
+        w, h = _fit_side(found, CAPTION_MAX_SIDE, CAPTION_MIN_SIDE)
+        band = _caption_band(w, text)
+        band.convert("RGB").save(tmp / "band.png")
+        mp4 = tmp / "out.mp4"
+        graph = (f"[0:v]scale={w}:{h}:flags=bicubic,setsar=1,"
+                 f"pad={w}:{h + band.height}:0:{band.height}:white[v];[v][1:v]overlay=0:0[out]")
+        _run(["-i", str(src), "-i", str(tmp / "band.png"), "-filter_complex", graph,
+              "-map", "[out]", "-t", str(GIF_SECONDS), "-an", "-c:v", "libx264",
+              "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+              "-movflags", "+faststart", str(mp4)])
+        return mp4.read_bytes(), "mp4"
 
 
 def caption(kind: str, data: bytes, text: str) -> tuple[bytes, str]:
@@ -464,7 +557,7 @@ def caption(kind: str, data: bytes, text: str) -> tuple[bytes, str]:
         if kind == "video_sticker":
             size = _fit_side(found, STICKER_SIDE, STICKER_SIDE)
         else:
-            size = _fit_side(found, MAX_SIDE, CAPTION_MIN_SIDE)
+            size = _fit_side(found, CAPTION_MAX_SIDE, CAPTION_MIN_SIDE)
         _caption_layer(size, text).save(layer_png)
         w, h = size
         if kind == "video_sticker":
