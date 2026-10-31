@@ -2630,6 +2630,16 @@ def test_convert() -> None:
     for bad in ("1" * 59, "1 " * 30, "از " * 20, "1:" * 30, "1 تا " * 12):
         bot.take_span(bad * 100)
     check("a stretch of time cannot be made to backtrack", time.perf_counter() - started < 0.05)
+    # Every example the help gives has to be one the bot understands.
+    for lang in ("fa", "en"):
+        guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
+        examples = re.findall(r"«(تبدیل به [^»]+)»", guide)
+        examples += re.findall(r"(/to(?:gif|sticker|video|photo)(?: [\d:]+)*)", guide)
+        for example in examples:
+            check(f"{lang} help: «{example}» is understood", bot.convert_request(example) is not None,
+                  str(bot.convert_request(example)))
+        check(f"{lang} help shows how to cut part of a video", any(
+            (bot.convert_request(e) or ("", None))[1] for e in examples))
     check("a time is shown the way a player shows it",
           (bot._stamp(45), bot._stamp(65), bot._stamp(3725)) == ("0:45", "1:05", "1:02:05"))
     for span, reason in (((20, 10), "order"), ((0, 31), "long"), ((10, 10), "order")):
