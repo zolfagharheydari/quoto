@@ -69,6 +69,7 @@ Anything new, anything fixed, I say it there. Joining is up to you - only if you
 <b>فارسی هم می‌فهمم</b>
 به‌جای دستور، در جواب همان پیام کافی است بنویسید:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
+با متن دلخواه بالایش: «استیکرش کن، روش بنویس: …»
 
 <b>تبدیل</b>
 روی عکس یا ویدیو بنویسید «تبدیل به گیف» یا «تبدیل به استیکر»؛ برای فقط یک تکه از ویدیو: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵».
@@ -104,6 +105,7 @@ Anything new, anything fixed, I say it there. Joining is up to you - only if you
 <b>Persian phrases work too</b>
 As a reply, instead of a command:
 «کوتش کن» • «استیکرش کن» • «گیفش کن» • «شاتش کن» • «آتیشش کن»
+With words of your own above it: <code>/sticker caption: …</code>
 
 <b>Converting</b>
 Reply to a photo or a video with <code>/togif</code> or <code>/tosticker</code>; for just part of a video, <code>/togif 1:20 1:35</code>.
@@ -141,9 +143,13 @@ Full guide: /help""",
 
 بدون ریپلای هم می‌شود: <code>/quote متن دلخواه</code> — کارت به نام خودت ساخته می‌شود.
 
-✍️ <b>همراه با متن</b> — متن دلخواهت را هم بنویس تا در نواری بالای کارت، استیکر یا گیف بیاید:
+✍️ <b>متن دلخواه</b>
+<b>موقع ساختن</b> — «روش بنویس: …» را بعد از درخواستت اضافه کن؛ متن در نواری بالای کارت، استیکر یا گیف می‌آید:
 «استیکرش کن، روش بنویس: وقتی می‌گن جلسه پنج دقیقه‌ست»
-«گیفش کن، روش بنویس: …» یا <code>/sticker روش بنویس: …</code>
+با «کوتش کن»، «گیفش کن»، «شاتش کن» و «آتیشش کن» هم، و با دستور: <code>/sticker روش بنویس: …</code>
+بدون ریپلای، متنِ نوار را با ویرگول جدا کن: <code>/quote حرف خودم، روش بنویس: …</code>
+<b>روی گیف یا استیکری که از قبل هست</b> — رویش ریپلای کن و بنویس «روش بنویس: …» یا <code>/text …</code>؛ پایینش نوشته می‌شود، مثل میم.
+متن تا ۱۲۰ حرف.
 
 🔄 <b>تبدیل</b> — روی عکس، ویدیو، گیف یا استیکر ریپلای کن:
 «تبدیل به گیف» یا «تبدیل به استیکر» — از عکس و ویدیو
@@ -155,10 +161,7 @@ Full guide: /help""",
 «تبدیل به گیف از ۲:۰۵» — از همان لحظه، تا ۳۰ ثانیه
 «تبدیل به استیکر از ۰:۴۵» — استیکر ویدیویی از همان لحظه
 گیف تا ۳۰ ثانیه می‌شود و استیکر تا ۳ ثانیه. ویدیو باید زیر ۲۰ مگابایت باشد؛ تلگرام فایل بزرگ‌تر را به ربات نمی‌دهد.
-
-✍️ <b>متن روی گیف و استیکر</b> — روی گیف یا هر استیکری ریپلای کن:
-«روش بنویس: متن دلخواه» یا <code>/text متن دلخواه</code>
-متن پایینش نوشته می‌شود، مثل میم؛ گیف گیف می‌ماند و استیکر استیکر (تا ۱۲۰ حرف).
+متن هم می‌شود: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵، روش بنویس: …»
 
 ➋ <b>در چتی که عضوش نیستم</b>
 پیوی دوستانت، گروه‌های دیگر — لازم نیست اضافه‌ام کنی. روی پیام ریپلای کن و بنویس:
@@ -166,6 +169,7 @@ Full guide: /help""",
 <code>@BOT گیفش کن</code>، <code>@BOT آتیشش کن</code>، <code>@BOT شاتش کن</code>…
 جواب را خودم در همان چت می‌فرستم، با اسم و عکس همان آدم.
 بدون ریپلای: <code>@BOT /quote متن</code> — از حرف خودت.
+با متن دلخواه: <code>@BOT استیکرش کن، روش بنویس: سلام</code>
 تبدیل هم همین‌طور: <code>@BOT تبدیل به گیف ۱:۲۰ تا ۱:۳۵</code>، <code>@BOT روش بنویس: سلام</code>
 استیکرهایی که در یک گروه می‌سازی به پک همان گروه می‌روند؛ <code>@BOT /pack</code> لینکش را می‌دهد.
 
@@ -214,8 +218,10 @@ The Persian phrases work too: «کوتش کن» «استیکرش کن» «گیف
 
 No reply needed: <code>/quote any text</code> makes a card credited to you.
 
-✍️ <b>With words of your own</b> — add them and they go in a band above the card, sticker or GIF:
-<code>/sticker caption: hello</code>
+✍️ <b>Words of your own</b>
+<b>While making it</b>: <code>/sticker caption: hello</code> — in a band above the card, sticker or GIF; the same with /quote, /gif, /screenshot and /fire.
+<b>On a GIF or sticker that already exists</b>: reply with <code>/text hello</code> — along the bottom, meme style.
+Up to 120 characters.
 
 🔄 <b>Converting</b> — reply to a photo, video, GIF or sticker:
 <code>/togif</code> or <code>/tosticker</code> — from a photo or a video
@@ -228,15 +234,13 @@ No reply needed: <code>/quote any text</code> makes a card credited to you.
 <code>/tosticker 0:45</code> — a video sticker from that moment
 Up to 30 seconds for a GIF, 3 for a sticker; the video has to be under 20 MB.
 
-✍️ <b>Words on a GIF or a sticker</b> — reply to a GIF or any sticker:
-<code>/text your words</code> — written along the bottom, meme style (up to 120 characters)
-
 ➋ <b>In a chat I'm not in</b>
 Your friends' chats, other groups — no need to add me. Reply to a message with:
 <code>@BOT /quote</code> — a quote card
 <code>@BOT /gif</code>, <code>@BOT /fire</code>, <code>@BOT /screenshot</code>…
 I answer in that same chat, with that person's name and photo.
 No reply: <code>@BOT /quote your text</code> quotes your own words.
+With words of your own: <code>@BOT /sticker caption: hello</code>
 Converting works the same way: <code>@BOT /togif 1:20 1:35</code>, <code>@BOT /text hello</code>
 Stickers made in a group join that group's pack; <code>@BOT /pack</code> gives its link.
 
@@ -732,9 +736,13 @@ Sticker → photo""",
     "caption_how": {
         "fa": """روی یه گیف یا استیکر ریپلای کن و بنویس:
 «روش بنویس: متن دلخواه»
-یا /text متن دلخواه""",
+یا /text متن دلخواه
+
+موقع ساختن کوت هم می‌شه: «استیکرش کن، روش بنویس: …»""",
         "en": """Reply to a GIF or a sticker with:
-/text your words""",
+/text your words
+
+Or while making one: /sticker caption: your words""",
     },
     "caption_unsupported": {
         "fa": "متن رو فقط روی گیف و استیکر می‌تونم بنویسم.",

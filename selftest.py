@@ -124,7 +124,10 @@ def test_i18n() -> None:
     class Tags(html.parser.HTMLParser):
         def __init__(self):
             super().__init__()
-            self.stack, self.bad = [], []
+            self.stack, self.bad, self.shown = [], [], []
+
+        def handle_data(self, data):
+            self.shown.append(data)
 
         def handle_starttag(self, tag, attrs):
             if tag not in allowed:
@@ -144,7 +147,10 @@ def test_i18n() -> None:
             parser.feed(text)
             check(f"{key}/{lang} html", not (parser.bad or parser.stack),
                   str(parser.bad or parser.stack))
-            check(f"{key}/{lang} length", len(text) <= 4096, str(len(text)))
+            # Telegram's 4096 is counted after the tags are taken out, in the
+            # UTF-16 units an emoji takes two of.
+            shown = len("".join(parser.shown).encode("utf-16-le")) // 2
+            check(f"{key}/{lang} length", shown <= 4096, str(shown))
 
     for lang in ("fa", "en"):
         desc = i18n.DESCRIPTIONS[lang]
@@ -2718,7 +2724,8 @@ def test_convert() -> None:
     # Every example the help gives has to be one the bot understands.
     for lang in ("fa", "en"):
         guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
-        examples = re.findall(r"«(تبدیل به [^»]+)»", guide)
+        # With «، روش بنویس» after it, it is checked with the words, further up.
+        examples = re.findall(r"«(تبدیل به [^»،]+)»", guide)
         examples += re.findall(r"(/to(?:gif|sticker|video|photo)(?: [\d:]+)*)", guide)
         for example in examples:
             check(f"{lang} help: «{example}» is understood", bot.convert_request(example) is not None,
