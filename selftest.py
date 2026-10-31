@@ -1531,6 +1531,8 @@ def test_handler_groups() -> None:
     check("so does «@getquoto_bot پک»", reached("@getquoto_bot پک") is bot.on_group_mention)
     check("a plain «استیکرش کن» reply is still the phrase handler",
           reached("استیکرش کن", reply=True) is bot.cmd_quote_sticker)
+    check("«تبدیل به گیف ۱:۲۰ تا ۱:۳۵» on a reply is a conversion",
+          reached("تبدیل به گیف ۱:۲۰ تا ۱:۳۵", reply=True) is bot.on_convert_phrase)
 
 
 def test_wallpaper() -> None:
@@ -2391,7 +2393,10 @@ def test_guest() -> None:
         check("member group: «بذارش تو پک» adds to a pack", [c[0] for c in got] == ["on_add_to_pack"])
         got, _ = run_member("@getquoto_bot تبدیل به گیف")
         check("member group: «تبدیل به گیف» converts",
-              got == [("_convert_and_reply", [], ("gif",))], str(got))
+              got == [("_convert_and_reply", [], ("gif", None))], str(got))
+        got, _ = run_member("@getquoto_bot تبدیل به گیف ۱۰ تا ۲۰")
+        check("member group: and keeps the stretch of video asked for",
+              got == [("_convert_and_reply", [], ("gif", (10, 20)))], str(got))
         got, said = run_member("@getquoto_bot سلام")
         check("member group: spoken to with nothing it knows, how it is used",
               not got and said == [i18n.t("guest_how", "fa")], str(said)[:60])
@@ -2599,6 +2604,48 @@ def test_convert() -> None:
     bot.CONVERT_RE.search("تبدیل به" + " " * 4000 + "x")
     check("the conversion phrase cannot be made to backtrack", time.perf_counter() - started < 0.05)
 
+    # One stretch of a video: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵» and the ways it gets typed.
+    for said, expected in (("تبدیل به گیف ۱:۲۰ تا ۱:۳۵", ("gif", (80, 95))),
+                           ("تبدیل به گیف از ۱۰ تا ۲۰", ("gif", (10, 20))),
+                           ("از ثانیه ۱۰ تا ثانیه ۲۰ تبدیل به گیف کن", ("gif", (10, 20))),
+                           ("۱:۲۰ تا ۱:۳۵ رو تبدیل به گیف کن", ("gif", (80, 95))),
+                           ("تبدیل به گیف ۱۰ ثانیه تا ۲۰ ثانیه", ("gif", (10, 20))),
+                           ("تبدیل به گیف 1.20-1.35", ("gif", (80, 95))),
+                           ("تبدیل به گیف از ۲:۰۵", ("gif", (125, None))),
+                           ("تبدیل به گیف ۲:۰۵", ("gif", (125, None))),
+                           ("تبدیل به استیکر از ۱:۲۰", ("sticker", (80, None))),
+                           ("to gif 0:10-0:20", ("gif", (10, 20))),
+                           ("/togif 1:20 1:35", ("gif", (80, 95))),
+                           ("/togif 75", ("gif", (75, None))),
+                           ("تبدیل به گیف", ("gif", None)),
+                           ("تبدیل به گیف ۵", None),
+                           ("تبدیل به گیف 10000 20", None),
+                           ("/togif blah", None)):
+        check(f"«{said}» -> {expected}", bot.convert_request(said) == expected,
+              str(bot.convert_request(said)))
+    for typed, expected in (("1:20 1:35", (80, 95)), ("1:20-1:35", (80, 95)), ("۷۵", (75, None)),
+                            ("از 75", (75, None)), ("blah", None), ("", None)):
+        check(f"/togif {typed!r} -> {expected}", bot.args_span(typed) == expected)
+    started = time.perf_counter()
+    for bad in ("1" * 59, "1 " * 30, "از " * 20, "1:" * 30, "1 تا " * 12):
+        bot.take_span(bad * 100)
+    check("a stretch of time cannot be made to backtrack", time.perf_counter() - started < 0.05)
+    check("a time is shown the way a player shows it",
+          (bot._stamp(45), bot._stamp(65), bot._stamp(3725)) == ("0:45", "1:05", "1:02:05"))
+    for span, reason in (((20, 10), "order"), ((0, 31), "long"), ((10, 10), "order")):
+        try:
+            convert.check_span("gif", span)
+            said = None
+        except convert.BadSpan as exc:
+            said = exc.reason
+        check(f"a GIF of {span} is refused: {reason}", said == reason)
+    try:
+        convert.check_span("sticker", (0, 4))
+        said = None
+    except convert.BadSpan as exc:
+        said = (exc.reason, exc.seconds)
+    check("a video sticker is three seconds at most", said == ("long", 3))
+
     # What may be made from what.
     for target, kind, ok in (("gif", "photo", True), ("sticker", "video", True),
                              ("video", "animated_sticker", True), ("photo", "sticker", True),
@@ -2695,6 +2742,43 @@ def test_convert() -> None:
         probe = _sp.run([ff, "-i", "-"], input=data, capture_output=True)
         check("a video gets a sound track, so Telegram keeps it a video",
               b"Audio:" in probe.stderr)
+        # A stretch of a longer video: where it says, as long as it says.
+        _sp.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                 "testsrc=size=320x180:rate=25:duration=12", "-c:v", "libx264", "-preset",
+                 "ultrafast", "-pix_fmt", "yuv420p", str(tmp / "long.mp4")], check=True)
+        longer = (tmp / "long.mp4").read_bytes()
+
+        def runs(data, ext):
+            (tmp / f"cut.{ext}").write_bytes(data)
+            return convert._duration(tmp / f"cut.{ext}") or 0
+
+        def first_frame(path, at=None):
+            seek = ["-ss", str(at)] if at is not None else []
+            return _sp.run([ff, "-loglevel", "error", *seek, "-i", str(path), "-frames:v", "1",
+                            "-f", "rawvideo", "-pix_fmt", "gray", "-s", "64x36", "-"],
+                           capture_output=True).stdout
+
+        def apart(x, y):
+            return sum(abs(p - q) for p, q in zip(x, y)) / max(1, len(x))
+
+        data, ext = convert.convert("gif", "video", longer, (4, 7))
+        check("a GIF of 0:04 to 0:07 is three seconds long", abs(runs(data, ext) - 3) < 0.2,
+              str(runs(data, ext)))
+        cut = first_frame(tmp / "cut.mp4")
+        at_four, at_zero = first_frame(tmp / "long.mp4", 4), first_frame(tmp / "long.mp4")
+        check("and starts at 0:04, not at the beginning",
+              apart(cut, at_four) < 2 < apart(cut, at_zero), f"{apart(cut, at_four):.1f}")
+        data, ext = convert.convert("gif", "video", longer, (10, None))
+        check("from 0:10 on runs to the end of the video", abs(runs(data, ext) - 2) < 0.2)
+        data, ext = convert.convert("sticker", "video", longer, (3, None))
+        check("a sticker from 0:03 is three seconds of it", abs(runs(data, ext) - 3) < 0.2)
+        try:
+            convert.convert("gif", "video", longer, (20, None))
+            said = None
+        except convert.BadSpan as exc:
+            said = (exc.reason, exc.seconds)
+        check("a start past the end says how long the video is", said == ("past", 12), str(said))
+
         big = _gzip.compress(b"{" + b" " * (convert.TGS_MAX_JSON + 10) + b"}")
         try:
             convert.convert("video", "animated_sticker", big)
@@ -2732,20 +2816,42 @@ def test_convert() -> None:
                     return bytearray(photo)
             return F()
 
-    async def run(target):
+    said_texts = []
+
+    async def run(target, span=None, args=None):
         message = Reply()
+
+        async def reply_text(text, **kw):
+            sent.append(("reply_text", None))
+            said_texts.append(text)
+        message.reply_text = reply_text
         update = types.SimpleNamespace(effective_message=message,
                                        effective_user=types.SimpleNamespace(id=7, language_code="fa"),
                                        effective_chat=types.SimpleNamespace(id=7))
         ctx = types.SimpleNamespace(bot=ConvertBot(), user_data={"started": True},
-                                    bot_data={"exempt": {7}})
-        await bot._convert_and_reply(update, ctx, target)
+                                    bot_data={"exempt": {7}}, args=args)
+        if args is not None:
+            await bot._convert_command(target)(update, ctx)
+        else:
+            await bot._convert_and_reply(update, ctx, target, span)
     sent.clear()
     asyncio.run(run("gif"))
     check("a photo made into a GIF is sent as an animation under it", sent == [("reply_animation", 5)], str(sent))
     sent.clear()
     asyncio.run(run("video"))
     check("a photo cannot be made into a video, and says so", sent and sent[0][0] == "reply_text", str(sent))
+    said_texts.clear()
+    asyncio.run(run("gif", (20, 10)))
+    check("a stretch that ends before it starts is explained, not cut",
+          said_texts == [i18n.t("convert_span_order", "fa")], str(said_texts)[:80])
+    said_texts.clear()
+    asyncio.run(run("gif", (0, 45)))
+    check("one too long says how long it may be",
+          len(said_texts) == 1 and "30" in said_texts[0], str(said_texts)[:80])
+    said_texts.clear()
+    asyncio.run(run("gif", args=["از", "اول"]))
+    check("/togif with words that are not a time says how to give one",
+          said_texts == [i18n.t("convert_span_how", "fa")], str(said_texts)[:80])
     source = (ROOT / "bot.py").read_text(encoding="utf-8")
     check("conversions wait in their own queue", "throttle.MEDIA.run(convert.convert" in source)
     for target in ("gif", "sticker", "video", "photo"):

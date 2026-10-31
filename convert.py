@@ -2,6 +2,7 @@
 
 Reply to a photo or a video with «تبدیل به گیف» or «تبدیل به استیکر», to a GIF
 or an animated sticker with «تبدیل به ویدیو», to a sticker with «تبدیل به عکس».
+A GIF or a sticker can be made of one stretch of a video: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵».
 
 Everything here runs in a worker thread behind its own gate and works on
 bytes in a temporary directory; ffmpeg does the video and runs under a
@@ -15,6 +16,7 @@ from __future__ import annotations
 import gzip
 import io
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -54,6 +56,37 @@ class Unsupported(Exception):
 
 class TooBig(Exception):
     """The file is larger than a bot is allowed to download."""
+
+
+class BadSpan(Exception):
+    """A stretch of a video that cannot be cut: `reason` is "order", "long" or "past".
+
+    `seconds` is the longest a stretch may be ("long"), or how long the video
+    actually is ("past").
+    """
+
+    def __init__(self, reason: str, seconds: int = 0):
+        super().__init__(reason)
+        self.reason, self.seconds = reason, seconds
+
+
+# The longest stretch each kind of result can be cut from.
+SPAN_LIMIT = {"gif": GIF_SECONDS, "sticker": VIDEO_STICKER_SECONDS}
+
+
+def check_span(target: str, span) -> None:
+    """Raise BadSpan unless (start, end) - end None for "from start on" - can be cut.
+
+    Whether the start is inside the video is only known once it is downloaded;
+    this is what can be said before that.
+    """
+    if span is None or target not in SPAN_LIMIT:
+        return
+    start, end = span
+    if end is not None and end <= start:
+        raise BadSpan("order")
+    if end is not None and end - start > SPAN_LIMIT[target]:
+        raise BadSpan("long", SPAN_LIMIT[target])
 
 
 def ffmpeg_exe() -> str:
@@ -111,6 +144,35 @@ def _run(args: list[str]) -> None:
                           capture_output=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
     if done.returncode != 0:
         raise RuntimeError("ffmpeg: " + done.stderr.decode("utf-8", "ignore")[-400:])
+
+
+def _duration(src: Path) -> float | None:
+    """How long a video runs, from what ffmpeg says about it; None if it does not say."""
+    done = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(src)],
+                          capture_output=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
+    found = re.search(rb"Duration: (\d+):(\d\d):(\d\d(?:\.\d+)?)", done.stderr)
+    if found is None:
+        return None
+    hours, minutes, seconds = found.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _window(src: Path, span, limit: float) -> tuple[list[str], str]:
+    """Where to start reading (ffmpeg's -ss) and for how long (its -t).
+
+    No span is the start of the video, as before. A span is cut where it says,
+    to the end of the video at the latest, and never longer than `limit`.
+    """
+    if span is None:
+        return [], f"{limit:g}"
+    start, end = span
+    length = _duration(src)
+    if length is not None and start >= length:
+        raise BadSpan("past", int(length))
+    stop = start + limit if end is None else min(end, start + limit)
+    if length is not None:
+        stop = min(stop, length)
+    return ["-ss", f"{start:g}"], f"{stop - start:g}"
 
 
 def _even_scale(longest: int) -> str:
@@ -179,8 +241,14 @@ _ON_WHITE = ("[0:v]format=rgba,setsar=1[s];color=c=white,format=rgb24[bg];"
 
 
 # ------------------------------------------------------------------ conversions
-def convert(target: str, kind: str, data: bytes) -> tuple[bytes, str]:
-    """Make `target` from `data`, which is a `kind`. Returns (bytes, file extension)."""
+def convert(target: str, kind: str, data: bytes, span=None) -> tuple[bytes, str]:
+    """Make `target` from `data`, which is a `kind`. Returns (bytes, file extension).
+
+    `span` is (start, end) in seconds, end None for "from start on": the
+    stretch of a video or a GIF that a GIF or a video sticker is cut from.
+    Anything without a timeline - a photo, an animated sticker - ignores it.
+    """
+    check_span(target, span)
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         src = tmp / "in"
@@ -218,8 +286,9 @@ def convert(target: str, kind: str, data: bytes) -> tuple[bytes, str]:
             webm = out.with_suffix(".webm")
             scale = (f"scale='if(gte(iw,ih),{STICKER_SIDE},-2)':'if(gte(iw,ih),-2,{STICKER_SIDE})'"
                      ":flags=area,fps=30")
+            seek, seconds = _window(src, span, VIDEO_STICKER_SECONDS)
             for bitrate in ("700k", "450k", "280k", "160k", "90k"):
-                _run(["-i", str(src), "-t", str(VIDEO_STICKER_SECONDS), "-an", "-vf", scale,
+                _run([*seek, "-i", str(src), "-t", seconds, "-an", "-vf", scale,
                       "-c:v", "libvpx-vp9", "-b:v", bitrate, "-crf", "34", "-deadline", "good",
                       "-row-mt", "1", "-pix_fmt", "yuva420p", str(webm)])
                 if webm.stat().st_size <= VIDEO_STICKER_BYTES:
@@ -242,7 +311,8 @@ def convert(target: str, kind: str, data: bytes) -> tuple[bytes, str]:
                 _frames_to_mp4(frames, fps, mp4, audio=False)
             else:
                 decoder = ["-c:v", "libvpx-vp9"] if kind == "video_sticker" else []
-                _run([*decoder, "-i", str(src), "-t", str(GIF_SECONDS), "-an",
+                seek, seconds = _window(src, span, GIF_SECONDS)
+                _run([*decoder, *seek, "-i", str(src), "-t", seconds, "-an",
                       *(["-filter_complex", _ON_WHITE + "," + _even_scale(MAX_SIDE)]
                         if kind == "video_sticker" else ["-vf", _even_scale(MAX_SIDE)]),
                       "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",

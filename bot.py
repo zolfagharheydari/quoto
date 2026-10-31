@@ -1751,27 +1751,109 @@ CONVERT_RE = re.compile(
     r"(?:\s*(?:لطفا|لطفاً|please))?[\s.!?؟،]*$", re.IGNORECASE)
 
 
-def convert_target(text: str) -> str | None:
-    """What a phrase asks the replied-to media to become, if it is a conversion."""
-    if not text or len(text) > TRIGGER_MAX_CHARS:
+# One stretch of a video, for its GIF or its sticker: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵»,
+# «از ثانیه ۱۰ تا ۲۰», «از ۲:۰۵», /togif 1:20 1:35. Persian digits are digits,
+# and a dot does what a colon does, since 1.20 is how a minute and twenty
+# seconds often gets typed. A bare number on its own in a phrase is not a time
+# - «تبدیل به گیف ۵» says nothing about where - unless it follows «از».
+_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫", "01234567890123456789.")
+_TIME = r"(?<![\d:.])\d{1,3}(?:[:.]\d{1,2}){0,2}(?![\d:.])"
+_SECONDS_WORD = r"(?:\s*(?:ثانیه|sec|s)\b)?"
+_SPAN_RE = re.compile(
+    r"(?:(?:از|from)\s*)?(?:ثانیه\s*)?(?P<a>" + _TIME + ")" + _SECONDS_WORD
+    + r"(?:\s*(?:تا|الی|to|-|–|—)\s*|\s+)(?:ثانیه\s*)?(?P<b>" + _TIME + ")" + _SECONDS_WORD
+    + r"|(?:از|from)\s*(?:ثانیه\s*)?(?P<c>" + _TIME + ")" + _SECONDS_WORD
+    + r"|(?P<d>(?<![\d:.])\d{1,3}[:.]\d{1,2}(?:[:.]\d{1,2})?(?![\d:.]))", re.IGNORECASE)
+CONVERT_MAX_CHARS = 60      # «این رو از ثانیه ۱۰ تا ثانیه ۲۰ تبدیل به گیف کن لطفا» is 50
+
+
+def _seconds(stamp: str) -> int:
+    total = 0
+    for part in re.split(r"[:.]", stamp):
+        total = total * 60 + int(part)
+    return total
+
+
+def take_span(text: str) -> tuple[str, tuple[int, int | None] | None]:
+    """The words without a stretch of time in them, and the stretch: (start, end),
+    end None for "from start on", or None when no time was given."""
+    plain = (text or "").translate(_DIGITS)
+    found = _SPAN_RE.search(plain)
+    if found is None:
+        return text, None
+    a, b, c, d = found.group("a", "b", "c", "d")
+    span = (_seconds(a), _seconds(b)) if a else (_seconds(c or d), None)
+    rest = plain[:found.start()] + " " + re.sub(r"^\s*(?:رو|را)(?!\S)", "", plain[found.end():])
+    return " ".join(rest.split()), span
+
+
+def args_span(words: str) -> tuple[int, int | None] | None:
+    """The stretch typed after /togif or /tosticker - "1:20 1:35", "1:20-1:35",
+    "از 75", or just "75" - or None if the words are not one."""
+    plain = " ".join((words or "").translate(_DIGITS).split())
+    if not plain or len(plain) > CONVERT_MAX_CHARS:
         return None
-    command = re.fullmatch(r"/to(gif|sticker|video|photo)(?:@\w+)?", text.strip(), re.IGNORECASE)
+    if re.fullmatch(_TIME, plain):
+        return _seconds(plain), None
+    rest, span = take_span(plain)
+    return None if rest else span
+
+
+def convert_request(text: str) -> tuple[str, tuple[int, int | None] | None] | None:
+    """(what to make, which stretch of the video) that a phrase asks for, or None."""
+    if not text or len(text) > CONVERT_MAX_CHARS:
+        return None
+    command = re.match(r"^\s*/to(gif|sticker|video|photo)(?:@\w+)?(?:\s+|$)", text, re.IGNORECASE)
     if command:                       # the commands, as a guest writes them
-        return command.group(1).lower()
-    match = CONVERT_RE.search(text)
+        after = text[command.end():].strip()
+        span = args_span(after)
+        if after and span is None:
+            return None
+        return command.group(1).lower(), span
+    rest, span = take_span(text)
+    match = CONVERT_RE.search(rest) if len(rest) <= TRIGGER_MAX_CHARS else None
     if match is None:
         return None
     word = next(v for k, v in match.groupdict().items() if v)
-    return _CONVERT_NAMES[word.lower()]
+    return _CONVERT_NAMES[word.lower()], span
 
 
-async def _download_media(context, target_message, target: str):
-    """(kind, bytes) of the media to convert; raises convert.Unsupported / TooBig."""
+def convert_target(text: str) -> str | None:
+    """What a phrase asks the replied-to media to become, if it is a conversion."""
+    request = convert_request(text)
+    return request[0] if request else None
+
+
+def _stamp(seconds: int) -> str:
+    """1:05, the way a video player shows a time."""
+    hours, rest = divmod(int(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _span_problem(exc: "convert.BadSpan", target: str, lang: str) -> str:
+    """What to say about a stretch of video that cannot be cut."""
+    return i18n.t(f"convert_span_{exc.reason}", lang).format(
+        target=i18n.t(f"convert_name_{target}", lang), seconds=exc.seconds,
+        length=_stamp(exc.seconds))
+
+
+class _ConvertPhrase(filters.MessageFilter):
+    """A message asking for a conversion, maybe of one stretch of a video."""
+
+    def filter(self, message: Message) -> bool:
+        return convert_request(message.text or "") is not None
+
+
+async def _download_media(context, target_message, target: str, span=None):
+    """(kind, bytes) of the media to convert; raises convert.Unsupported / TooBig,
+    and BadSpan for a stretch that cannot be cut whatever the video is."""
     found = convert.media_of(target_message)
     if found is None:
         raise convert.Unsupported("no media")
     kind, file_id, size = found
     convert.check(target, kind, size)
+    convert.check_span(target, span)
     file = await context.bot.get_file(file_id)
     convert.check(target, kind, file.file_size or 0)
     return kind, bytes(await file.download_as_bytearray())
@@ -1785,7 +1867,7 @@ def _named(data: bytes, ext: str) -> io.BytesIO:
 
 
 async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                             target: str) -> None:
+                             target: str, span=None) -> None:
     message = update.effective_message
     if not await _require_start(update, context):
         return
@@ -1803,8 +1885,8 @@ async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
               "sticker": ChatAction.CHOOSE_STICKER, "photo": ChatAction.UPLOAD_PHOTO}[target]
     await message.chat.send_action(action)
     try:
-        kind, data = await _download_media(context, source, target)
-        result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data)
+        kind, data = await _download_media(context, source, target, span)
+        result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data, span)
         reply = source.message_id
         if target == "gif":
             await message.reply_animation(_named(result, ext), reply_to_message_id=reply)
@@ -1821,6 +1903,8 @@ async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
             target=i18n.t(f"convert_name_{target}", lang)))
     except convert.TooBig:
         await message.reply_text(i18n.t("convert_too_big", lang))
+    except convert.BadSpan as exc:
+        await message.reply_text(_span_problem(exc, target, lang))
     except throttle.Busy:
         await message.reply_text(i18n.t("busy", lang))
     except TelegramError:
@@ -1831,14 +1915,21 @@ async def _convert_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 async def on_convert_phrase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    target = convert_target(update.effective_message.text or "")
-    if target is not None:
-        await _convert_and_reply(update, context, target)
+    request = convert_request(update.effective_message.text or "")
+    if request is not None:
+        await _convert_and_reply(update, context, *request)
 
 
 def _convert_command(target: str):
     async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await _convert_and_reply(update, context, target)
+        words = " ".join(context.args or [])
+        span = args_span(words)
+        if words and span is None and target in convert.SPAN_LIMIT:
+            # Words that were meant as a time and are not one: better to say
+            # how than to make a GIF of the first thirty seconds instead.
+            await update.effective_message.reply_text(_t("convert_span_how", update, context))
+            return
+        await _convert_and_reply(update, context, target, span)
     return handler
 
 
@@ -1994,13 +2085,15 @@ async def _guest_upload(context, kind: str, data, user_id: int) -> str:
     return file_id
 
 
-async def _guest_convert(context, source, target: str, user_id: int, lang: str):
+async def _guest_convert(context, source, target: str, user_id: int, lang: str, span=None):
     """The one guest answer for a conversion: the converted file, or why not."""
     from telegram import (InlineQueryResultCachedMpeg4Gif, InlineQueryResultCachedPhoto,
                           InlineQueryResultCachedSticker, InlineQueryResultCachedVideo)
     try:
-        kind, data = await _download_media(context, source, target)
-        result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data)
+        kind, data = await _download_media(context, source, target, span)
+        result, ext = await throttle.MEDIA.run(convert.convert, target, kind, data, span)
+    except convert.BadSpan as exc:
+        return _guest_said(_span_problem(exc, target, lang))
     except convert.Unsupported:
         return _guest_text(lang, "convert_unsupported",
                            target=i18n.t(f"convert_name_{target}", lang))
@@ -2092,13 +2185,13 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if kind == "unknown":
             # Not a command for a card: maybe one of the other things a guest
             # can ask for, and if not, how it is used - never a card of it.
-            wanted = convert_target(own)
+            wanted = convert_request(own)
             if _PACK_LINK_RE.fullmatch(own):
                 said = _guest_said(await _group_pack_text(context, message.chat, lang))
             elif is_add_phrase(own):
                 said = _guest_said(await _add_replied(context, target, user, lang))
             elif wanted is not None:
-                said = (await _guest_convert(context, target, wanted, user.id, lang)
+                said = (await _guest_convert(context, target, wanted[0], user.id, lang, wanted[1])
                         if target is not None and convert.media_of(target) is not None
                         else _guest_text(lang, "convert_need_reply"))
             elif named:
@@ -2223,8 +2316,8 @@ async def on_group_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await cmd_pack(update, context)
     elif is_add_phrase(own):
         await on_add_to_pack(update, context)
-    elif convert_target(own) is not None:
-        await _convert_and_reply(update, context, convert_target(own))
+    elif convert_request(own) is not None:
+        await _convert_and_reply(update, context, *convert_request(own))
     elif text.lstrip().lower().startswith("@" + username.lower()) and not _too_soon(context):
         # Spoken to, but asked for nothing it knows: how it is used. Named in
         # passing, in the middle of someone's sentence, it stays out of it.
@@ -2416,7 +2509,7 @@ def register(app: Application) -> None:
     handlers = {"quote": cmd_quote, "sticker": cmd_quote_sticker, "gif": cmd_quote_gif,
                 "shot": cmd_screenshot, "fire": cmd_fire}
     app.add_handler(MessageHandler(
-        filters.REPLY & _ShortText() & filters.Regex(CONVERT_RE), on_convert_phrase))
+        filters.REPLY & _ConvertPhrase(), on_convert_phrase))
     app.add_handler(MessageHandler(
         filters.REPLY & _ShortText() & filters.Regex(ADD_RE), on_add_to_pack))
     for name, pattern in TRIGGERS.items():

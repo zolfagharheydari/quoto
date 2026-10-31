@@ -135,6 +135,7 @@ Full guide: /help""",
 
 🔄 <b>تبدیل</b> — روی عکس، ویدیو، گیف یا استیکر ریپلای کن:
 «تبدیل به گیف» یا «تبدیل به استیکر» — از عکس و ویدیو
+«تبدیل به گیف ۱:۲۰ تا ۱:۳۵» — فقط همان تکهٔ ویدیو (گیف تا ۳۰ ثانیه، استیکر تا ۳ ثانیه)
 «تبدیل به ویدیو» — از گیف و استیکر متحرک
 «تبدیل به عکس» — از استیکر
 
@@ -192,6 +193,7 @@ No reply needed: <code>/quote any text</code> makes a card credited to you.
 
 🔄 <b>Converting</b> — reply to a photo, video, GIF or sticker:
 <code>/togif</code> or <code>/tosticker</code> — from a photo or a video
+<code>/togif 1:20 1:35</code> — just that part of the video (up to 30 seconds for a GIF, 3 for a sticker)
 <code>/tovideo</code> — from a GIF or an animated sticker
 <code>/tophoto</code> — from a sticker
 
@@ -669,6 +671,25 @@ Sticker → photo""",
     "convert_too_big": {
         "fa": "این فایل بیشتر از ۲۰ مگابایته؛ تلگرام اجازه نمی‌ده ربات فایل بزرگ‌تر از این رو دانلود کنه.",
         "en": "That file is over 20 MB, and Telegram doesn't let bots download anything bigger.",
+    },
+    "convert_span_order": {
+        "fa": "آخر بازه باید بعد از اولش باشه؛ مثلاً «تبدیل به گیف ۱:۲۰ تا ۱:۳۵».",
+        "en": "The end has to come after the start - for example /togif 1:20 1:35.",
+    },
+    "convert_span_long": {
+        "fa": "این بازه برای {target} زیادیه؛ حداکثر {seconds} ثانیه می‌شه.",
+        "en": "That's too long for {target}: {seconds} seconds at most.",
+    },
+    "convert_span_past": {
+        "fa": "این ویدیو کلاً {length} طول داره؛ شروع بازه باید قبل از اون باشه.",
+        "en": "That video is only {length} long; the start has to be before that.",
+    },
+    "convert_span_how": {
+        "fa": """بازه رو این‌جوری بنویس:
+/togif 1:20 1:35
+یا روی ویدیو ریپلای کن: «تبدیل به گیف ۱:۲۰ تا ۱:۳۵»""",
+        "en": """Give the part of the video like this:
+/togif 1:20 1:35""",
     },
     "convert_name_gif": {"fa": "گیف", "en": "a GIF"},
     "convert_name_sticker": {"fa": "استیکر", "en": "a sticker"},
