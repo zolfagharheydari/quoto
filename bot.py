@@ -313,8 +313,47 @@ async def _require_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return False
 
 
+def _help_page(page: str, lang: str, username: str) -> tuple[str, InlineKeyboardMarkup]:
+    """One page of /help and the buttons under it.
+
+    The front page is short and leads to each of the others; each of those
+    leads back to it. Everything in one message was more than anybody read.
+    """
+    key = "help" if page == "main" else f"help_{page}"
+    text = i18n.t(key, lang).replace("@BOT", f"@{username}")
+    if page == "main":
+        buttons = [InlineKeyboardButton(i18n.t(f"btn_help_{name}", lang),
+                                        callback_data=f"help:{name}")
+                   for name in i18n.HELP_SECTIONS]
+        rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    else:
+        rows = [[InlineKeyboardButton(i18n.t("btn_help_back", lang), callback_data="help:main")]]
+    return text, InlineKeyboardMarkup(rows)
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _send(update, context, "help")
+    lang = i18n.resolve(update, context.user_data)
+    text, markup = _help_page("main", lang, context.bot.username)
+    await update.effective_message.reply_html(text, reply_markup=markup,
+                                              disable_web_page_preview=True)
+
+
+async def on_help_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A button under /help: that page, in the same message."""
+    query = update.callback_query
+    page = query.data.split(":", 1)[1]
+    await query.answer()
+    if page != "main" and page not in i18n.HELP_SECTIONS:
+        return
+    text, markup = _help_page(page, i18n.resolve(update, context.user_data),
+                              context.bot.username)
+    try:
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup,
+                                      disable_web_page_preview=True)
+    except BadRequest as exc:
+        # Two taps on the same button: the page is already showing.
+        if "not modified" not in str(exc).lower():
+            raise
 
 
 async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1471,11 +1510,12 @@ async def post_init(app: Application) -> None:
             core, scope=BotCommandScopeAllGroupChats(), **kwargs
         )
         await app.bot.set_my_commands(core, **kwargs)  # anywhere else
+        held = i18n.rtl_safe if lang == "fa" else str
         await app.bot.set_my_description(
-            i18n.DESCRIPTIONS[lang].replace("@BOT", f"@{username}"), **kwargs
+            held(i18n.DESCRIPTIONS[lang].replace("@BOT", f"@{username}")), **kwargs
         )
         await app.bot.set_my_short_description(
-            i18n.SHORT_DESCRIPTIONS[lang].replace("@BOT", f"@{username}"), **kwargs
+            held(i18n.SHORT_DESCRIPTIONS[lang].replace("@BOT", f"@{username}")), **kwargs
         )
 
     # Persian is the default here for the same reason it is in i18n: English goes
@@ -2720,6 +2760,7 @@ def register(app: Application) -> None:
     app.add_handler(MessageHandler(filters.UpdateType.GUEST_MESSAGE, on_guest))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CallbackQueryHandler(on_help_button, pattern=r"^help:"))
     app.add_handler(CommandHandler("lang", cmd_lang))
     app.add_handler(CallbackQueryHandler(on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CommandHandler("debug", cmd_debug))

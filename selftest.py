@@ -140,7 +140,7 @@ def test_i18n() -> None:
             else:
                 self.bad.append("mismatch " + tag)
 
-    for key in ("welcome", "help", "group_intro"):
+    for key in ("welcome", "help", "group_intro", *(f"help_{n}" for n in i18n.HELP_SECTIONS)):
         for lang in ("fa", "en"):
             text = i18n.t(key, lang).replace("@BOT", "@getquoto_bot")
             parser = Tags()
@@ -153,8 +153,10 @@ def test_i18n() -> None:
             check(f"{key}/{lang} length", shown <= 4096, str(shown))
 
     for lang in ("fa", "en"):
-        desc = i18n.DESCRIPTIONS[lang]
-        short = i18n.SHORT_DESCRIPTIONS[lang]
+        # As published: the Persian with its commands and names held in place.
+        held = i18n.rtl_safe if lang == "fa" else str
+        desc = held(i18n.DESCRIPTIONS[lang].replace("@BOT", "@getquoto_bot"))
+        short = held(i18n.SHORT_DESCRIPTIONS[lang])
         check(f"description/{lang} <= 512", len(desc) <= 512, str(len(desc)))
         check(f"about/{lang} <= 120", len(short) <= 120, str(len(short)))
 
@@ -167,12 +169,62 @@ def test_i18n() -> None:
                                 (ROOT / "bot.py").read_text(encoding="utf-8")))
     names = set(re.findall(r'"([a-z]+)"', " ".join(registered)))
     advertised = set()
-    for key in ("help", "group_intro", "welcome"):
+    for key in ("welcome", "help", "group_intro", *(f"help_{n}" for n in i18n.HELP_SECTIONS)):
         for lang in ("fa", "en"):
             # (?<!<) so a closing tag like </b> is not read as a command
             advertised |= set(re.findall(r"(?<!<)/([a-z]+)", i18n.t(key, lang)))
     unknown = {c for c in advertised - names if c not in {"setprivacy", "setuserpic"}}
     check("guides only mention real commands", not unknown, str(unknown))
+
+    # A Persian line keeps "/quote" and "@getQuoto" the right way round.
+    lrm = i18n.LRM
+    check("a command in Persian is held to its word",
+          i18n.rtl_safe("دستور: /quote") == f"دستور: {lrm}/quote")
+    check("so is a username", i18n.rtl_safe("کانال: @getQuoto") == f"کانال: {lrm}@getQuoto")
+    check("links, emails and tags are left alone",
+          i18n.rtl_safe("</b> https://t.me/addstickers/x a@b.c") == "</b> https://t.me/addstickers/x a@b.c")
+    check("marking twice marks once", i18n.rtl_safe(i18n.rtl_safe("/x @y")) == i18n.rtl_safe("/x @y"))
+    check("English is left as it is", i18n.t("help", "en") == i18n.STRINGS["help"]["en"])
+    check("every Persian guide has its commands held",
+          not re.search(r"(?<![\w/<@" + lrm + r"])[/@][A-Za-z]", i18n.whole_help("fa")))
+
+    # /help: a short front page, the rest one button away and one back.
+    for lang in ("fa", "en"):
+        shown = len(re.sub(r"<[^>]+>", "", i18n.t("help", lang)).splitlines())
+        check(f"the {lang} /help front page is short", shown <= 18, str(shown))
+        text, markup = bot._help_page("main", lang, "getquoto_bot")
+        pages = [b.callback_data for row in markup.inline_keyboard for b in row]
+        check(f"the {lang} front page has a button for every page",
+              pages == [f"help:{n}" for n in i18n.HELP_SECTIONS], str(pages))
+        for name in i18n.HELP_SECTIONS:
+            text, markup = bot._help_page(name, lang, "getquoto_bot")
+            back = [b.callback_data for row in markup.inline_keyboard for b in row]
+            check(f"{lang} help page {name} leads back", back == ["help:main"]
+                  and "@BOT" not in text, str(back))
+
+    edits = []
+
+    class Query:
+        def __init__(self, data):
+            self.data = data
+
+        async def answer(self, *a, **kw):
+            pass
+
+        async def edit_message_text(self, text, **kw):
+            edits.append((text, kw.get("reply_markup")))
+    for data, wanted in (("help:packs", "help_packs"), ("help:main", "help"), ("help:nope", None)):
+        edits.clear()
+        update = types.SimpleNamespace(callback_query=Query(data),
+                                       effective_user=types.SimpleNamespace(language_code="fa"))
+        ctx = types.SimpleNamespace(user_data={}, bot=types.SimpleNamespace(username="getquoto_bot"))
+        asyncio.run(bot.on_help_button(update, ctx))
+        if wanted is None:
+            check("an unknown help page changes nothing", not edits)
+        else:
+            check(f"{data} shows that page",
+                  len(edits) == 1 and edits[0][0] == i18n.t(wanted, "fa").replace(
+                      "@BOT", "@getquoto_bot"))
 
     menu = {n for n, _ in i18n.COMMANDS["fa"]} | {n for n, _ in i18n.PRIVATE_ONLY["fa"]}
     check("menu commands are registered", menu <= names, str(menu - names))
@@ -2026,7 +2078,7 @@ def test_fire() -> None:
     for lang in i18n.SUPPORTED:
         check(f"/fire in the {lang} menu",
               "fire" in {n for n, _ in i18n.COMMANDS[lang]})
-        check(f"/fire in the {lang} help", "/fire" in i18n.t("help", lang))
+        check(f"/fire in the {lang} help", "/fire" in i18n.whole_help(lang))
     source = (ROOT / "bot.py").read_text(encoding="utf-8")
     check("/fire registered", '["fire", "fier", "fir"], cmd_fire' in source)
     body = source[source.index("async def cmd_fire"):source.index("def _clock")]
@@ -2209,7 +2261,7 @@ def test_inline_fire() -> None:
     check("deleting your data removes your fire clips too", set(store["fire_inline"]) == {"8:b"})
     for lang in i18n.SUPPORTED:
         check(f"the {lang} help says how to mention the bot as a guest",
-              "<code>@BOT " in i18n.t("help", lang))
+              re.search("<code>" + i18n.LRM + "?@BOT ", i18n.whole_help(lang)) is not None)
 
 
 def test_guest() -> None:
@@ -2686,7 +2738,7 @@ def test_convert() -> None:
         check(f"«{said[:30]}» -> {expected!r}", bot.caption_request(said) == expected,
               repr(bot.caption_request(said)))
     for lang in ("fa", "en"):
-        guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
+        guide = re.sub(r"<[^>]+>", "", i18n.whole_help(lang))
         for example in (re.findall(r"«(روش بنویس[^»]*)»", guide)
                         + re.findall(r"(/text [^\n—]+?)\s*(?:—|\n)", guide)):
             check(f"{lang} help: «{example}» writes on it", bool(bot.caption_request(example)))
@@ -2713,7 +2765,7 @@ def test_convert() -> None:
         check(f"split {said[:30]!r} ({'loose' if loose else 'strict'})",
               bot.split_caption(said, loose) == expected, str(bot.split_caption(said, loose)))
     for lang in ("fa", "en"):
-        guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
+        guide = re.sub(r"<[^>]+>", "", i18n.whole_help(lang))
         for example in re.findall(r"«([^»]+، روش بنویس[^»]*)»", guide):
             check(f"{lang} help: «{example[:30]}» makes it with words",
                   bot._made_with_caption(example) is not None)
@@ -2723,7 +2775,7 @@ def test_convert() -> None:
 
     # Every example the help gives has to be one the bot understands.
     for lang in ("fa", "en"):
-        guide = re.sub(r"<[^>]+>", "", i18n.t("help", lang))
+        guide = re.sub(r"<[^>]+>", "", i18n.whole_help(lang))
         # With «، روش بنویس» after it, it is checked with the words, further up.
         examples = re.findall(r"«(تبدیل به [^»،]+)»", guide)
         examples += re.findall(r"(/to(?:gif|sticker|video|photo)(?: [\d:]+)*)", guide)
@@ -3648,10 +3700,14 @@ def test_security() -> None:
     html_calls = re.findall(r"reply_html\(([^)]*)\)|parse_mode=\"HTML\"", source)
     # _t is the same lookup with the language already resolved: it takes a key
     # out of the catalogue and nothing else, so it is as safe as i18n.t.
+    # `text` is what _send and _help_page take out of it, with only the bot's
+    # own name put in; the buttons beside it are not text.
+    firsts = [c.split(",", 1)[0].strip() for c in html_calls if c]
     check("html is only sent for catalogue text",
-          all("i18n.t" in c or c.strip().startswith("_t(")
-              or "text" == c.strip() for c in html_calls if c),
-          str(html_calls))
+          all("i18n.t" in c or c.startswith("_t(") or c == "text" for c in firsts),
+          str(firsts))
+    body = source[source.index("def _help_page"):source.index("async def cmd_help")]
+    check("/help pages are catalogue text", "text = i18n.t(key, lang)" in body)
 
     class Msg:
         def __init__(self, chat_type):
