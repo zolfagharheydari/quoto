@@ -331,8 +331,37 @@ def _help_page(page: str, lang: str, username: str) -> tuple[str, InlineKeyboard
     return text, InlineKeyboardMarkup(rows)
 
 
+async def _send_rich_help(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                          lang: str) -> bool:
+    """/help as one rich message: a table of what the bot is for, and the rest
+    in sections that open when tapped, right to left in Persian.
+
+    Rich messages are newer than the python-telegram-bot here, so the method
+    is called by name. False if Telegram would not take it.
+    """
+    message = update.effective_message
+    username = context.bot.username
+    html = (i18n.t("help_rich", lang).replace("@BOT", f"@{username}")
+            .replace("t.me/BOTNAME?", f"t.me/{username}?"))
+    params = {"chat_id": message.chat_id,
+              "rich_message": {"html": html, "is_rtl": lang == "fa"}}
+    if message.chat.type != "private":
+        params["reply_parameters"] = {"message_id": message.message_id,
+                                      "allow_sending_without_reply": True}
+    if getattr(message, "is_topic_message", False) and message.message_thread_id:
+        params["message_thread_id"] = message.message_thread_id
+    try:
+        await context.bot.do_api_request("sendRichMessage", api_kwargs=params)
+    except TelegramError as exc:
+        log.warning("/help as a rich message was refused; sending the pages: %s", exc)
+        return False
+    return True
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = i18n.resolve(update, context.user_data)
+    if await _send_rich_help(update, context, lang):
+        return
     text, markup = _help_page("main", lang, context.bot.username)
     await update.effective_message.reply_html(text, reply_markup=markup,
                                               disable_web_page_preview=True)

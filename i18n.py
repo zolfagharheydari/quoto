@@ -218,6 +218,150 @@ Add me and make me an admin; until then Telegram doesn't pass me replies.""",
     "btn_help_packs": {"fa": "📦 استیکرپک‌ها", "en": "📦 Sticker packs"},
     "btn_help_more": {"fa": "🖼 عکس و تنظیمات", "en": "🖼 Pictures and settings"},
     "btn_help_back": {"fa": "« برگشت به راهنما", "en": "« Back to help"},
+    # /help as a rich message (Bot API 10.1+, sendRichMessage): a table of the
+    # five things the bot is for, and everything else in sections that open
+    # when tapped. BOTNAME is the bot's username without the @. If Telegram
+    # will not take it, the pages above ("help" and "help_*") go instead.
+    "help_rich": {
+        "fa": """<h3>📖 راهنمای Quoto</h3>
+<p>روی هر پیامی <b>ریپلای</b> کن و بنویس:</p>
+<table bordered striped compact>
+<tr><th>بنویس</th><th>یا دستور</th><th>چی می‌سازه</th></tr>
+<tr><td>«کوتش کن»</td><td>/quote</td><td>کارت نقل‌قول</td></tr>
+<tr><td>«استیکرش کن»</td><td>/sticker</td><td>همون کارت، استیکر</td></tr>
+<tr><td>«گیفش کن»</td><td>/gif</td><td>گیفی که جمله رو تایپ می‌کنه</td></tr>
+<tr><td>«شاتش کن»</td><td>/screenshot</td><td>اسکرین‌شات تلگرامی</td></tr>
+<tr><td>«آتیشش کن»</td><td>/fire</td><td>جمله با آتیش روی کاغذ</td></tr>
+</table>
+<p>بدون ریپلای: <code>/quote متن دلخواه</code></p>
+<details><summary>🔄 تبدیل و برش ویدیو</summary>
+<p>روی عکس، ویدیو، گیف یا استیکر ریپلای کن و بنویس:</p>
+<ul>
+<li>«تبدیل به گیف» یا «تبدیل به استیکر» — از عکس و ویدیو</li>
+<li>«تبدیل به ویدیو» — از گیف و استیکر متحرک</li>
+<li>«تبدیل به عکس» — از استیکر</li>
+</ul>
+<p><b>فقط یه تیکه از ویدیو:</b></p>
+<ul>
+<li>«تبدیل به گیف ۱:۲۰ تا ۱:۳۵»</li>
+<li>«تبدیل به گیف از ۲:۰۵» — از همون لحظه</li>
+</ul>
+<p>گیف تا ۳۰ ثانیه، استیکر تا ۳ ثانیه؛ ویدیو باید زیر ۲۰ مگابایت باشه.</p>
+</details>
+<details><summary>✍️ نوشتن متن</summary>
+<p><b>موقع ساختن</b>، تو نواری بالای کارت یا استیکر:</p>
+<blockquote>«استیکرش کن، روش بنویس: سلام»</blockquote>
+<p>با «کوتش کن»، «گیفش کن»، «شاتش کن» و «آتیشش کن» هم می‌شه.</p>
+<p><b>روی گیف یا استیکر آماده</b>، پایینش، مثل میم:</p>
+<blockquote>«روش بنویس: سلام»</blockquote>
+<p>تا ۱۲۰ حرف.</p>
+</details>
+<details><summary>👥 گروه‌ها و چت‌های دیگه</summary>
+<p>تو هر چتی، حتی پیوی دوستات یا گروهی که عضوش نیستم، روی پیام ریپلای کن و اسمم رو هم بنویس:</p>
+<pre>@BOT استیکرش کن</pre>
+<p>جواب رو خودم همون‌جا می‌فرستم.</p>
+<p>تو گروه خودت منو <b>ادمین</b> کن؛ تا ادمین نباشم، تلگرام ریپلای‌ها رو بهم نمی‌ده.</p>
+</details>
+<details><summary>📦 استیکرپک‌ها</summary>
+<p><b>پک گروه</b> — هر استیکری که تو گروه ساخته بشه، میره تو پک همون گروه:</p>
+<ul>
+<li>لینکش: /pack</li>
+<li>حذف یه استیکر: روش ریپلای کن و /unpack بزن (ادمین‌ها)</li>
+<li>حذف کل پک: /delpack (ادمین‌ها)</li>
+</ul>
+<p><b>پک‌های خودت</b>، تو پیوی من:</p>
+<ul>
+<li>پک شخصی: /mypack</li>
+<li>پک دلخواه: <code>/newpack اسم</code>، بعد روی هر استیکر بنویس «بذارش تو پک»</li>
+<li>همه‌ی پک‌هات: /packs</li>
+</ul>
+</details>
+<details><summary>🖼 عکس و تنظیمات</summary>
+<ul>
+<li>عکس دلخواه روی کوت‌هات: عکس رو با کپشن /avatar بفرست</li>
+<li>کدوم عکست بیاد: /settings</li>
+<li>قالب کارت‌ها: /template</li>
+<li>گیف‌هایی که ساختی: /mygifs</li>
+<li>کوت از حرف بقیه: پیامشون رو اینجا فوروارد کن و روش ریپلای بزن</li>
+<li>زبان: /lang</li>
+<li>پاک کردن اطلاعاتت: /deletemydata</li>
+</ul>
+<p>عکس پروفایلت روی کارت نمیاد؟ تو تلگرام این رو روی Everybody بذار:</p>
+<pre>Settings → Privacy and Security → Profile Photo</pre>
+</details>
+<hr/>
+<tg-button-row>
+<tg-button type="url" style="primary" url="https://t.me/BOTNAME?startgroup=true">➕ افزودن به گروه</tg-button>
+<tg-button type="url" url="https://t.me/getQuoto">📢 کانال خبرها</tg-button>
+</tg-button-row>""",
+        "en": """<h3>📖 Quoto help</h3>
+<p><b>Reply</b> to any message with:</p>
+<table bordered striped compact>
+<tr><th>Command</th><th>Makes</th></tr>
+<tr><td>/quote</td><td>a quote card</td></tr>
+<tr><td>/sticker</td><td>the same card, as a sticker</td></tr>
+<tr><td>/gif</td><td>a GIF that types the words out</td></tr>
+<tr><td>/screenshot</td><td>a Telegram-style screenshot</td></tr>
+<tr><td>/fire</td><td>the words written in fire on paper</td></tr>
+</table>
+<p>No reply: <code>/quote any text</code></p>
+<details><summary>🔄 Converting and cutting video</summary>
+<p>Reply to a photo, video, GIF or sticker with:</p>
+<ul>
+<li>/togif or /tosticker — from a photo or a video</li>
+<li>/tovideo — from a GIF or an animated sticker</li>
+<li>/tophoto — from a sticker</li>
+</ul>
+<p><b>Just part of a video:</b> <code>/togif 1:20 1:35</code>, or <code>/togif 2:05</code> from that moment on.</p>
+<p>Up to 30 seconds for a GIF, 3 for a sticker; the video has to be under 20 MB.</p>
+</details>
+<details><summary>✍️ Adding words</summary>
+<p><b>While making it</b>, in a band above the card or sticker:</p>
+<pre>/sticker caption: hello</pre>
+<p>The same with /quote, /gif, /screenshot and /fire.</p>
+<p><b>On a GIF or sticker that's already there</b>, along the bottom, meme style:</p>
+<pre>/text hello</pre>
+<p>Up to 120 characters.</p>
+</details>
+<details><summary>👥 Groups and other chats</summary>
+<p>In any chat, even a friend's private chat or a group I'm not in, reply to a message and name me:</p>
+<pre>@BOT /sticker</pre>
+<p>I answer right there.</p>
+<p>In your own group, make me an <b>admin</b>; until then Telegram doesn't pass me replies.</p>
+</details>
+<details><summary>📦 Sticker packs</summary>
+<p><b>The group's pack</b> — every sticker made in a group joins it:</p>
+<ul>
+<li>Its link: /pack</li>
+<li>Remove one sticker: reply to it with /unpack (admins)</li>
+<li>Delete the whole pack: /delpack (admins)</li>
+</ul>
+<p><b>Your own packs</b>, in my private chat:</p>
+<ul>
+<li>Your personal pack: /mypack</li>
+<li>A pack of your choosing: <code>/newpack name</code>, then reply to any sticker with /addsticker</li>
+<li>All your packs: /packs</li>
+</ul>
+</details>
+<details><summary>🖼 Pictures and settings</summary>
+<ul>
+<li>Your own picture on your quotes: send it with /avatar as the caption</li>
+<li>Which picture stands for you: /settings</li>
+<li>The card design: /template</li>
+<li>The GIFs you've made: /mygifs</li>
+<li>Quoting someone else: forward their message here and reply to it</li>
+<li>Language: /lang</li>
+<li>Delete what the bot keeps about you: /deletemydata</li>
+</ul>
+<p>Profile photo missing from the card? Set this to Everybody:</p>
+<pre>Settings → Privacy and Security → Profile Photo</pre>
+</details>
+<hr/>
+<tg-button-row>
+<tg-button type="url" style="primary" url="https://t.me/BOTNAME?startgroup=true">➕ Add to a group</tg-button>
+<tg-button type="url" url="https://t.me/getQuoto">📢 News channel</tg-button>
+</tg-button-row>""",
+    },
     "avatar_saved": {
         "fa": """عکس دلخواهت ذخیره شد ✅
 شما {used} سهمیه از {quota} سهمیه خود را استفاده کردید.""",
@@ -935,6 +1079,6 @@ def t(key: str, lang: str) -> str:
 
 
 def whole_help(lang: str) -> str:
-    """Every page of /help, one after another: what the checks read."""
+    """Every page of /help, one after another, and the rich one: what the checks read."""
     return chr(10).join(t(key, lang) for key in
-                        ("help", *(f"help_{name}" for name in HELP_SECTIONS)))
+                        ("help", *(f"help_{name}" for name in HELP_SECTIONS), "help_rich"))

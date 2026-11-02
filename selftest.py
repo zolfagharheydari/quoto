@@ -169,10 +169,11 @@ def test_i18n() -> None:
                                 (ROOT / "bot.py").read_text(encoding="utf-8")))
     names = set(re.findall(r'"([a-z]+)"', " ".join(registered)))
     advertised = set()
-    for key in ("welcome", "help", "group_intro", *(f"help_{n}" for n in i18n.HELP_SECTIONS)):
+    for key in ("welcome", "help", "group_intro", "help_rich",
+                *(f"help_{n}" for n in i18n.HELP_SECTIONS)):
         for lang in ("fa", "en"):
-            # (?<!<) so a closing tag like </b> is not read as a command
-            advertised |= set(re.findall(r"(?<!<)/([a-z]+)", i18n.t(key, lang)))
+            # Not after "<" (a closing tag like </b>), a letter or a slash (a link's path)
+            advertised |= set(re.findall(r"(?<![<\w/])/([a-z]+)", i18n.t(key, lang)))
     unknown = {c for c in advertised - names if c not in {"setprivacy", "setuserpic"}}
     check("guides only mention real commands", not unknown, str(unknown))
 
@@ -201,6 +202,73 @@ def test_i18n() -> None:
             back = [b.callback_data for row in markup.inline_keyboard for b in row]
             check(f"{lang} help page {name} leads back", back == ["help:main"]
                   and "@BOT" not in text, str(back))
+
+    # The rich /help: only the tags rich messages take, each one closed, and
+    # within what Telegram allows.
+    rich_tags = {"h3", "p", "b", "code", "table", "tr", "th", "td", "details", "summary",
+                 "ul", "li", "blockquote", "pre", "hr", "tg-button-row", "tg-button"}
+    for lang in ("fa", "en"):
+        rich = i18n.t("help_rich", lang)
+        opened, bad = [], []
+        for closing, tag in re.findall(r"<(/?)([a-z][\w-]*)[^>]*>", rich):
+            if tag not in rich_tags:
+                bad.append(tag)
+            elif tag == "hr":
+                continue
+            elif not closing:
+                opened.append(tag)
+            elif not opened or opened.pop() != tag:
+                bad.append("/" + tag)
+        check(f"the {lang} rich /help uses only rich tags, all closed",
+              not bad and not opened, str(bad or opened))
+        check(f"the {lang} rich /help is within the limit", len(rich) <= 32768)
+        sections = re.findall(r"<summary>([^<]+)</summary>", rich)
+        check(f"the {lang} rich /help has a section for every page",
+              len(sections) == len(i18n.HELP_SECTIONS), str(sections))
+
+    from telegram.error import BadRequest as _BadRequest
+    sent_rich, sent_html = [], []
+
+    class RichBot:
+        username = "getquoto_bot"
+
+        def __init__(self, refuse=False):
+            self.refuse = refuse
+
+        async def do_api_request(self, endpoint, api_kwargs=None, **kw):
+            if self.refuse:
+                raise _BadRequest("can't parse rich message")
+            sent_rich.append((endpoint, api_kwargs))
+
+    async def reply_html(text, **kw):
+        sent_html.append((text, kw.get("reply_markup")))
+
+    def help_in(chat_type, refuse=False):
+        sent_rich.clear()
+        sent_html.clear()
+        message = types.SimpleNamespace(chat_id=-100777, message_id=42, message_thread_id=None,
+                                        chat=types.SimpleNamespace(type=chat_type),
+                                        reply_html=reply_html)
+        update = types.SimpleNamespace(effective_message=message,
+                                       effective_user=types.SimpleNamespace(language_code="fa"))
+        ctx = types.SimpleNamespace(user_data={}, bot=RichBot(refuse))
+        asyncio.run(bot.cmd_help(update, ctx))
+
+    help_in("supergroup")
+    sent = sent_rich[0][1] if sent_rich else {}
+    rich_html = sent.get("rich_message", {}).get("html", "")
+    check("/help is sent as a rich message", sent_rich and sent_rich[0][0] == "sendRichMessage"
+          and not sent_html, str(sent_rich)[:80])
+    check("right to left in Persian, with the bot's own name in it",
+          sent.get("rich_message", {}).get("is_rtl") is True and "@getquoto_bot" in rich_html
+          and "t.me/getquoto_bot?startgroup" in rich_html and "BOT" not in rich_html)
+    check("and in a group, as a reply to whoever asked",
+          sent.get("reply_parameters", {}).get("message_id") == 42)
+    help_in("private", refuse=True)
+    check("if Telegram will not take it, the pages go instead",
+          not sent_rich and len(sent_html) == 1
+          and sent_html[0][0] == i18n.t("help", "fa").replace("@BOT", "@getquoto_bot")
+          and sent_html[0][1] is not None)
 
     edits = []
 
