@@ -1339,17 +1339,35 @@ def test_reaction_row() -> None:
 def test_badges() -> None:
     section("name badges")
 
+    from telegram import ChatMember
     from telegram.constants import ChatMemberStatus
     from telegram.error import TelegramError
 
+    # The member record as Telegram sends it, read the way the library reads
+    # it: a hand-built stand-in kept passing while the tag had moved, after
+    # the upgrade, from api_kwargs to a field of its own.
+    rights = dict(can_be_edited=False, is_anonymous=False, can_manage_chat=True,
+                  can_delete_messages=True, can_manage_video_chats=True,
+                  can_restrict_members=True, can_promote_members=False, can_change_info=True,
+                  can_invite_users=True, can_post_stories=False, can_edit_stories=False,
+                  can_delete_stories=False)
+
     def member(status, title=None, tag=None, fail=False):
+        raw = {"status": status, "user": {"id": 7, "is_bot": False, "first_name": "Ali"}}
+        if status == ChatMemberStatus.ADMINISTRATOR:
+            raw.update(rights)
+        if status == ChatMemberStatus.OWNER:
+            raw["is_anonymous"] = False
+        if title:
+            raw["custom_title"] = title
+        if tag:
+            raw["tag"] = tag
+
         class B:
             async def get_chat_member(self, chat_id, user_id):
                 if fail:
                     raise TelegramError("nope")
-                return types.SimpleNamespace(
-                    status=status, custom_title=title,
-                    api_kwargs={"tag": tag} if tag else {})
+                return ChatMember.de_json(raw, None)
         return B()
 
     chat = types.SimpleNamespace(id=-100, type="supergroup")

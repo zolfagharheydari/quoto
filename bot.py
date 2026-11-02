@@ -1387,10 +1387,11 @@ async def _badge(bot, chat, author: authors.Author,
     shows them:
 
       the member tag   any member can be given one by an admin, whatever their
-                       status. It is a recent addition to the API, and the
-                       version of python-telegram-bot here does not model it -
-                       it arrives in api_kwargs, which is where unknown fields
-                       land - so it has to be read out by name.
+                       status. python-telegram-bot 22.8 reads it into `tag` on
+                       an ordinary or a restricted member, and leaves it in
+                       api_kwargs, where unknown fields land, on an admin or
+                       the owner - so it is looked for in both. Reading only
+                       api_kwargs, as before the upgrade, lost every member's.
       a custom title   an admin's own rank, set by the group.
       owner / admin    the generic word, when an admin has no title of their own.
 
@@ -1413,7 +1414,8 @@ async def _badge(bot, chat, author: authors.Author,
     is_admin = member.status in (ChatMemberStatus.OWNER,
                                  ChatMemberStatus.ADMINISTRATOR)
 
-    tag = str((member.api_kwargs or {}).get("tag") or "").strip()
+    tag = str(getattr(member, "tag", None) or (member.api_kwargs or {}).get("tag")
+              or "").strip()
     if tag:
         return tag, is_admin
 
