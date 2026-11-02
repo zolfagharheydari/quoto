@@ -169,7 +169,7 @@ def test_i18n() -> None:
                                 (ROOT / "bot.py").read_text(encoding="utf-8")))
     names = set(re.findall(r'"([a-z]+)"', " ".join(registered)))
     advertised = set()
-    for key in ("welcome", "help", "group_intro", "help_rich",
+    for key in ("welcome", "help", "group_intro", "help_rich", "guest_how_rich",
                 *(f"help_{n}" for n in i18n.HELP_SECTIONS)):
         for lang in ("fa", "en"):
             # Not after "<" (a closing tag like </b>), a letter or a slash (a link's path)
@@ -207,8 +207,8 @@ def test_i18n() -> None:
     # within what Telegram allows.
     rich_tags = {"h3", "p", "b", "code", "table", "tr", "th", "td", "details", "summary",
                  "ul", "li", "blockquote", "pre", "hr", "tg-button-row", "tg-button"}
-    for lang in ("fa", "en"):
-        rich = i18n.t("help_rich", lang)
+    for lang, rich in [(lang, i18n.t(key, lang)) for key in ("help_rich", "guest_how_rich")
+                       for lang in ("fa", "en")]:
         opened, bad = [], []
         for closing, tag in re.findall(r"<(/?)([a-z][\w-]*)[^>]*>", rich):
             if tag not in rich_tags:
@@ -219,10 +219,11 @@ def test_i18n() -> None:
                 opened.append(tag)
             elif not opened or opened.pop() != tag:
                 bad.append("/" + tag)
-        check(f"the {lang} rich /help uses only rich tags, all closed",
+        check(f"the {lang} rich text {rich[:12]!r} uses only rich tags, all closed",
               not bad and not opened, str(bad or opened))
-        check(f"the {lang} rich /help is within the limit", len(rich) <= 32768)
-        sections = re.findall(r"<summary>([^<]+)</summary>", rich)
+        check(f"the {lang} rich text {rich[:12]!r} is within the limit", len(rich) <= 32768)
+    for lang in ("fa", "en"):
+        sections = re.findall(r"<summary>([^<]+)</summary>", i18n.t("help_rich", lang))
         check(f"the {lang} rich /help has a section for every page",
               len(sections) == len(i18n.HELP_SECTIONS), str(sections))
 
@@ -2332,6 +2333,12 @@ def test_inline_fire() -> None:
               re.search("<code>" + i18n.LRM + "?@BOT ", i18n.whole_help(lang)) is not None)
 
 
+def _article(result) -> bool:
+    """A guest answer of words: a plain article, or a rich one as the raw call takes it."""
+    kind = result.get("type") if isinstance(result, dict) else getattr(result, "type", None)
+    return kind == "article"
+
+
 def test_guest() -> None:
     section("guest mode")
     import datetime as _dt
@@ -2368,6 +2375,14 @@ def test_guest() -> None:
 
         async def answer_guest_query(self, query_id, result):
             self.answers.append((query_id, result))
+            return types.SimpleNamespace(inline_message_id="IM1")
+
+        async def do_api_request(self, endpoint, api_kwargs=None, **kw):
+            if getattr(self, "refuse_rich", False):
+                from telegram.error import BadRequest
+                raise BadRequest("can't parse rich message")
+            assert endpoint == "answerGuestQuery", endpoint
+            self.answers.append((api_kwargs["guest_query_id"], api_kwargs["result"]))
             return types.SimpleNamespace(inline_message_id="IM1")
 
         async def send_chat_action(self, chat_id, action):
@@ -2591,10 +2606,10 @@ def test_guest() -> None:
           getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
     b, _, _, _ = run_guest("@getquoto_bot حرف خودم")
     check("anything else written after the name is not made into a card",
-          b.answers and b.answers[0][1].type == "article" and not b.uploads)
+          b.answers and _article(b.answers[0][1]) and not b.uploads)
     b, _, _, _ = run_guest("@getquoto_bot کن", "آدم‌ها عوض نمی‌شن")
     check("not even as a reply: a mistyped command shows how instead",
-          b.answers and b.answers[0][1].type == "article" and not b.uploads)
+          b.answers and _article(b.answers[0][1]) and not b.uploads)
 
     # A reply to the bot's own message that does not name it: Telegram sends
     # it as a guest message all the same. Only an exact command is taken.
@@ -2609,9 +2624,54 @@ def test_guest() -> None:
     b, _, _, _ = run_guest("@getquoto_bot")
     check("the name alone, without a reply, makes nothing", not b.uploads)
     b, _, _, _ = run_guest("@getquoto_bot", "آدم‌ها عوض نمی‌شن")
-    check("nor with a reply: it shows how instead",
-          b.answers and b.answers[0][1].type == "article" and not b.uploads)
-    check("nothing to quote gets the how-to", b.answers and b.answers[0][1].type == "article")
+
+    def rich_how(answers):
+        """The rich message of a guest how-to answer, or None."""
+        if len(answers) != 1 or not isinstance(answers[0][1], dict):
+            return None
+        result = answers[0][1]
+        return result["input_message_content"]["rich_message"] if result["type"] == "article" else None
+    check("nor with a reply: it shows how instead", rich_how(b.answers) and not b.uploads)
+    b, _, _, _ = run_guest("@getquoto_bot")
+    check("nothing to quote gets the how-to", rich_how(b.answers) is not None)
+
+    # The how-to as a guest: only what works as one, then where the rest is.
+    for typed in ("@getquoto_bot سلام", "@getquoto_bot /help"):
+        b, _, _, _ = run_guest(typed, "یه پیام")
+        rich = rich_how(b.answers)
+        check(f"{typed!r} gets the guest how-to as a rich message, right to left",
+              rich is not None and rich["is_rtl"] is True, str(b.answers)[:80])
+    shown = rich["html"]
+    check("it ends by sending them to the bot",
+          "t.me/getquoto_bot?start=guest" in shown and "@getquoto_bot" in shown
+          and "BOT" not in shown)
+    private_only = {"avatar", "settings", "template", "mygifs", "newpack", "mypack", "packs",
+                    "lang", "deletemydata", "unpack", "delpack", "help"}
+    for lang in ("fa", "en"):
+        offered = set(re.findall(r"(?<![<\w/])/([a-z]+)", i18n.t("guest_how_rich", lang)))
+        check(f"the {lang} guest how-to offers nothing a guest cannot do",
+              not offered & private_only, str(offered & private_only))
+    guide = re.sub(r"<[^>]+>", "", i18n.t("guest_how_rich", "fa"))
+    for example in re.findall(r"«([^»]+)»", guide):
+        understood = (bot.convert_request(example) or bot._made_with_caption(example)
+                      or bot.caption_request(example) or bot.is_add_phrase(example)
+                      or bot._PACK_LINK_RE.fullmatch(example)
+                      or any(p.search(example) for p in bot.TRIGGERS.values()))
+        check(f"guest how-to: «{example[:28]}» is understood", bool(understood))
+
+    class RichRefused(GuestBot):
+        refuse_rich = True
+    saved_bot = GuestBot
+    GuestBot = RichRefused
+    try:
+        b, _, _, _ = run_guest("@getquoto_bot سلام", "یه پیام")
+    finally:
+        GuestBot = saved_bot
+    plain = b.answers[0][1] if len(b.answers) == 1 else None
+    check("if Telegram will not take it, the plain how-to goes, with a Start button",
+          plain is not None and not isinstance(plain, dict)
+          and plain.input_message_content.message_text == i18n.t("guest_how", "fa")
+          and plain.reply_markup is not None)
 
     import fire as _fire
     if _fire.available():
@@ -2703,7 +2763,7 @@ def test_guest() -> None:
           b.answers and getattr(b.answers[0][1], "photo_file_id", None) == "photo-id")
     b = run_stranger(None)
     check("without a store, they are asked to start the bot first",
-          b.answers and b.answers[0][1].type == "article")
+          b.answers and _article(b.answers[0][1]))
     source = (ROOT / "bot.py").read_text(encoding="utf-8")
     body = source[source.index("async def on_guest"):]
     body = body[:body.index("\nasync def ", 10)]

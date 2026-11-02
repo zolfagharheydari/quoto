@@ -23,6 +23,7 @@ from telegram import (
     InlineKeyboardMarkup,
     InputMediaAnimation,
     Message,
+    SentGuestMessage,
     Update,
 )
 from telegram.constants import ChatAction, ChatMemberStatus, MessageEntityType
@@ -2341,6 +2342,15 @@ def _guest_text(lang: str, key: str, start_with: str | None = None, **fields):
     return _guest_said(i18n.t(key, lang).format(**fields), markup)
 
 
+def _guest_how_rich(lang: str, username: str) -> dict:
+    """How the bot is used as a guest, as a rich message for answerGuestQuery:
+    an article result whose content is the message, as the API takes it."""
+    html = (i18n.t("guest_how_rich", lang).replace("@BOT", f"@{username}")
+            .replace("t.me/BOTNAME?", f"t.me/{username}?"))
+    return {"type": "article", "id": f"h{uuid.uuid4().hex[:16]}", "title": "Quoto",
+            "input_message_content": {"rich_message": {"html": html, "is_rtl": lang == "fa"}}}
+
+
 def _guest_said(text: str, markup=None):
     """Plain words as the one guest answer."""
     from telegram import InlineQueryResultArticle, InputTextMessageContent
@@ -2469,10 +2479,21 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     async def answer(result):
         try:
+            if isinstance(result, dict):
+                # A rich message, which python-telegram-bot here cannot build.
+                return await context.bot.do_api_request(
+                    "answerGuestQuery", api_kwargs={"guest_query_id": query_id, "result": result},
+                    return_type=SentGuestMessage)
             return await context.bot.answer_guest_query(query_id, result)
         except BadRequest as exc:
             log.info("a guest query could not be answered: %s", exc)
             return None
+
+    async def explain():
+        """How the bot is used as a guest: only what works here, and that the
+        rest is in the bot. Rich if Telegram takes it, plain if not."""
+        if await answer(_guest_how_rich(lang, username)) is None:
+            await answer(_guest_text(lang, "guest_how", username))
 
     try:
         if _too_soon(context):
@@ -2525,7 +2546,8 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         if target is not None and convert.media_of(target) is not None
                         else _guest_text(lang, "convert_need_reply"))
             elif named:
-                said = _guest_text(lang, "guest_how")
+                await explain()
+                return
             else:
                 return              # a reply to the bot that asked for nothing
             await answer(said)
@@ -2538,7 +2560,7 @@ async def on_guest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             # Whoever sent the mention - a person, or the channel they posted as.
             author = authors.resolve(message)
         if not text:
-            await answer(_guest_text(lang, "guest_how"))
+            await explain()
             return
         log.info("guest request: %s in %s", kind, message.chat.type if message.chat else "?")
 

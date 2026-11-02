@@ -854,7 +854,9 @@ Or while making one: /sticker caption: your words""",
 @getquoto_bot بذارش تو پک
 
 بدون ریپلای: @getquoto_bot /quote متن — از حرف خودت
-لینک پک گروه: @getquoto_bot /pack""",
+لینک پک گروه: @getquoto_bot /pack
+
+برای کارهای بیشتر، ربات رو تو پیوی استارت کن.""",
         "en": """Reply to a message with:
 @getquoto_bot /quote — a quote card
 @getquoto_bot /sticker, /gif, /screenshot, /fire
@@ -865,7 +867,93 @@ Or while making one: /sticker caption: your words""",
 @getquoto_bot /addsticker
 
 No reply: @getquoto_bot /quote your text
-The group's pack: @getquoto_bot /pack""",
+The group's pack: @getquoto_bot /pack
+
+For more, start the bot in a private chat.""",
+    },
+    # What a guest is told when they name the bot and ask for nothing it knows
+    # (or for /help): only what works as a guest, as a rich message, and at
+    # the end that the rest is in the bot itself. BOTNAME is the username
+    # without the @. If Telegram will not take it, "guest_how" goes instead.
+    "guest_how_rich": {
+        "fa": """<h3>👋 سلام، Quoto هستم</h3>
+<p>روی یه پیام ریپلای کن و بعد از اسمم بنویس:</p>
+<table bordered striped compact>
+<tr><th>بنویس</th><th>چی می‌سازه</th></tr>
+<tr><td>«کوتش کن»</td><td>کارت نقل‌قول</td></tr>
+<tr><td>«استیکرش کن»</td><td>همون کارت، استیکر</td></tr>
+<tr><td>«گیفش کن»</td><td>گیفی که جمله رو تایپ می‌کنه</td></tr>
+<tr><td>«شاتش کن»</td><td>اسکرین‌شات تلگرامی</td></tr>
+<tr><td>«آتیشش کن»</td><td>جمله با آتیش روی کاغذ</td></tr>
+</table>
+<p>مثلاً:</p>
+<pre>@BOT استیکرش کن</pre>
+<details><summary>🔄 تبدیل</summary>
+<ul>
+<li>«تبدیل به گیف» یا «تبدیل به استیکر» — روی عکس یا ویدیو</li>
+<li>«تبدیل به ویدیو» — روی گیف یا استیکر متحرک</li>
+<li>«تبدیل به عکس» — روی استیکر</li>
+<li>«تبدیل به گیف ۱:۲۰ تا ۱:۳۵» — فقط همون تیکه از ویدیو</li>
+</ul>
+</details>
+<details><summary>✍️ نوشتن متن</summary>
+<ul>
+<li>«استیکرش کن، روش بنویس: سلام» — متن بالای کارت یا استیکر</li>
+<li>«روش بنویس: سلام» — روی گیف یا استیکر آماده</li>
+</ul>
+</details>
+<details><summary>➕ بقیه</summary>
+<p>بدون ریپلای، از حرف خودت:</p>
+<pre>@BOT /quote متن</pre>
+<ul>
+<li>«پک» — لینک استیکرپک همین گروه</li>
+<li>«بذارش تو پک» — استیکر توی پکی که تو ربات ساختی</li>
+</ul>
+</details>
+<hr/>
+<p>عکس دلخواه روی کوت‌ها، قالب کارت‌ها، پک‌های خودت و گیف‌هایی که ساختی فقط تو خود ربات‌ان. <b>برای کارهای بیشتر، ربات رو استارت کن</b> 👇</p>
+<tg-button-row>
+<tg-button type="url" style="primary" url="https://t.me/BOTNAME?start=guest">🤖 شروع Quoto</tg-button>
+</tg-button-row>""",
+        "en": """<h3>👋 Hi, I'm Quoto</h3>
+<p>Reply to a message and write my name with one of these:</p>
+<table bordered striped compact>
+<tr><th>Write</th><th>Makes</th></tr>
+<tr><td>/quote</td><td>a quote card</td></tr>
+<tr><td>/sticker</td><td>the same card, as a sticker</td></tr>
+<tr><td>/gif</td><td>a GIF that types the words out</td></tr>
+<tr><td>/screenshot</td><td>a Telegram-style screenshot</td></tr>
+<tr><td>/fire</td><td>the words written in fire on paper</td></tr>
+</table>
+<p>For example:</p>
+<pre>@BOT /sticker</pre>
+<details><summary>🔄 Converting</summary>
+<ul>
+<li>/togif or /tosticker — on a photo or a video</li>
+<li>/tovideo — on a GIF or an animated sticker</li>
+<li>/tophoto — on a sticker</li>
+<li>/togif 1:20 1:35 — just that part of a video</li>
+</ul>
+</details>
+<details><summary>✍️ Adding words</summary>
+<ul>
+<li>/sticker caption: hello — words above the card or sticker</li>
+<li>/text hello — on a GIF or sticker that's already there</li>
+</ul>
+</details>
+<details><summary>➕ More</summary>
+<p>No reply, your own words:</p>
+<pre>@BOT /quote your text</pre>
+<ul>
+<li>/pack — this group's sticker pack</li>
+<li>/addsticker — the sticker into a pack you made in the bot</li>
+</ul>
+</details>
+<hr/>
+<p>Your own picture on quotes, card designs, your own packs and the GIFs you've made are in the bot itself. <b>For more, start the bot</b> 👇</p>
+<tg-button-row>
+<tg-button type="url" style="primary" url="https://t.me/BOTNAME?start=guest">🤖 Start Quoto</tg-button>
+</tg-button-row>""",
     },
     "inline_fire_title": {"fa": "🔥 آتیشش کن", "en": "🔥 Write it in fire"},
     "inline_fire_caption": {"fa": "🔥 داره با آتیش نوشته می‌شه…", "en": "🔥 Being written in fire…"},
